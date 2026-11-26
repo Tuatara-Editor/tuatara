@@ -199,7 +199,8 @@ NIL when none was chosen."
 
 (defun turn-on-input-method (name &optional label)
   "Make NAME the default input method and turn it on in the current buffer,
-saying so (by LABEL, when given), as \\[set-input-method] does."
+saying so (by LABEL, when given), as \\[set-input-method] does. An init file
+puts a method of its own on a key with a command calling this."
   (activate-input-method name)
   (setf *default-input-method* name)
   (message "~a on~a" (if label (format nil "~a (~a)" label name) name) (input-method-state-words)))
@@ -265,9 +266,13 @@ longer rule are shown underlined until the next key settles them.~%~%"
 (define-command digraph-input-mode ()
   "Type digraphs as you go: turn on the rfc1345 input method, so that typed
 text takes & and a digraph's keys for its character, &e' for e with an
-acute; & and keys that make none stay as typed. \\[deactivate-input-method] or
-\\[toggle-input-method] turns it off; \\[list-digraphs] lists them."
-  (turn-on-input-method "rfc1345" "Digraphs"))
+acute; & and keys that make none stay as typed. Where rfc1345 is already
+this buffer's input method, turn it off. \\[deactivate-input-method] or
+\\[toggle-input-method] turns off any method; \\[list-digraphs] lists them."
+  (let ((method (buffer-input-method)))
+    (if (and method (string= (input-method-name method) "rfc1345"))
+        (deactivate-input-method)
+        (turn-on-input-method "rfc1345" "Digraphs"))))
 
 (defun install-input-methods (editor)
   "Bind the input method keys: \\[toggle-input-method],

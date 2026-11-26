@@ -306,7 +306,7 @@ while it is on.
 | none  | ~C-x 8 RET~         | =insert-char=             | Asks for a Unicode name, such as =em dash=, or a code in hex such as =e9=, =U+00E9= or =#xe9=. The names that fit are listed as you type. A number first puts the character in that many times. |
 | none  | ~C-x 8 &~           | =insert-digraph=          | Asks for the two keys of a digraph, =e'= for é, =->= for an arrow, =<<= for a guillemet. With a selection, the character wraps it in a pair, such as « ». It works from NORMAL state too. |
 | none  | ~M-x list-digraphs~ | =list-digraphs=           | Lists every digraph, the common ones first. |
-| none  | ~C-x 8 .~           | =digraph-input-mode=      | Turns digraphs on as you type: ~&~ and the digraph's keys give the character, so =&e'= types é. |
+| none  | ~C-x 8 .~           | =digraph-input-mode=      | Turns digraphs on as you type: ~&~ and the digraph's keys give the character, so =&e'= types é. Pressed again, it turns them off. |
 | none  | ~C-x 8 -~           | =deactivate-input-method= | Turns off whichever input method is on in this buffer. |
 | none  | ~C-\~               | =toggle-input-method=     | Turns this buffer's input method off, or on again. The first time it uses =*default-input-method*=, or asks. |
 | none  | ~C-x RET C-\~       | =set-input-method=        | Asks for an input method, turns it on, and makes it the one ~C-\~ switches. |
@@ -320,7 +320,6 @@ name, =SV<= for Swedish.
 | Setting                  | Default  | What it changes                        |
 |--------------------------+----------+----------------------------------------|
 | =*default-input-method*= | =nil=    | The method ~C-\~ turns on in a buffer that has had none, such as ="swedish-postfix"=. =nil= asks. |
-| =*input-method-keys*=    | none     | Methods of your own, each a key, a label and a method's name. =(setf *input-method-keys* '(("s" "swedish" "swedish-postfix")))= makes =SPC i s= turn it on. |
 
 ** Indentation and filling in plain text
 
@@ -345,7 +344,7 @@ past the mark and any check box: =- [ ] a task= continues six columns in.
 | none  | ~C-M-\~                | =indent-region=            | Indents the selected lines as the mode indents them. |
 | ~>~   | ~C-z >~                | =indent-selection-or-line= | In NORMAL state. Indents the selected lines, or this line, as the mode does. |
 | none  | ~M-m~                  | =back-to-indentation=      | Moves to the first character of the line that is not a space or tab. |
-| none  | ~M-x indent-tabs-mode~ | =indent-tabs-mode=         | Switches this buffer between spaces and tab characters. A positive number turns tabs on, and zero or less turns them off. |
+| none  | ~M-x indent-with-tabs-mode~ | =indent-with-tabs-mode=    | Switches this buffer between spaces and tab characters. A positive number turns tabs on, and zero or less turns them off. |
 | none  | ~M-=~                  | =count-words=              | Counts the lines, sentences, words and characters of the selection, or of the whole buffer. |
 
 Filling takes prose only. In an Org file, headlines, tables, property drawers,
@@ -360,19 +359,22 @@ so, so filling never holds the editor up. A sentence ends at ~.~, ~?~, ~!~ or
 ~…~ followed by a space or a line end, or at a blank line. Short forms such as
 =Dr.= end no sentence.
 
-In your init file two functions set the tab habits for one kind of file.
-=(set-tab-width 'c-mode 8)= makes tab stops 8 columns apart in C files, and
-=(set-indent-tabs-mode 'bash t)= puts tab characters in shell scripts. Their
-first argument is a major mode, and =prog= stands for every programming
-language.
+In your init file two settings hold the tab habits of some kinds of file, a
+list of major modes each with its value.
+=(setf *tab-width-modes* '((c-mode . 8)))= makes tab stops 8 columns apart in
+C files, and =(setf *indent-with-tabs-modes* '((bash . t)))= puts tab
+characters in shell scripts. A mode counts for the modes made from it, and
+=prog-mode= stands for every programming language.
 
 *** Settings
 
 | Setting                          | Default    | What it changes              |
 |----------------------------------+------------+------------------------------|
 | =*tab-width*=                    | =4=        | The columns from one tab stop to the next, a whole number from 1 to 64. |
-| =*indent-tabs-mode*=             | =nil=      | =t= puts tab characters in where ~TAB~ goes on to a tab stop. =nil= puts spaces in. |
-| =*tab-always-indent*=            | =:complete= | What ~TAB~ does in code. =:complete= indents the line and, when that changes nothing, completes the name. =t= only indents. =nil= indents when the cursor is in the leading blanks and otherwise goes to the next stop. |
+| =*indent-with-tabs*=             | =nil=      | =t= puts tab characters in where ~TAB~ goes on to a tab stop. =nil= puts spaces in. |
+| =*tab-width-modes*=              | =nil=      | Tab widths for major modes and the modes made from them, a list of =(MODE . COLUMNS)=. |
+| =*indent-with-tabs-modes*=       | =nil=      | Tabs or spaces for major modes and the modes made from them, a list of =(MODE . T-OR-NIL)=. =tsv-mode= has tabs unless it says otherwise. |
+| =*tab-key-action*=               | =:complete= | What ~TAB~ does in code. =:complete= indents the line and, when that changes nothing, completes the name. =t= only indents. =nil= indents when the cursor is in the leading blanks and otherwise goes to the next stop. |
 | =*tuatara-normal-tab-modes*=     | =(org-mode)= | The modes where ~TAB~ works in NORMAL state, and the modes made from them. |
 | =*fill-column*=                 | =80=       | The column filled lines end by. |
 | =*fill-ask-column*=              | =t=        | =nil= fills at once, without asking for the column. |
@@ -449,7 +451,7 @@ Tuatara never waits on it. With a number, a sort runs in descending order.
 
 | Command                     | What it does                                 |
 |-----------------------------+----------------------------------------------|
-| =sort-lines=                | Sorts the lines by their text. Capital and small letters compare by their codes unless =*sort-fold-case*= is on. |
+| =sort-lines=                | Sorts the lines by their text. Capital and small letters compare by their codes unless =*sort-ignores-case*= is on. |
 | =sort-fields=               | Sorts the lines by one field. Fields are apart by spaces. A number names the field, and a negative one counts from the end of the line. In a CSV file or a log it asks for a column and moves each record whole, the header staying first. |
 | =sort-numeric-fields=       | Sorts by the number at the start of a field. =0x= starts a hexadecimal number. A field with no number counts as 0. |
 | =sort-columns=              | Sorts by the text between the columns where the selection starts and ends. |
@@ -478,7 +480,7 @@ they say so and change nothing.
 
 | Setting                   | Default     | What it changes                     |
 |---------------------------+-------------+-------------------------------------|
-| =*sort-fold-case*=        | =nil=       | =t= ignores the case of ASCII letters, so =b= sorts before =C=. |
+| =*sort-ignores-case*=     | =nil=       | =t= ignores the case of ASCII letters, so =b= sorts before =C=. |
 
 ** Recording keys
 

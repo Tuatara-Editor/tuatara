@@ -988,6 +988,27 @@ place, where the text as it is now has them: each (AT TEXT FACE)."
           (apply #'tuatara.text:json-object (loop for c in capabilities append (list c t))))
     server))
 
+(define-test (lsp command-given-up-asks-its-changes)
+  ;; a command chosen to be run that is never answered is given up in time; a change the server makes after that
+  ;; is asked about, as one it makes of itself
+  (multiple-value-bind (f editor) (run-keys "")
+    (declare (ignore f))
+    (let ((tuatara.command:*editor* editor)
+          (server (stand-in-server "kea" :ready "executeCommandProvider"))
+          (tuatara.lsp::*lsp-deadlines* '()))
+      (tuatara.lsp::lsp-do-action server (tuatara.text:json-object "title" "Run the tests" "command" "kea.test"
+                                                                   "arguments" #()))
+      (true (tuatara.lsp::lsp-acting-p server))
+      (is = 1 (length tuatara.lsp::*lsp-deadlines*))
+      (setf (first (first tuatara.lsp::*lsp-deadlines*)) (tuatara.runtime:deadline-in -1))
+      (tuatara.lsp::lsp-give-up-late)
+      (false (tuatara.lsp::lsp-acting-p server)))))
+
+(define-test (lsp usual-servers-open-no-port)
+  ;; no server is started set to serve a web page on a port of its own, as metals would
+  (false (find-if (lambda (server) (search "isHttpEnabled" (or (getf (cddr server) :options) "")))
+                  tuatara.lsp::*usual-language-servers*)))
+
 (define-test (lsp not-formatting-said-of-each-server)
   ;; why no server laid the code out, said of each: starting, not formatting, or not a part
   (let ((buffer (tuatara.buffer:make-buffer "unformatted.py")))
@@ -1480,8 +1501,9 @@ place, where the text as it is now has them: each (AT TEXT FACE)."
                                           (list :until (lambda () (= 2 (length (applied))))))
                                     :width 200)
                (declare (ignore editor))
+               (true (tuatara.frontend.fake:fake-frame-showing f "Change 3 files for python3? (y or n)"))
                (true (tuatara.frontend.fake:fake-frame-showing
-                      f "python3 asks to change 3 files (1 outside its project); change them? (y or n)"))
+                      f "It asks to change them of itself, 1 outside its project."))
                ;; the files named beside the question, the one outside first
                (true (tuatara.frontend.fake:fake-frame-showing
                       f (format nil "  ~a" (tuatara.command:abbreviated-path (merge-pathnames "outside.txt" dir)))))

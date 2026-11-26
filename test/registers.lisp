@@ -256,9 +256,9 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
       ;; t marks the two shown and counts the hidden one too
       (is string= "3 marked" (tuatara.command:editor-message (nth-value 1 (session "C-n C-n C-n m C-p C-p TAB t"))))
       ;; the question says which of them a fold hides
-      (true (tuatara.frontend.fake:fake-frame-showing-across-rows
-             (session "C-n C-n C-n m C-p C-p TAB t D n")
-             "Empty the 3 registers (1 in a folded section)?")))))
+      (let ((f (session "C-n C-n C-n m C-p C-p TAB t D")))
+        (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "Empty the 3 registers?"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "1 of them is in a folded section."))))))
 
 (define-test (registers rectangle-store-forgets-decrypted-text)
   ;; a block copied from a decrypted buffer is let go of when the buffer is killed, as its kills are
@@ -294,3 +294,9 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
            (said (tuatara.command:editor-message editor)))
       (is string= "Register a keeps text: C-x r i puts it in the text where point is" said)
       (is equal '((23 30 :help-key-binding)) (tuatara.command:text-spans said)))))
+
+(define-test (registers text-kept-where-it-is-sized-in-octets)
+  ;; a text too large to copy is kept as a rope, its size told in octets, not characters
+  (let ((rope (tuatara.text:string->rope (make-string 3000 :initial-element #\é))))
+    (is string= "kept where it is (6.0 kB)"
+        (tuatara.defaults::register-contents-words (tuatara.defaults::make-register :text rope)))))

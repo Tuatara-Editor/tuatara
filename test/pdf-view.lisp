@@ -500,6 +500,20 @@ and zooms kept for the next time."
         (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf has no embedded files")))
       (pdf-forget))))
 
+(define-test (pdf-view embedded-files-by-the-decoders-program)
+  ;; the files embedded in a PDF are listed by the program *pdf-decoders* names for it, not by one named elsewhere
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "report.pdf" dir))
+          (tuatara.defaults::*pdf-decoders*
+            (let ((poppler (copy-list (first tuatara.defaults::*pdf-decoders*))))
+              (setf (getf poppler :detach) "false")
+              (list poppler))))
+      (alexandria:write-byte-vector-into-file (pdf-octets '("Hello") :attachment '("note.txt" "secret inside")) file)
+      (pdf-forget)
+      (let ((f (pdf-session file "a" nil :cell-pixels '(10 20) :width 160)))
+        (false (tuatara.frontend.fake:fake-frame-showing f "1 embedded file")))
+      (pdf-forget))))
+
 (define-test (pdf-view embedded-file-replaced-refused)
   ;; a PDF from outside replaced at its path after its embedded files were listed: saving one takes nothing
   ;; out of the file put in its place
@@ -613,7 +627,7 @@ and zooms kept for the next time."
         (true (tuatara.frontend.fake:fake-frame-showing f "Page 3 of 3, fit width")))
       (pdf-forget)
       ;; a path of the file relative to the directory stood in finds it a PDF all the same
-      (let ((tuatara-user:*default-directory* (namestring dir)))
+      (let ((tuatara-user:*no-file-directory* (namestring dir)))
         (let ((buffer (tuatara.defaults::pdf-view-visit "report.pdf" #'identity)))
           (true buffer)
           (when buffer (tuatara.buffer:kill-buffer buffer)))))))

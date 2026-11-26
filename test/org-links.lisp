@@ -148,9 +148,9 @@
                          :text (format nil "~%")
                          :width 120
                          :height 16)))
-        (multiple-value-bind (screen spans) (tuatara.frontend.fake::fake-frame-with f "Link LABEL: _work")
-          (let* ((row (position-if (lambda (line) (search "Link LABEL: _work" line)) screen))
-                 (start (+ (search "Link LABEL: " (aref screen row)) (length "Link LABEL: "))))
+        (multiple-value-bind (screen spans) (tuatara.frontend.fake::fake-frame-with f "Label: _work")
+          (let* ((row (position-if (lambda (line) (search "Label: _work" line)) screen))
+                 (start (+ (search "Label: " (aref screen row)) (length "Label: "))))
             (true (find-if (lambda (span) (and (= (first span) start) (eq (third span) :region))) (aref spans row))))))
       ;; the text selected becomes the link, its label; what is matched still asked for
       (is string= (format nil "See [[formatted-match:_work][my work notes]] here.~%")
@@ -185,7 +185,7 @@
                          :text (format nil "[[https://orgmode.org][Org]]~%")
                          :width 80
                          :height 12)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "Open https://orgmode.org in the desktop's program, outside Tuatara?"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Open https://orgmode.org in the desktop's program?"))
         (is equal '("https://orgmode.org") (opened-names record)))
       ;; or the program *open-externally-programs* gives its scheme
       (delete-file record)
@@ -196,7 +196,7 @@
                            :text (format nil "[[https://orgmode.org][Org]]~%")
                            :width 80
                            :height 12)))
-          (true (tuatara.frontend.fake:fake-frame-showing f "Open https://orgmode.org in stand-in-xdg-open, outside Tuatara?"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "Open https://orgmode.org in stand-in-xdg-open?"))
           (is equal '("--new-tab" "https://orgmode.org") (opened-names record)))))))
 
 (define-modal-test (org return-in-a-large-note-reads-the-part)
@@ -592,3 +592,16 @@
             (html (getf (tuatara.defaults::org-html-parts text :file (namestring file)) :body)))
         (true (search "\\href{./other.org}{there}" latex) "~a" latex)
         (false (search "::" html) "~a" html)))))
+
+(define-test (org denote-identifier-whole)
+  ;; a link to a note by an identifier empty or cut short opens no note: no match, said at once
+  (with-test-directory (dir)
+    (alexandria:write-string-into-file (format nil "* A note~%") (merge-pathnames "20260101T101010--a-note.org" dir))
+    (let ((tuatara-user::*formatted-file-directory* (namestring dir)))
+      (dolist (link '("[[denote:20260101T1010]]" "[[denote:]]"))
+        (true (tuatara.frontend.fake:fake-frame-showing
+               (run-keys "M-x o r g - m o d e RET RET" :text (format nil "~a~%" link) :width 120 :height 12)
+               "No match for denote:")
+              "~a" link))
+      (let ((buffer (tuatara.buffer:find-buffer "20260101T101010--a-note.org")))
+        (when buffer (tuatara.buffer:kill-buffer buffer))))))

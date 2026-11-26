@@ -412,12 +412,17 @@ buffer; with DAY, a day number, for that day (ORG-CAPTURE-ON-DAY)."
                 (capture-template-file chosen)))
       (t (org-capture-begin chosen origin :day day)))))
 
-(defun org-capture-with (name target text)
+(defun org-capture-with (name target text &key (origin (current-buffer)))
   "Capture as \\[org-capture] does, with a template given here rather than
 read from a file: NAME, what it is; TARGET, where it is filed, as a
 template's (:OLP FILE TITLE ...) or (:FILE-HEADLINE FILE HEADLINE); TEXT,
-its %-escapes not filled in yet (%^T asks the time, %? is where point goes)."
-  (org-capture-begin (make-capture-template "" name target text) (current-buffer)))
+its %-escapes not filled in yet (%^T asks the time, %? is where point goes).
+ORIGIN is the buffer the capture is taken from, which %a links to and which
+filing returns to: the current buffer unless given, as a command that
+captures once work in the background is done gives the one it began in;
+the current buffer again when ORIGIN is gone."
+  (org-capture-begin (make-capture-template "" name target text)
+                     (if (live-buffer-p origin) origin (current-buffer))))
 
 (define-command org-capture ()
   "Take a note, a task or a journal entry down from wherever you are:

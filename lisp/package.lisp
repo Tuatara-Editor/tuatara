@@ -4,9 +4,8 @@
 (defpackage #:tuatara.defaults
   ;; tuatara-user: every setting and function an init file may name, by the same names here
   (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
-  ;; commands of these names here, kept apart from the functions of the init file's
-  (:shadow #:count-words #:find-file #:point #:forward-char #:backward-char #:load-theme
-           #:switch-to-buffer #:insert #:widen #:narrow-to-region)
+  ;; the command of this name here, kept apart from the init file's function
+  (:shadow #:load-theme)
   (:shadowing-import-from #:tuatara.display #:define-theme)
   (:import-from #:tuatara.display #:define-face #:set-face-attributes)
   (:import-from #:tuatara.io #:directory-name #:walk-directory)

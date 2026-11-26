@@ -80,7 +80,7 @@ before."
   "The language the system's locale names (LC_ALL, LC_MESSAGES or LANG), as
 en_NZ for en_NZ.UTF-8; NIL for C, POSIX or none."
   (let ((locale (find-if (lambda (v) (and v (plusp (length v))))
-                         (mapcar #'tuatara.io:own-variable '("LC_ALL" "LC_MESSAGES" "LANG")))))
+                         (mapcar #'tuatara.runtime:own-variable '("LC_ALL" "LC_MESSAGES" "LANG")))))
     (when locale
       (let ((name (subseq locale 0 (position-if (lambda (c) (find c ".@")) locale))))
         (and (cl-ppcre:scan "^[a-z]{2,3}(_[A-Z]{2})?$" name) name)))))
@@ -537,9 +537,14 @@ no word elsewhere (a name, a case number) stays out of the language's list."
 (define-command spellcheck-languages ()
   "Set the languages the current buffer's words are checked in, by their
 names as enchant knows them, apart by spaces (en_NZ sv_SE): a word is right
-when one of them takes it. Empty: as *SPELLCHECK-LANGUAGES* says."
+when one of them takes it. The answer begins with the languages it is checked
+in now. Empty: as *SPELLCHECK-LANGUAGES* says."
   (let* ((buffer (current-buffer))
-         (typed (read-string (format nil "Check the spelling in (~{~a~^ ~}): " (spellcheck-languages-of buffer))))
+         (typed (read-string "Spelling languages: "
+                             :initial (format nil "~{~a~^ ~}" (spellcheck-languages-of buffer))
+                             :details (format nil "Names as enchant knows them, apart by spaces (en_NZ sv_SE).~%~
+                                                   Empty: as *spellcheck-languages* says~@[ (~{~a~^ ~})~].~%"
+                                              *spellcheck-languages*)))
          (languages (tuatara.text:split-words (string-trim " " typed) " ")))
     (setf (tuatara.buffer:buffer-local buffer :spellcheck-languages) languages)
     (message "Spelling checked in ~{~a~^ ~}" (spellcheck-languages-of buffer))))

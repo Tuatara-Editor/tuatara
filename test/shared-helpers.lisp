@@ -318,6 +318,17 @@ to every part that asks.")
   "Ask PROMPT as a question of four keys, j, m, M and n, each with its words."
   (tuatara.command:read-key-choice prompt '(("j" . "one") ("m" . "two") ("M" . "three") ("n" . "none"))))
 
+(define-test (shared-helpers one-key-choice-aliases-and-case)
+  ;; a key may stand for another (SPC for y), and with fold-case a capital answers as its small letter
+  (let ((ask (key-string (concatenate 'string "(setf tuatara.tests::*yes-or-no-answer* "
+                                      "(tuatara.command:read-key-choice "
+                                      "\"Go\" '((\"y\" . \"yes\") (\"n\" . \"no\")) :aliases '((\"SPC\" . \"y\"))"
+                                      " :fold-case t))"))))
+    (dolist (case '(("SPC" "y") ("Y" "y") ("x n" "n")))
+      (setf *yes-or-no-answer* :none)
+      (run-keys (list (format nil "M-: ~a RET" ask) (first case)) :width 200 :height 20)
+      (is equal (second case) *yes-or-no-answer* "~s" (first case)))))
+
 (define-test (shared-helpers one-key-choice)
   ;; a key and its words on the prompt, the rows beside it, the case of the key kept, C-g leaves
   (let ((ask (key-string "(setf tuatara.tests::*yes-or-no-answer* (tuatara.tests::ask-which-key \"Pick\"))"))

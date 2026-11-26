@@ -92,8 +92,8 @@ file or the line is no longer there, or the buffer had no file."
                (line (format nil "CLOCK: ~a" (org-timestamp-text (org-clock-started clock))))
                (at (and text (loop for at = (search line text) then (search line text :start2 (1+ at))
                                    while at
-                                  do (multiple-value-bind (from to)
-                                         (org-read-clock-line text (string-line-start text at))
+                                   do (multiple-value-bind (from to)
+                                          (org-read-clock-line text (string-line-start text at))
                                         (when (and from (not to)) (return at)))))))
           (if at
               (progn (org-clock-hold clock buffer (org-parse-octet parse (string-line-start text at)))
@@ -123,11 +123,10 @@ is forgotten with only its start. The clock running, or NIL."
                (format-time "%F %R" (org-clock-started running))
                (org-clock-task running)))
     (when others
-      (let ((words (format nil "~{~a~^; ~}~@[; and ~d more~]"
-                           (loop for clock in others repeat *org-clocks-named*
-                                 collect (format nil "~a since ~a" (org-clock-task clock)
-                                                 (format-time "%F %R" (org-clock-started clock))))
-                           (and (> (length others) *org-clocks-named*) (- (length others) *org-clocks-named*)))))
+      (let ((words (names-shown others :most *org-clocks-named* :separator :words
+                                       :name-of (lambda (clock)
+                                                  (format nil "~a since ~a" (org-clock-task clock)
+                                                          (format-time "%F %R" (org-clock-started clock)))))))
         (notify (format nil "~d CLOCK: line~:p left open, with only a start" (length others)) words
                 :source "Clock" :desktop nil)
         (message "Open CLOCK: lines left as well, with only a start: ~a" words)))
@@ -170,7 +169,7 @@ has ended, it is looked for again."
 (defun org-clocks-left-open-noted (&optional (now (org-now)))
   "ORG-CLOCKS-LEFT-OPEN at NOW, looked for again only when an agenda file
 changed since none was found (*ORG-CLOCKS-NONE-OPEN*). When the agenda files
-to read again are large (ORG-AGENDA-FILES-READ-SOON-P), they are looked
+to read again are not small (ORG-AGENDA-FILES-READ-SOON-P), they are looked
 through in the background instead (ORG-CLOCKS-LOOK-IN-BACKGROUND), and that is
 said in a refusal."
   (let ((key (org-agenda-sources-key)))

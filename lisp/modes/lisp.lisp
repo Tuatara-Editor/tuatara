@@ -313,7 +313,7 @@ forms there were."
 :ERROR or :STOPPED; VALUES and COUNT the values of the last form and how many
 forms there were, CONDITION the error met; OUTPUT what was printed, WARNINGS
 how many warnings there were, PACKAGE the package in force at the end,
-BACKTRACE the calls under way at an error, when *DEBUG-ON-ERROR* is on, and
+BACKTRACE the calls under way at an error, when *BACKTRACE-ON-ERROR* is on, and
 PUT-BACK the settings it gave a value they do not take, put back."
   (kind :stopped :documentation "How the evaluation ended: :VALUES, :ERROR or :STOPPED.")
   (values nil :documentation "The values of the last form evaluated, a list.")
@@ -369,12 +369,12 @@ turn (WAIT-INTERRUPTIBLY). What it prints and warns is kept, and its reading
 finds an empty input: the terminal is never written to or read from. Every
 serious condition is caught, running out of stack included, as is a call to
 the debugger. Returns an EVALUATION, its backtrace the calls under way at an
-error when *DEBUG-ON-ERROR* is on (CAPTURE-BACKTRACE). A setting it gives a
+error when *BACKTRACE-ON-ERROR* is on (CAPTURE-BACKTRACE). A setting it gives a
 value the setting does not take is put back as it was, and said in the
 EVALUATION (PUT-BACK-MISFIT-SETTINGS); when it was stopped and its thread
 had not ended, they are looked at again, and said, once it has. Unless TYPED (at \\[eval-expression]), TEXT is BUFFER's,
 and the definitions in it are remembered as BUFFER's, for \\[xref-find-definitions].
-The Lisp evaluated finds CURRENT the current buffer, when given, as IELM's
+The Lisp evaluated finds CURRENT the current buffer, when given, as the Lisp REPL's
 working buffer; else the one shown in the selected window."
   (let* ((editor *editor*)
          (box (list (lisp-package buffer)))
@@ -388,7 +388,7 @@ working buffer; else the one shown in the selected window."
             (lambda ()
               (unwind-protect
                   (let* ((*editor* editor)
-                         (*current-buffer* current) ; SET-BUFFER lasts until the evaluation ends
+                         (*current-buffer* current)
                          (*evaluating-buffer* (unless typed buffer))
                          (output (make-string-output-stream))
                          (input (make-string-input-stream ""))
@@ -400,7 +400,7 @@ working buffer; else the one shown in the selected window."
                          (outcome
                            (flet ((note-trace ()
                                     ;; the calls under way, before they are unwound
-                                    (when (or *debug-on-error* tuatara.runtime:*debug-on*)
+                                    (when (or *backtrace-on-error* tuatara.runtime:*debug-on*)
                                       (setf trace (capture-backtrace :stop 'evaluate-forms))))
                                   (give-up (condition hook)
                                     (declare (ignore hook))
@@ -650,7 +650,7 @@ from a list over the prompt."
 
 (defparameter *buffer-evaluating-commands*
   '(eval-print-last-expression eval-last-expression eval-top-level-form eval-region eval-buffer
-    pp-macroexpand-last-expression pp-macroexpand-all-last-expression)
+    lisp-macroexpand lisp-macroexpand-all)
   "The commands that evaluate a buffer's own text in the running editor, or
 expand its macro calls there: they run in Lisp buffers only, and never in one
 opened safely.")

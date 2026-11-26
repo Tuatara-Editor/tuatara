@@ -173,7 +173,7 @@ was afterwards (unset when it was)."
            (let ((tuatara-user:*preview-buffers* nil))
              (false (tuatara.frontend.fake:fake-frame-showing
                      (run-keys "C-x 4 b p i c k i n g - o t h" :width 80 :height 12) "SHOWN-BY-PREVIEW")))
-           ;; the same candidates, with the same fields beside them, in C-x b, C-x 4 b and *ielm*'s C-c C-b
+           ;; the same candidates, with the same fields beside them, in C-x b, C-x 4 b and *Lisp REPL*'s C-c C-b
            (flet ((offered (keys)
                     (let ((seen nil))
                       (run-keys (list keys (lambda ()
@@ -190,13 +190,14 @@ was afterwards (unset when it was)."
                (is equal (mapcar #'first switching) (mapcar #'first other-window))
                (is equal (find "picking-other" switching :key #'first :test #'string=)
                    (find "picking-other" other-window :key #'first :test #'string=))
-               (let ((ielm (offered "M-x i e l m RET C-c C-b")))
-                 (true (find "picking-other" ielm :key #'first :test #'string=))
-                 (true (find "*scratch*" ielm :key #'first :test #'string=))
+               (let ((lisp-repl (offered "M-x l i s p - r e p l RET C-c C-b")))
+                 (true (find "picking-other" lisp-repl :key #'first :test #'string=))
+                 (true (find "*scratch*" lisp-repl :key #'first :test #'string=))
                  ;; the buffer used last first, as in C-x b
-                 (is string= "*scratch*" (first (first ielm)))))))
+                 (is string= "*scratch*" (first (first lisp-repl)))))))
       (tuatara.buffer:kill-buffer other)
-      (let ((ielm (tuatara.buffer:find-buffer "*ielm*"))) (when ielm (tuatara.buffer:kill-buffer ielm))))))
+      (let ((lisp-repl (tuatara.buffer:find-buffer "*Lisp REPL*")))
+        (when lisp-repl (tuatara.buffer:kill-buffer lisp-repl))))))
 
 (defvar *held-gathering* nil
   "The gathering the progress test's questions take from: it gives two things, then waits to be stopped.")

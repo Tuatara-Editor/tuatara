@@ -12,17 +12,18 @@ modification counters, versions and undo.")
            #:buffer-point #:buffer-mark #:buffer-mark-active-p #:buffer-region
            #:buffer-start #:buffer-end #:buffer-narrowed-p #:buffer-narrowing #:narrow-buffer #:widen-buffer
            #:buffer-bounds #:within-narrowing #:keep-within-narrowing #:with-narrowing-lifted #:refuse-outside-narrowing
+           #:with-narrowing-kept #:with-point-kept
            #:outside-narrowing-words #:host-widen-key #:lifted-narrowing-outside-p #:let-go-of-lifted-narrowing
            #:*narrowing-in-force*
            #:buffer-edit #:*hex-view-resizing* #:hex-view-refuses-p #:buffer-insert #:buffer-delete #:buffer-replace
-           #:buffer-undo #:buffer-redo
+           #:buffer-undo #:buffer-redo #:*undoing*
            #:buffer-undo-stack #:buffer-redo-stack #:forget-history #:buffer-change-functions #:buffer-swap-text
            #:buffer-take-in-job-result
            #:merge-undo-groups #:undo-back-to #:undo-back-to-group #:*undo-limit* #:*undo-let-go-functions*
            #:buffer-undo-octets
            #:make-undo-place #:forget-undo-place #:buffer-text-at #:span-after-batch
-           #:buffer-forward-char #:buffer-char-before #:next-line-start #:buffer-line-start #:buffer-line-end
-           #:buffer-line-text #:buffer-line-head #:buffer-line-number #:buffer-line-count
+           #:buffer-forward-char #:buffer-forward-line #:buffer-char-before #:next-line-start #:buffer-line-start
+           #:buffer-line-end #:buffer-line-text #:buffer-line-head #:buffer-line-number #:buffer-line-count
            #:buffer-indexed-p #:buffer-adopt-text #:ensure-indexed #:host-wait-for-index
            #:buffer-splice #:buffer-splice-spans #:buffer-slice #:buffer-lent-p #:*large-edit-octets*
            #:buffer-scan-line #:*line-scan-limit*

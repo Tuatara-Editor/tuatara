@@ -62,7 +62,8 @@ buffers it has open. SAID is its last lines on its error output, SAID-COUNT
 how many. PROGRESS is what it said it is busy with, by token, each (TITLE
 WORDS PERCENT). EVENTS are its last messages either way, newest first, each
 \(TIME TO-IT TEXT), TEXT their start (*LSP-EVENT-LENGTH*), EVENTS-COUNT how
-many. ACTING is how many of its commands chosen to be run are under way. LOCK
+many. ACTING is the numbers of the requests running its commands chosen to be
+run (LSP-ACTING-P). LOCK
 is held while UNSENT, PROMISED, SAID or EVENTS change."
   (name nil :documentation "The name of LSP-SERVER as known, as in rust-analyzer.")
   (command nil :documentation "The program and arguments of LSP-SERVER.")
@@ -96,7 +97,9 @@ thread that reads the server.")
           :documentation "The last messages either way, newest first, each (TIME TO-IT TEXT), TEXT their start
 \(*LSP-EVENT-LENGTH*).")
   (events-count 0 :documentation "How many messages LSP-SERVER has had either way.")
-  (acting 0 :documentation "How many commands of LSP-SERVER chosen to be run are under way."))
+  (acting '()
+          :documentation "The numbers of the requests running commands of LSP-SERVER chosen to be run, those still
+waiting for an answer under way (LSP-ACTING-P)."))
 
 (setf (documentation 'lsp-server-p 'function) "True when OBJECT is an LSP-SERVER.")
 
@@ -237,6 +240,12 @@ With SECONDS, a question not answered in that time is no longer wanted
           (funcall then nil (tuatara.text:json-object "message" "the server is not running"))))
     id))
 
+(defun lsp-acting-p (server)
+  "True while a command of SERVER chosen to be run waits for its answer: what
+SERVER changes meanwhile (workspace/applyEdit) is what was chosen. One given
+up for want of an answer (LSP-REQUEST's SECONDS) is not."
+  (some (lambda (id) (nth-value 1 (gethash id (lsp-server-waiting server)))) (lsp-server-acting server)))
+
 (defun lsp-cancel (server id)
   "Tell SERVER the request ID is no longer wanted; its answer, if it comes, is let go."
   (when (remhash id (lsp-server-waiting server))
@@ -287,11 +296,12 @@ Failed to spawn rustfmt; \"it failed\" when they say nothing."
 
 (defun lsp-error-words (error &key (seconds *lsp-wait*) (setting '*lsp-wait*))
   "Why a question to a server came to nothing, in words short enough for the
-echo area: for ERROR :TIMEOUT, no answer within SECONDS (as SETTING says);
+echo area: for ERROR :TIMEOUT, no answer within SECONDS (as SETTING says,
+when it is given);
 for :STOPPED, that a key stopped the wait; for a server's answer saying it
 failed, its words made short (SHORT-FAILURE-WORDS)."
   (case error
-    (:timeout (format nil "no answer within ~a (~(~a~))" (duration-words seconds) setting))
+    (:timeout (format nil "no answer within ~a~@[ (~(~a~))~]" (duration-words seconds) setting))
     (:stopped "a key stopped the wait")
     (t (short-failure-words (and (hash-table-p error) (tuatara.text:json-text error "message"))))))
 

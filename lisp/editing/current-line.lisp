@@ -1,20 +1,20 @@
-;;;; lisp/editing/hl-line.lisp --- The line point is on, highlighted: hl-line-mode.
+;;;; lisp/editing/current-line.lisp --- The line point is on, highlighted: current-line-mode.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's hl-line-mode and global-hl-line-mode: the line point is on,
-;;;; every row of it when it wraps, in the :hl-line face out to the window's
+;;;; current-line-mode and global-current-line-mode: the line point is on,
+;;;; every row of it when it wraps, in the :current-line face out to the window's
 ;;;; edge, in the selected window, under the syntax colours and the selection.
 ;;;; On in every buffer unless the init file says otherwise; a buffer, or
-;;;; the list for its major mode (*HL-LINE-MODES*), may choose for itself.
+;;;; the list for its major mode (*CURRENT-LINE-MODES*), may choose for itself.
 
 (in-package #:tuatara.defaults)
 
-(define-display-toggle hl-line "Hl-line"
+(define-display-toggle current-line "Current line"
   "Highlight the line point is on in the current buffer, or stop: every row of
-it, out to the window's edge, in the :hl-line face, under the syntax colours
+it, out to the window's edge, in the :current-line face, under the syntax colours
 and the selection, in the selected window."
-  :command hl-line-mode :lookup hl-line-p
-  :global *global-hl-line-mode* :default t
+  :command current-line-mode :lookup current-line-p
+  :global *global-current-line-mode* :default t
   :what "highlight the line point is on"
   :example "'((csv-mode . nil))")
 
@@ -40,14 +40,14 @@ not show it."
               (when (and (< start end) (<= position end))
                 (list (list start end face))))))))))
 
-(defun hl-line-range (editor window rows)
-  "The line point is on in WINDOW, as a list of one (START END :hl-line) range
+(defun current-line-range (editor window rows)
+  "The line point is on in WINDOW, as a list of one (START END :current-line) range
 over ROWS, the rows of it shown there, its line end included so that the face
 goes on to the window's edge; NIL unless WINDOW is the selected window and its
 buffer highlights the line (HL-LINE-P)."
-  (when (and (eq window (editor-window editor)) (hl-line-p (tuatara.display:window-buffer window)))
-    (line-rows-range rows (tuatara.display:window-point window) :hl-line)))
+  (when (and (eq window (editor-window editor)) (current-line-p (tuatara.display:window-buffer window)))
+    (line-rows-range rows (tuatara.display:window-point window) :current-line)))
 
-(defun install-hl-line ()
+(defun install-current-line ()
   "Paint the line point is on under everything else."
-  (pushnew 'hl-line-range *line-highlight-functions*))
+  (pushnew 'current-line-range *line-highlight-functions*))

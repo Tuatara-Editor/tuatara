@@ -1017,6 +1017,46 @@ OPERANDS FROM END), and how many it counted, as two values."
       (is eq 'tuatara.defaults::office-about-shut-in (first (first calls)))
       (true (integerp (first (second (first calls))))))))
 
+(define-test (metadata office-not-read-here-when-safe)
+  ;; with no sandbox, a file asked about from a list opened safely is never read by the Office reader in the
+  ;; editor; one not from outside and not asked about safely is
+  (with-test-directory (dir)
+    (let ((xlsx (write-office-test-file (merge-pathnames "birds.xlsx" dir) *xlsx-test-parts*))
+          (list (tuatara.buffer:make-buffer "*safe list*" :text ""))
+          (read 0))
+      (setf (tuatara.io:safe-visit-p list) t)
+      (sb-int:encapsulate 'tuatara.packages:sandbox-call 'missing
+                          (lambda (function &rest arguments)
+                            (declare (ignore function arguments))
+                            (values nil "no sandbox here" :unavailable 0)))
+      (sb-int:encapsulate 'tuatara.defaults::office-about 'counted
+                          (lambda (function &rest arguments) (incf read) (apply function arguments)))
+      (unwind-protect
+           (progn
+             (false (tuatara:read-here-p xlsx list))
+             (true (tuatara:read-here-p xlsx))
+             (tuatara.defaults::install-metadata)
+             (tuatara.defaults::file-metadata-note xlsx :safe (not (tuatara:read-here-p xlsx list)))
+             (is = 0 read)
+             (note-has (tuatara.defaults::file-metadata-note xlsx) "- Made by :: Bo Kaikoura")
+             (is = 1 read))
+        (sb-int:unencapsulate 'tuatara.packages:sandbox-call 'missing)
+        (sb-int:unencapsulate 'tuatara.defaults::office-about 'counted)
+        (tuatara.buffer:kill-buffer list)))))
+
+(define-test (metadata exif-tags-for-packages)
+  ;; a package reads EXIF as fields, within the bounds it gives, never parsing the note's words back
+  (let* ((octets (jpeg-test-octets))
+         (end (+ 12 (length *exif-test-tiff*)))
+         (tags (tuatara:exif-tags octets :start 12 :end end)))
+    (is string= "Kea Cameras" (tuatara:exif-tag tags :image #x010F))
+    (is equal '(0 4321 nil) (multiple-value-list (tuatara:exif-thumbnail-place tags)))
+    (true (< (length (tuatara:exif-tags octets :start 12 :end 40)) (length tags)) "cut at END")
+    (is eq nil (tuatara:exif-tags octets :start 12 :end (+ 1 (length octets))))
+    (is equal '(300 300) (tuatara:exif-resolution '((:image #x011a ((300 . 1))) (:image #x011b ((300 . 1)))
+                                                    (:image #x0128 (2)))))
+    (is eq nil (tuatara:exif-resolution tags))))
+
 (define-test (metadata misleading-files)
   ;; loops, sizes past the end, counts in the millions: read as far as they make sense, never hanging
   (with-test-directory (dir)

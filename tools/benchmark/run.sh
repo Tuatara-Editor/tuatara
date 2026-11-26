@@ -25,7 +25,8 @@
 #
 # Where things go (BENCH_WORK, default ~/.cache/tuatara-benchmark):
 #   data/ or trial-data/   the generated files, kept for the next run;
-#   scratch/               each editor's empty home, made afresh for each run;
+#   scratch/               each editor's empty home, made afresh for each run and removed
+#                          after it unless --keep-homes is given;
 #   results.jsonl, report.md (trial-results.jsonl, trial-report.md).
 # Set BENCH_EMACS_VLF to a directory holding vlf.el to give Emacs vlf, and
 # BENCH_TUATARA to measure another build of Tuatara than build/tuatara.
@@ -79,5 +80,11 @@ if [ -n "$film" ]; then
   python3 -I "$here/film.py" "$work/${prefix}results.jsonl" "$film" "$work/${prefix}film.mp4"
   echo "Film: $work/${prefix}film.mp4"
 fi
-rm -rf "$work/scratch"
+keep=""
+for argument in "$@"; do [ "$argument" = --keep-homes ] && keep=1; done
+if [ -n "$keep" ]; then
+  echo "Homes: $work/scratch"
+else
+  rm -rf "$work/scratch"
+fi
 echo "Report: $work/${prefix}report.md"

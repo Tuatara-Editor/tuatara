@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; *pair-delimiters* names the pairs: ( ), [ ], { }, quotes, and the rest.
-;;;; With electric-pair-mode on, an opening one typed writes its closing half
+;;;; With auto-close-mode on, an opening one typed writes its closing half
 ;;;; after point, the closing half typed where it stands steps over it, and
 ;;;; DEL between an empty pair takes both. insert-pair (M-() puts a pair
 ;;;; around the region, or takes it off when it is already there, or inserts
@@ -16,34 +16,34 @@
     (#\« . #\») (#\‹ . #\›)
     (#\= . #\=) (#\* . #\*) (#\~ . #\~) (#\| . #\|) (#\\ . #\\)
     (#\/ . #\/) (#\: . #\:) (#\+ . #\+) (#\_ . #\_) (#\$ . #\$))
-  "The pairs of delimiters. They are what electric-pair-mode closes as they are
-typed (those *ELECTRIC-PAIR-TYPING* names), what \\[insert-pair] puts around the
+  "The pairs of delimiters. They are what auto-close-mode closes as they are
+typed (those *AUTO-CLOSE-DELIMITERS* names), what \\[insert-pair] puts around the
 region, and what select-pair selects within and the wrap keys wrap with.
 - a list of (OPEN . CLOSE): each pair the characters that open and close it;
   a character that both opens and closes is its own pair."
   :values (list-of (cons character character)))
 
-(define-setting *electric-pair-mode* nil
+(define-setting *auto-close-mode* nil
   "Whether delimiters are closed as they are typed. An opening one writes its
 closing half after point, a closing half typed where it stands steps over it,
 and \\[delete-backward-char] between an empty pair takes both. Off unless asked
-for, by \\[electric-pair-mode] or in the init file.
+for, by \\[auto-close-mode] or in the init file.
 - t: close delimiters as they are typed.
 - nil: leave them (the standard)."
   :values boolean)
 
-(define-setting *electric-pair-typing* :safe
+(define-setting *auto-close-delimiters* :safe
   "Which delimiters close themselves as they are typed, once
-\\[electric-pair-mode] is on.
+\\[auto-close-mode] is on.
 - :safe: the pairs of *PAIR-DELIMITERS* less those
-  *ELECTRIC-PAIR-SAFE-EXCLUSIONS* names (the standard).
+  *AUTO-CLOSE-SAFE-EXCLUSIONS* names (the standard).
 - :all: every one of them.
 - a list of opening characters: those, taken as the list has them; an empty
   list pairs nothing."
   :values (or (member :safe :all) (list-of character)))
 
-(define-setting *electric-pair-safe-exclusions* '(#\< #\' #\` #\= #\* #\~ #\| #\\ #\/ #\: #\+ #\_ #\$)
-  "The delimiters :safe leaves out of *ELECTRIC-PAIR-TYPING*: ordinary text far
+(define-setting *auto-close-safe-exclusions* '(#\< #\' #\` #\= #\* #\~ #\| #\\ #\/ #\: #\+ #\_ #\$)
+  "The delimiters :safe leaves out of *AUTO-CLOSE-DELIMITERS*: ordinary text far
 more often than a delimiter, such as the apostrophe in don't, a colon,
 less-than.
 - a list of characters: the opening characters left out."
@@ -51,8 +51,8 @@ less-than.
 
 (defvar *pairs-read* nil
   "The pair settings as last read: (DELIMITERS TYPING EXCLUSIONS PAIRS
-OPENERS), the values of *PAIR-DELIMITERS*, *ELECTRIC-PAIR-TYPING* and
-*ELECTRIC-PAIR-SAFE-EXCLUSIONS* then, the pairs read from the first and the
+OPENERS), the values of *PAIR-DELIMITERS*, *AUTO-CLOSE-DELIMITERS* and
+*AUTO-CLOSE-SAFE-EXCLUSIONS* then, the pairs read from the first and the
 openers that close themselves as they are typed.")
 
 (defun pairs-read ()
@@ -61,19 +61,19 @@ value than it did."
   (let ((read *pairs-read*))
     (if (and read
              (eq (first read) *pair-delimiters*)
-             (eq (second read) *electric-pair-typing*)
-             (eq (third read) *electric-pair-safe-exclusions*))
+             (eq (second read) *auto-close-delimiters*)
+             (eq (third read) *auto-close-safe-exclusions*))
         read
         ;; read once each setting changes; a value one does not take is read as its standard
         (let* ((pairs (setting-in-force '*pair-delimiters*))
                (openers (mapcar #'car pairs))
-               (typing (setting-in-force '*electric-pair-typing*))
+               (typing (setting-in-force '*auto-close-delimiters*))
                (typed (case typing
-                        (:safe (let ((exclusions (setting-in-force '*electric-pair-safe-exclusions*)))
+                        (:safe (let ((exclusions (setting-in-force '*auto-close-safe-exclusions*)))
                                  (remove-if (lambda (c) (member c exclusions)) openers)))
                         (:all openers)
                         (t (intersection typing openers)))))
-          (setf *pairs-read* (list *pair-delimiters* *electric-pair-typing* *electric-pair-safe-exclusions*
+          (setf *pairs-read* (list *pair-delimiters* *auto-close-delimiters* *auto-close-safe-exclusions*
                                    pairs typed))))))
 
 (defun pair-delimiters ()
@@ -115,11 +115,11 @@ here."
   "The opening delimiters that close themselves as they are typed."
   (fifth (pairs-read)))
 
-(defun electric-pair-typed (buffer char)
+(defun auto-close-typed (buffer char)
   "After CHAR was typed into BUFFER: when it closes a pair and the same
 character follows, step over that one instead of keeping two; when it opens
 a pair, write the closing half after point."
-  (when *electric-pair-mode*
+  (when *auto-close-mode*
     (let* ((openers (pair-typing-openers))
            (p (point))
            (open (pair-open-for char)))
@@ -134,10 +134,10 @@ a pair, write the closing half after point."
              (tuatara.buffer:buffer-insert buffer p (string (pair-closer char)) :group t)
              (goto p))))))
 
-(defun electric-pair-delete (buffer)
+(defun auto-close-delete (buffer)
   "\\[delete-backward-char] between the two halves of an empty pair: take both.
 True when it did."
-  (when *electric-pair-mode*
+  (when *auto-close-mode*
     (let* ((p (point))
            (before (buffer-char-before buffer p))
            (after (tuatara.buffer:buffer-char-at buffer p)))
@@ -148,15 +148,15 @@ True when it did."
           (goto start)
           t)))))
 
-(define-command electric-pair-mode ()
+(define-command auto-close-mode ()
   "Turn closing delimiters as they are typed on or off. With it on, ( { [ \" and
-the other pairs *ELECTRIC-PAIR-TYPING* names write their closing half after
+the other pairs *AUTO-CLOSE-DELIMITERS* names write their closing half after
 point, typing that half where it stands steps over it, and
 \\[delete-backward-char] between an empty pair takes both; a delimiter typed
 with a count is typed that many times and paired with none. With a count it is
 on when it is positive and off when it is zero or less."
-  (setf *electric-pair-mode* (switched-by-count *electric-pair-mode*))
-  (message "Electric pair mode ~:[off~;on~]" *electric-pair-mode*))
+  (setf *auto-close-mode* (switched-by-count *auto-close-mode*))
+  (message "Auto-close mode ~:[off~;on~]" *auto-close-mode*))
 
 ;;; Put around the region
 
@@ -233,6 +233,6 @@ The pairs are *PAIR-DELIMITERS*."
           (goto (+ p (tuatara.text:string-octet-length (format nil "~@[~a~]~a" before open))))))))
 
 (defun install-pairs ()
-  "Have typing and \\[delete-backward-char] consult electric-pair-mode."
-  (pushnew 'electric-pair-typed *post-self-insert-functions*)
-  (pushnew 'electric-pair-delete *delete-backward-functions*))
+  "Have typing and \\[delete-backward-char] consult auto-close-mode."
+  (pushnew 'auto-close-typed *post-self-insert-functions*)
+  (pushnew 'auto-close-delete *delete-backward-functions*))

@@ -47,6 +47,19 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
   "True while a file is being decrypted or a buffer saved."
   (some (lambda (job) (or (tuatara.defaults::decrypt-job-p job) (tuatara.io::save-job-p job))) tuatara.runtime:*jobs*))
 
+(define-test (encrypted armoured-passphrase-seen)
+  ;; a passphrase's message armoured (gpg -c -a), even one named .gpg, is seen as one a passphrase opens, as the
+  ;; same message unarmoured is
+  (with-test-directory (dir)
+    (let* ((body "ww0ECQMIAQIDBAUGBwhg0gUBqrvM3Q==")
+           (armoured (namestring (put-file (merge-pathnames "note.gpg" dir)
+                                           (format nil "-----BEGIN PGP MESSAGE-----~%~%~a~%-----END PGP MESSAGE-----~%"
+                                                   body))))
+           (raw (tuatara.text:base64-octets (tuatara.text:string-octets body))))
+      (true (tuatara.defaults::openpgp-passphrase-opens-p (tuatara.io:file-head armoured)))
+      (true (tuatara.defaults::openpgp-passphrase-opens-p raw))
+      (false (tuatara.defaults::openpgp-passphrase-opens-p (subseq raw 15))))))
+
 (define-test (encrypted to-a-key)
   (if (null (tuatara.defaults::gpg-path))
       (skip "gpg is not installed here" (true nil))
@@ -148,7 +161,8 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
                                        (list :until (lambda () (not (decrypting-p)))))
                                  :width 140)
             (declare (ignore editor))
-            (true (tuatara.frontend.fake:fake-frame-showing f "Encrypt fresh.md.gpg to (keys, a passphrase; commas between):"))
+            (true (tuatara.frontend.fake:fake-frame-showing f "Encrypt fresh.md.gpg to:"))
+            (true (tuatara.frontend.fake:fake-frame-showing f "Keys, a passphrase, or both; commas between."))
             (true (tuatara.frontend.fake:fake-frame-showing f "asked for as it is saved"))
             (true (tuatara.frontend.fake:fake-frame-showing f "Kea Taranaki <kea@example.org>"))
             (true (tuatara.frontend.fake:fake-frame-showing f "nothing chosen to encrypt it to"))
@@ -226,7 +240,7 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
             ;; a file encrypted (to the key marked), signed (detached) and verified; the original untouched
             (multiple-value-bind (f editor)
                 (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed plain))
-                                         (typed "gpg-encrypt-file") (settle) "C-n C-n RET RET" (settle) "n RET"
+                                         (typed "gpg-encrypt-file") (settle) "C-n C-n RET RET" (settle) "n RET" (settle)
                                          (typed "gpg-sign-file") "RET RET" (settle)))
               (declare (ignore editor))
               (true (tuatara.frontend.fake:fake-frame-showing f "Encrypted as")))
@@ -661,7 +675,7 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
                                     :key key))
                (tuatara.defaults::*modal-editing* nil)
                (tuatara-user:*gpg-passphrase-from* :minibuffer)
-               (tuatara.command:*debug-on-error* t)
+               (tuatara.command:*backtrace-on-error* t)
                (kiwi (lambda (&rest arguments)
                        (declare (ignore arguments))
                        (error 'type-error :datum "plain kiwi words" :expected-type 'integer)))
@@ -746,6 +760,111 @@ nothing more."
                                                (or (sb-posix:getenv "PATH") "/usr/bin")))
       (let ((tuatara.defaults::*gpg-program* "gpg"))
         (false (search (namestring dir) (or (tuatara.defaults::gpg-path) "")))))))
+
+(define-test (encrypted signatures-each-said)
+  ;; every signature in turn, when it was made, and never "Good" with one that fails or gpg failing
+  (let* ((fingerprint "D647C771761F736B31ED8A2E42C0A0291C34DD19")
+         (good (list "NEWSIG ana@example.org" "GOODSIG 42C0A0291C34DD19 Ana Kowhai <ana@example.org>"
+                     (format nil "VALIDSIG ~a 2026-11-20 1795651200 0 4 0 22 10 01 ~a" fingerprint fingerprint)
+                     "TRUST_FULLY 0 pgp"))
+         (bad '("NEWSIG" "BADSIG 1C34DD1942C0A029 Bo Tawa <bo@example.org>"))
+         (signatures (tuatara.defaults::gpg-signatures (append good bad))))
+    (is equal '(:good :bad) (mapcar (lambda (s) (getf s :status)) signatures))
+    (is eq :fully (getf (first signatures) :trust))
+    (is string= "Bo Tawa <bo@example.org>" (getf (second signatures) :name))
+    (let ((words (tuatara.defaults::signature-words (append good bad) "" nil)))
+      (true (uiop:string-prefix-p "2 signatures: good signature by Ana Kowhai" words) "~a" words)
+      (true (search "; BAD signature by Bo Tawa" words) "~a" words))
+    (let ((words (tuatara.defaults::signature-words good "" t)))
+      (true (uiop:string-prefix-p "Good signature by Ana Kowhai" words) "~a" words)
+      (true (search (format nil ", made ~a," (tuatara.dates:time-words (+ 1795651200 tuatara.dates:+unix-epoch+)))
+                    words)
+            "~a" words)
+      (true (search "by a key trusted fully" words) "~a" words))
+    (let ((words (tuatara.defaults::signature-words good "gpg: invalid packet" nil)))
+      (true (uiop:string-prefix-p "Not verified, gpg failed (gpg: invalid packet)" words) "~a" words))
+    ;; a signature gpg began on and said nothing more of is no good one
+    (is equal '(:good :error)
+        (mapcar (lambda (s) (getf s :status)) (tuatara.defaults::gpg-signatures (append good '("NEWSIG")))))))
+
+(define-test (encrypted signature-failing-wins)
+  ;; gpg, standing in, finds the first signature good, the second bad, and ends with 1: no "Good" is said
+  (with-test-directory (dir)
+    (let ((program (namestring (merge-pathnames "gpg" dir)))
+          (post (namestring (merge-pathnames "post-signed-twice.asc" dir)))
+          (tuatara.defaults::*modal-editing* nil))
+      (put-program program (format nil "#!/bin/sh~%[ \"$1\" = --dump-options ] && exit 0~%fd=~%while [ $# -gt 0 ]; do~%  ~
+                                          [ \"$1\" = --status-fd ] && fd=$2~%  shift~%done~%cat > /dev/null~%~
+                                          eval \"printf '%s\\\\n' '[GNUPG:] NEWSIG' ~
+                                          '[GNUPG:] GOODSIG 42C0A0291C34DD19 Ana Kowhai' ~
+                                          '[GNUPG:] NEWSIG' '[GNUPG:] BADSIG 1C34DD1942C0A029 Bo Tawa' >&$fd\"~%~
+                                          exit 1~%"))
+      (put-file post "text")
+      ;; set, not bound, for the job's thread to see it
+      (let ((before tuatara.defaults::*gpg-program*))
+        (setf tuatara.defaults::*gpg-program* program)
+        (unwind-protect
+             (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed post))
+                                      (format nil "M-x ~a RET" (key-string "gpg-verify-file"))
+                                      (list :until (lambda () (search "post-signed-twice.asc: " (messages-text))))))
+          (setf tuatara.defaults::*gpg-program* before)))
+      (let* ((text (messages-text))
+             (said (subseq text (search "post-signed-twice.asc: " text))))
+        (false (search "Good" said :end2 (or (position #\Newline said) (length said))) "~a" said)
+        (true (search "2 signatures: good signature by Ana Kowhai" said) "~a" said)
+        (true (search "BAD signature by Bo Tawa" said) "~a" said))
+      (let ((buffer (tuatara.buffer:find-buffer "post-signed-twice.asc")))
+        (when buffer (tuatara.buffer:kill-buffer buffer))))))
+
+(define-test (encrypted signed-block-then-forged-block)
+  ;; a block truly signed, then a second whose text was changed: gpg stops with an error, said before any signature
+  (if (null (tuatara.defaults::gpg-path))
+      (skip "gpg is not installed here" (true nil))
+      (with-test-directory (dir)
+        (let* ((key (gpg-test-key))
+               (post (namestring (merge-pathnames "post-forged.asc" dir)))
+               (tuatara.defaults::*modal-editing* nil)
+               (tuatara-user:*gpg-passphrase-from* :minibuffer))
+          (flet ((signed (text)
+                   (tuatara.text:octets-string
+                    (tuatara.defaults::gpg-run (list "--clearsign" "--local-user" key)
+                                               :input (tuatara.text:string-octets text) :passphrase ""))))
+            (let ((forged (signed (format nil "the second claim~%"))))
+              (put-file post (concatenate 'string (signed (format nil "the first claim~%"))
+                                          (cl-ppcre:regex-replace "second" forged "forged")))))
+          (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed post))
+                                   (format nil "M-x ~a RET" (key-string "gpg-verify-file"))
+                                   (list :until (lambda () (search "post-forged.asc: " (messages-text))))))
+          (let* ((text (messages-text))
+                 (said (subseq text (search "post-forged.asc: " text))))
+            (true (uiop:string-prefix-p "post-forged.asc: Not verified, gpg failed" said) "~a" said)
+            (true (search "good signature by Kea Taranaki" said) "~a" said))
+          (let ((buffer (tuatara.buffer:find-buffer "post-forged.asc")))
+            (when buffer (tuatara.buffer:kill-buffer buffer)))))))
+
+(define-test (encrypted clipboard-copy-kept-secret)
+  ;; text killed in a decrypted buffer is handed to the system clipboard with the secret at hand, from any
+  ;; buffer; other text is not
+  (let ((seen '())
+        (buffer nil)
+        (tuatara.defaults::*modal-editing* nil))
+    (sb-int:encapsulate 'tuatara.frontend:frontend-set-clipboard 'test-secret
+                        (lambda (function frontend text)
+                          (push (cons text tuatara.runtime:*secret-at-hand*) seen)
+                          (funcall function frontend text)))
+    (unwind-protect
+         (auto-save-session (list "C-x b s e c r e t - c o p y RET"
+                                  (list :until (lambda ()
+                                                 (setf buffer (tuatara:current-buffer)
+                                                       (tuatara.io:buffer-plaintext-p buffer) t)))
+                                  "k o r o r a C-a C-k" "C-x b p l a i n - c o p y RET"
+                                  "M-x g p g - c o p y - t o - c l i p b o a r d RET" "t u i C-a C-k"
+                                  "M-x g p g - c o p y - t o - c l i p b o a r d RET"))
+      (sb-int:unencapsulate 'tuatara.frontend:frontend-set-clipboard 'test-secret)
+      (when buffer (tuatara.buffer:kill-buffer buffer))
+      (let ((plain (tuatara.buffer:find-buffer "plain-copy"))) (when plain (tuatara.buffer:kill-buffer plain))))
+    (is eq t (cdr (assoc "korora" seen :test #'equal)) "~s" seen)
+    (false (cdr (assoc "tui" seen :test #'equal)) "~s" seen)))
 
 (define-test (encrypted gpg-run-kept-to-itself)
   ;; gpg runs with the environment it needs alone, the system's PATH, and nothing fetched or shown by a program
@@ -884,7 +1003,8 @@ nothing more."
     (is string= said (tuatara.defaults::gpg-failure-words '("FAILURE encrypt 53") said))))
 
 (define-test (encrypted gpg-lock-kept-to-itself)
-  ;; gpgconf is found beside gpg or in the system's directories only, and runs with gpg's environment
+  ;; gpgconf is found beside gpg or in the system's directories only, and runs with gpg's environment, in the
+  ;; background
   (with-test-directory (dir)
     (let ((gpgconf (fake-gpg dir :name "gpgconf")))
       (with-environment-variable ("PATH" (format nil "~a:~a" (string-right-trim "/" (namestring dir))
@@ -894,8 +1014,23 @@ nothing more."
       (let ((tuatara.defaults::*gpg-program* (fake-gpg dir)))
         (is string= gpgconf (tuatara.defaults::gpgconf-path))
         (with-environment-variable ("TUATARA_TEST_CANARY" "kea")
-          (let ((f (run-keys "M-x g p g - l o c k RET")))
-            (true (tuatara.frontend.fake:fake-frame-showing f "gpg-agent has forgotten the passphrases it kept"))))
+          (let ((threads '()) (editor-thread nil))
+            (sb-int:encapsulate 'tuatara.io:program-output 'thread
+                                (lambda (function command &rest more)
+                                  (when (equal (rest command) '("--reload" "gpg-agent"))
+                                    (push sb-thread:*current-thread* threads))
+                                  (apply function command more)))
+            (unwind-protect
+                 (let ((f (auto-save-session
+                           (list (lambda () (setf editor-thread sb-thread:*current-thread*))
+                                 "M-x g p g - l o c k RET"
+                                 (list :until (lambda () (notany #'tuatara.defaults::gpg-job-p
+                                                                 tuatara.runtime:*jobs*)))))))
+                   (true (tuatara.frontend.fake:fake-frame-showing
+                          f "gpg-agent has forgotten the passphrases it kept")))
+              (sb-int:unencapsulate 'tuatara.io:program-output 'thread))
+            (is = 1 (length threads))
+            (false (member editor-thread threads))))
         (let ((environment (uiop:read-file-lines (merge-pathnames "environment" dir))))
           (is equal '("--reload" "gpg-agent") (uiop:read-file-lines (merge-pathnames "arguments" dir)))
           (true (member (format nil "PATH=~a" tuatara.io:*sandbox-path*) environment :test #'string=))

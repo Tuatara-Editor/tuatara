@@ -1,4 +1,4 @@
-;;;; frontends/tui/client.lisp --- tuatara --daemon, --client and --stop: the processes either side of a daemon.
+;;;; frontends/tui/client.lisp --- tuatara --daemon, --client, --stop and --daemons: the processes beside a daemon.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; tuatara --daemon starts the program again in a session of its own, told
@@ -126,12 +126,13 @@ is not safe or a daemon could not be started, why said on the error output."
         (when (and start (not (funcall runs)))
           (unless (zerop (start-daemon name nil :quiet t))
             (return-from report-daemon-socket 1))
-          (let ((words (lingering-words (or (tuatara.io:own-variable "USER") (tuatara.io:own-variable "LOGNAME")))))
+          (let ((words (lingering-words (or (tuatara.runtime:own-variable "USER")
+                                            (tuatara.runtime:own-variable "LOGNAME")))))
             (when words (format *error-output* "tuatara: the daemon ~a was started, but ~a~%" name words))))
         (write-daemon-report *standard-output* :home (tuatara.io:native (user-homedir-pathname)) :socket socket
                                                :runs (funcall runs) :gpg-socket (gpgconf-directory "agent-socket")
                                                :gpg-autostart (gpg-autostart-p) :unlink (sshd-unlinks)
-                                               :agent (let ((agent (tuatara.io:own-variable "SSH_AUTH_SOCK")))
+                                               :agent (let ((agent (tuatara.runtime:own-variable "SSH_AUTH_SOCK")))
                                                         (and (forwardable-path-p agent) agent)))
         (finish-output)
         0)
@@ -139,13 +140,81 @@ is not safe or a daemon could not be started, why said on the error output."
       (format *error-output* "tuatara: ~a~%" condition)
       1)))
 
+(defparameter *status-seconds* 2
+  "How long each daemon has to say how it stands for tuatara --daemons before
+it is said to be not answering.")
+
+(defun daemon-names ()
+  "The names of the daemons whose sockets are in the daemons' directory
+\(TUATARA.DEFAULTS:DAEMON-DIRECTORY), in order; refused, saying why, when that
+directory is not safe."
+  (loop for (name kind) in (tuatara.io:directory-entries (tuatara.defaults:daemon-directory))
+        for stem = (and (eq kind :socket) (uiop:string-suffix-p name ".socket") (subseq name 0 (- (length name) 7)))
+        when (and stem (tuatara.defaults:daemon-name-p stem)) collect stem))
+
+(defun daemon-standing (name)
+  "How the daemon NAME stands, asked over the connection a client makes
+\(TUATARA.FRONTEND:ASK-EDITOR-STATUS), *STATUS-SECONDS* at most: its status
+plist, :GONE when nothing listens at its socket (a daemon that ended
+without taking it away), :SILENT when it does not answer in time, or words
+when it refuses the asking, is another build or the connection fails."
+  (multiple-value-bind (fd errno) (tuatara.io:connect-to (tuatara.defaults:daemon-path name "socket"))
+    (if (null fd)
+        (if (member errno (list sb-posix:econnrefused sb-posix:enoent)) :gone :silent)
+        (unwind-protect
+             (handler-case (tuatara.frontend:ask-editor-status fd *status-seconds*)
+               (tuatara.frontend:remote-refused (condition) (refusal-words condition name))
+               (error (condition) (format nil "not answering: ~a" (tuatara.runtime:failure-words condition :said t))))
+          (tuatara.frontend:shut-and-close fd)))))
+
+(defun standing-words (standing)
+  "What STANDING, as DAEMON-STANDING gives it, says, in words for a line of
+tuatara --daemons."
+  (case standing
+    (:gone "gone: it ended without taking its socket away")
+    (:silent (format nil "not answering within ~d seconds" *status-seconds*))
+    (t (if (stringp standing)
+           (shown standing)
+           (format nil "pid ~d, started ~a, ~d client~:p, ~d buffer~:p with changes not saved"
+                   (getf standing :pid)
+                   (tuatara.dates:format-time "%Y-%m-%d %H:%M" (getf standing :started))
+                   (getf standing :clients) (getf standing :unsaved))))))
+
+(defun list-daemons ()
+  "Say on the standard output the daemons running on this machine, one line
+each: the name --client=NAME and --stop=NAME take, and how it stands
+\(DAEMON-STANDING, STANDING-WORDS), every daemon asked at once, so that one
+not answering holds the listing up *STATUS-SECONDS* at most; No daemon is
+running when there is none. The exit code: 0 once said, 1 when the daemons'
+directory is not safe, why said on the error output."
+  (handler-case
+      (let* ((names (daemon-names))
+             (threads (mapcar (lambda (name)
+                                (tuatara.runtime:make-guarded-thread (lambda () (daemon-standing name))
+                                                                     :name "tuatara asking a daemon"))
+                              names))
+             (width (reduce #'max names :key #'length :initial-value 0)))
+        (if (null names)
+            (format t "No daemon is running~%")
+            (loop for name in names
+                  for thread in threads
+                  do (format t "~va  ~a~%" width name
+                             (standing-words (or (tuatara.runtime:thread-result thread (1+ *status-seconds*))
+                                                 :silent)))))
+        0)
+    (tuatara.runtime:refusal (condition)
+      (format *error-output* "tuatara: ~a~%" (shown (princ-to-string condition)))
+      1)))
+
 (defun client-arguments-p (arguments)
   "True when ARGUMENTS, the command line, start a client of a daemon
-\(--client or --stop), ask where one listens (--daemon-socket) or take a file
-dropped on a client (--receive-file)."
+\(--client or --stop), ask where one listens (--daemon-socket), list them
+\(--daemons) or take a file dropped on a client (--receive-file)."
   (some (lambda (argument)
-          (or (member argument '("--client" "--stop" "--daemon-socket" "--receive-file") :test #'string=)
+          (or (member argument '("--client" "--stop" "--daemon-socket" "--daemons" "--receive-file")
+                      :test #'string=)
               (uiop:string-prefix-p "--receive-file=" argument)
+              (uiop:string-prefix-p "--daemons=" argument)
               (member (named-option argument) '("--client" "--stop" "--daemon-socket") :test #'equal)))
         (loop for argument in arguments until (string= argument "--") collect argument)))
 
@@ -323,7 +392,7 @@ is one; its exit code, or :FALLBACK, as RUN-CLIENT gives them."
                (connect-to-daemon name start :quiet (getf options :fallback)))))
     (let ((fd (connect (getf options :start)))
           (input (and (find '(:standard-input) (getf options :files) :test #'equal)
-                      (tuatara.io:duplicate-fd 0 :lowest 3)))
+                      (tuatara.runtime:duplicate-fd 0 :lowest 3)))
           (code nil) (words nil) (refused nil))
       (unless fd
         (tuatara.runtime:close-fd-quietly input "the copy of the input")

@@ -105,9 +105,9 @@ new one at each empty line."
 (defun options-roff ()
   "The options of *OPTION-HELP* as paragraphs of OPTIONS: the ways of writing
 each, what it does, and for an option with a choice why someone would take it
-and what it costs; those this build lists (OPTION-LISTED-P)."
+and what it costs."
   (with-output-to-string (out)
-    (dolist (entry (remove-if-not #'option-listed-p *option-help*))
+    (dolist (entry *option-help*)
       (format out ".TP~%~a~%~a" (roff-flags (getf entry :flags))
               (roff-entry-body (getf entry :text) (getf entry :why))))))
 
@@ -196,6 +196,7 @@ sub-heading, then each setting with the first paragraph of its documentation."
     ("pdf-places" . "the page and zoom you left each PDF at")
     ("places" . "where point was in the files you visited")
     ("recent-files" . "the files you visited lately")
+    ("scratch" . "the text of the scratch buffers, kept while *scratch-text-kept* is on")
     ("ssh-servers" . "the machines whose daemons you trusted with more than keys and the screen, and with what")
     ("trusted" . "the projects you trusted to run their own programs: language servers, git's hooks, builds")
     ("user-grammars" . "the checksums of the grammars you added")
@@ -296,10 +297,10 @@ takes is a file name.")
 (defun completion-options ()
   "The options of *OPTION-HELP* that bash completes, each as a list of its
 name, the number of values that follow it and what they are (:FILES, :NONE or
-a list of choices): those this build lists (OPTION-LISTED-P). An option
+a list of choices). An option
 written with an optional =NAME is a name only."
   (let (options)
-    (dolist (entry (remove-if-not #'option-listed-p *option-help*))
+    (dolist (entry *option-help*)
       (loop for (flag argument) in (getf entry :flags)
             unless (char= (char flag 0) #\+)
               do (let ((name (bare-flag flag))

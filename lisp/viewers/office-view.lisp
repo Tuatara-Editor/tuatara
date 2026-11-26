@@ -222,8 +222,10 @@ read as text for BUFFER, a job; TEXT, the Org note made of it."
   "The buffer showing the Office document at NATIVE, of the kind OFFICE
 \(*OFFICE-FORMATS*, a kind with a reader), read as text, read in the
 background when there is none yet; PAGES, the buffer showing its pages, if
-any."
-  (let ((name (tuatara.io:native-file-name native)))
+any. The file read is refused when it is another than the one the visit
+judged (PAGES' :VIEWED-STAMP, else FILE-VIEW-STAMP)."
+  (let ((name (tuatara.io:native-file-name native))
+        (same-as (or (and pages (tuatara.buffer:buffer-local pages :viewed-stamp)) (file-view-stamp))))
     (reading-buffer '*office-readings* (lambda (b) (tuatara.buffer:buffer-local b 'office-reading)) native
                     (format nil "~a (text)" name) (format nil "Reading ~a...~%" name) 'org-mode
                     (lambda (buffer)
@@ -234,7 +236,13 @@ any."
                        (make-office-read-job buffer native office)
                        (lambda (job)
                          (setf (office-read-job-text job)
-                               (funcall (getf (office-read-job-office job) :read) (office-read-job-path job))))
+                               (tuatara.io:call-with-file
+                                (office-read-job-path job)
+                                (lambda (fd path size)
+                                  (funcall (getf (office-read-job-office job) :read) path
+                                           :octets (fd-octets fd path size *docx-largest-file*)
+                                           :cancel (tuatara.runtime:job-cancel job)))
+                                :same-as same-as)))
                        :name "tuatara office reading")))))
 
 (define-command office-view-pages ()
@@ -252,11 +260,14 @@ of the buffer. It is shown as its pages when they can be drawn
 \(OFFICE-PAGES-POSSIBLE-P). Else one Tuatara reads (a Word document, an Excel
 workbook, a PowerPoint presentation, an OpenDocument file) is read as text,
 saying why when that is for want of the sandbox, LibreOffice or a program for
-PDFs; while it is visited safely (*VISITING-SAFELY*) it is never read as
-text, its pages or its octets shown instead, as any other's are, saying why.
-Returns the buffer, or NIL for a file this view does not show."
+PDFs; one Tuatara may not read itself (READ-HERE-P, asked of the buffer the
+visit is made from: from outside, evidence, or from a list opened safely) is
+never read as text, its pages or its octets shown instead, as any other's
+are, saying why. Returns the buffer, or NIL for a file this view does not
+show."
   (let* ((native (file-view-path path))
-         (office (and native (office-file-format native))))
+         (office (and native (office-file-format native)))
+         (withheld (and office (getf office :read) (not (read-here-p native (current-buffer))))))
     (when office
       (cond ((office-pages-possible-p)
              (file-view-show native *pdf-views* (lambda (b) (let ((v (pdf-view-of b))) (and v (pdf-view-path v))))
@@ -264,16 +275,16 @@ Returns the buffer, or NIL for a file this view does not show."
                                (let* ((ending (office-ending office (tuatara.io:native-file-name native)))
                                       (buffer (pdf-view-make native
                                                              :make (lambda (fd) (office-pdf-copy fd ending))
-                                                             :reading (and (getf office :read) (not *visiting-safely*)
+                                                             :reading (and (getf office :read) (not withheld)
                                                                            #'office-show-reading)
                                                              :words (format nil "~a, its pages drawn by LibreOffice"
                                                                             (getf office :words)))))
                                  ;; its own reader works outside the sandbox: not for a file from outside
-                                 (when (and (getf office :read) *visiting-safely*)
+                                 (when withheld
                                    (setf (tuatara.buffer:buffer-local buffer :reading-withheld) t))
                                  buffer))
                              show))
-            ((and (getf office :read) *visiting-safely*)
+            (withheld
              (file-view-refuses "~a opens as octets: ~a, and its text is read outside the sandbox"
                                 (tuatara.io:native-file-name native)
                                 (or (office-no-pages-words) "its pages are not shown here (*office-view-pages*)"))

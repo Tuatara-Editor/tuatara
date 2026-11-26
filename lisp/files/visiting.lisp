@@ -552,7 +552,7 @@ beside the question while it is asked, a directory gone into included
   "Ask for a file with PROMPT, completing its name against the directory being
 typed, from the directory of the path chosen last in such a question, else the
 directory the current buffer stands in (BUFFER-DIRECTORY): that of its file,
-the one it lists, or *DEFAULT-DIRECTORY*, your home directory written ~
+the one it lists, or *NO-FILE-DIRECTORY*, your home directory written ~
 \(READ-PATH, PATH-QUESTION-START). The file chosen is remembered as the
 latest (NOTE-CHOSEN-PATH) unless NOTE is NIL. A / or ~/ typed after it starts the path
 again (SUBSTITUTE-FILE-INPUT). The first file selected, or the line typed when
@@ -1178,16 +1178,23 @@ safely, having taken B's place (TAKE-PLACE-OF), or shown in the selected
 window when B was shown in none; NIL, B left as it is, when no view shows
 the file. A copy of a file on another machine is shown only by the views of
 *SANDBOXED-FILE-VIEWS*, as when it is first read, and by none while part of
-it has not arrived (RUN-SANDBOXED-FILE-VIEWS)."
+it has not arrived (RUN-SANDBOXED-FILE-VIEWS). The views see B opened as
+usual while they are asked, as the file is being opened so: a view asking
+READ-HERE-P of the current buffer, B, reads the file as \\[find-file] would."
   (let* ((windows (buffer-windows b))
+         (safe (tuatara.buffer:buffer-local b :safe-visit))
          (view (let ((*file-view-said* nil))
-                 (tuatara.io:call-with-file-heads
-                  (lambda ()
-                    (let ((native (tuatara.io:native (tuatara.buffer:buffer-file b)))
-                          (show (lambda (view) (unless windows (show-buffer view)))))
-                      (if (buffer-remote b)
-                          (run-sandboxed-file-views native show :missing (remote-missing-words b))
-                          (run-hook-until-done *file-views* native show))))))))
+                 (unwind-protect
+                      (progn
+                        (setf (tuatara.io:safe-visit-p b) nil)
+                        (tuatara.io:call-with-file-heads
+                         (lambda ()
+                           (let ((native (tuatara.io:native (tuatara.buffer:buffer-file b)))
+                                 (show (lambda (view) (unless windows (show-buffer view)))))
+                             (if (buffer-remote b)
+                                 (run-sandboxed-file-views native show :missing (remote-missing-words b))
+                                 (run-hook-until-done *file-views* native show))))))
+                   (setf (tuatara.buffer:buffer-local b :safe-visit) safe)))))
     (when view
       (take-place-of view b windows)
       view)))

@@ -115,6 +115,26 @@ and fourth values."
     (false (sb-ext:process-alive-p (tuatara.terminal-emulator::emulator-process e)))
     (true (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second)))))
 
+(define-test (emulator ends-its-background-jobs)
+  ;; a job its shell put in a group of its own is told the terminal is gone too, before anything else
+  (with-test-directory (dir)
+    (let* ((said (namestring (merge-pathnames "said" dir)))
+           (job (format nil "trap 'echo hup >> ~a; exit 0' HUP; trap 'echo term >> ~a; exit 0' TERM; ~
+                             sleep 60 & wait" said said))
+           (e (tuatara.terminal-emulator::start-emulator
+               "sh" (list "-c" (format nil "set -m; sh -c \"~a\" & echo $! > ~a.pid; wait" job said))
+               :columns 40 :rows 6))
+           (pid nil))
+      (tuatara.runtime:wait-until (lambda ()
+                                    (setf pid (ignore-errors (parse-integer (file-text (format nil "~a.pid" said))
+                                                                            :junk-allowed t))))
+                                  10)
+      (sleep 0.3)
+      (tuatara.terminal-emulator::stop-emulator e)
+      (true pid)
+      (true (tuatara.runtime:wait-until (lambda () (not (pid-alive-p pid))) 5))
+      (is eql 0 (search "hup" (or (ignore-errors (file-text said)) "")) "told of the hangup first"))))
+
 (define-test (emulator ends-cleanly)
   (let ((e (tuatara.terminal-emulator::start-emulator "sh" '() :columns 40 :rows 6)))
     (true (tuatara.terminal-emulator::emulator-alive-p e))

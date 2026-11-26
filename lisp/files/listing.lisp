@@ -3,8 +3,8 @@
 ;;;;
 ;;;; Every walk of the files under a directory (searching them, choosing one,
 ;;;; keeping a directory read) lists each directory one way: its files and
-;;;; directories by name, hidden names, backups and links to directories left
-;;;; out, its .gitignore read. A directory kept read gives its listing from
+;;;; directories by name, hidden names, backups, symbolic links and what is
+;;;; neither a file nor a directory left out, its .gitignore read. A directory kept read gives its listing from
 ;;;; memory instead. The text of a file is read for searching only when it is
 ;;;; text: never a picture, a program or an encrypted file.
 
@@ -29,8 +29,8 @@ one octet a character when every part is such a string already."
 (define-record (index-directory (:constructor make-index-directory (path entries rules)) (:copier nil))
   "A directory as an index last listed it: PATH, its native name ending in /;
 ENTRIES, its files and directories in the order listed, each (NAME KIND
-STAMP), KIND :REGULAR or :DIRECTORY, hidden names, backups and links to
-directories left out; RULES, those of its own .gitignore (GITIGNORE-RULES)."
+STAMP), KIND :REGULAR or :DIRECTORY, hidden names, backups, symbolic links
+and the other kinds left out; RULES, those of its own .gitignore (GITIGNORE-RULES)."
   (path nil :documentation "The native name of the directory of INDEX-DIRECTORY, ending in /.")
   (entries nil
            :documentation "The files and directories of INDEX-DIRECTORY in the order listed, each (NAME KIND STAMP).")
@@ -38,18 +38,20 @@ directories left out; RULES, those of its own .gitignore (GITIGNORE-RULES)."
 
 (defun list-index-directory (path &key (rules t) hidden)
   "The directory PATH (a native name ending in /) listed as an index lists it
-(INDEX-DIRECTORY): its files and directories by name, hidden names (but with
-HIDDEN), backups and links to directories left out, each entry examined once
-\(TUATARA.IO:DIRECTORY-ENTRIES); with RULES, those of its .gitignore read."
+(INDEX-DIRECTORY): its files and directories by name, each entry examined once
+\(TUATARA.IO:DIRECTORY-ENTRIES). Left out are hidden names (but with HIDDEN),
+backups, named pipes, sockets and devices, and symbolic links of every kind:
+a link in the directory to a file elsewhere is never read as one of its files.
+With RULES, those of its .gitignore are read, when that is a file."
   (let* ((all (ignoring-errors-reported ("listing ~a" path) (tuatara.io:directory-entries path :stamps t)))
          (entries (loop for (name kind nil own stamp) in all
                         unless (or (and (not hidden) (char= (char name 0) #\.)) (backup-name-p name))
                           if (and (eq kind :directory) (eq own :directory))
                             collect (list (compact-name name) :directory stamp)
-                          else if (eq kind :regular)
+                          else if (and (eq kind :regular) (eq own :regular))
                                  collect (list (compact-name name) :regular stamp)))
          (rules (and rules
-                     (find-if (lambda (e) (and (string= (first e) ".gitignore") (eq (second e) :regular))) all)
+                     (find-if (lambda (e) (and (string= (first e) ".gitignore") (eq (fourth e) :regular))) all)
                      (gitignore-rules (concatenate 'string path ".gitignore") path))))
     (make-index-directory (compact-name path) entries rules)))
 
@@ -70,9 +72,10 @@ walk of files under a directory lists them so."
 
 (defun read-text-file (path &key most)
   "The octets of the file at PATH, or NIL when it cannot be read or is no
-regular file. NIL too when it looks binary (a zero octet among its first 64 KB,
-as pictures, video and programs have: TUATARA.IO:BINARY-HEAD-P, as opening a
-file tells it). NIL also when it is of a kind its first octets tell
+regular file; a symbolic link at PATH is never followed. NIL too when it
+looks binary (a zero octet among its first 64 KB, as pictures, video and
+programs have: TUATARA.IO:BINARY-HEAD-P, as opening a file tells it). NIL
+also when it is of a kind its first octets tell
 \(TUATARA.IO:OCTETS-KIND: a PDF, a picture, an archive, a disk image; a drawing
 written as text, SVG, is text, and so is UTF-8 with a byte order mark). NIL as
 well when it is encrypted, as its name or its header says (ENCRYPTED-FILE-P).
@@ -101,5 +104,6 @@ cannot hold it up."
                        (t (let ((octets (tuatara.io:read-fd-octets fd :path path :size-hint (1+ size) :most most)))
                             (cond ((and most (> (length octets) most)) (values nil :too-large))
                                   ((tuatara.io:binary-head-p octets) nil)
-                                  (t octets)))))))))
+                                  (t octets))))))))
+           :follow nil)
         (tuatara.io:file-system-error (condition) (values nil condition))))))

@@ -92,8 +92,9 @@ ARGUMENT :READ READER), :REPLACE T after it for one asked again."
 of GROUPS. Each group is (GROUP-TITLE ENTRY...). An entry is (KEY LABEL
 COMMAND) for an action, (KEY LABEL :SWITCH \"--argument\") for a switch, or
 \(KEY LABEL :OPTION \"--argument=\" :READ READER) for an option. READER is a
-function of a prompt (READ-STRING when not given), and :REPLACE T after it
-asks it again with its value. SHOW, NOTE and SUMMARY are as MAKE-MENU takes
+function of a prompt and the key :INITIAL, the value the option has now (\"\"
+when it has none), as READ-STRING is (READ-STRING when not given); :REPLACE T
+after it asks it again with its value. SHOW, NOTE and SUMMARY are as MAKE-MENU takes
 them, function names. HOLD is too, true or false. INTERACTIVE is as
 DEFINE-COMMAND takes it: NIL for a menu opened only by a key or by code."
   (check-type doc string "a docstring; every command documents itself")
@@ -229,19 +230,11 @@ now; the menu stays open."
              (given (menu-given entry (second open))))
         (if (and given (not (menu-entry-replace entry)))
             (setf (second open) (remove given (second open) :test #'string=))
-            (let ((value (funcall-reader (menu-entry-reader entry) (format nil "~a " (menu-entry-label entry))
-                                         (and given (subseq given (length argument))))))
+            (let ((value (funcall (menu-entry-reader entry) (format nil "~a " (menu-entry-label entry))
+                                  :initial (if given (subseq given (length argument)) ""))))
               (setf (second open) (remove given (second open) :test #'string=))
               (when (plusp (length value))
                 (push (concatenate 'string argument value) (second open)))))))))
-
-(defun funcall-reader (reader prompt value)
-  "Ask READER, a function of a prompt, for an answer, offering VALUE when there
-is one: READ-STRING takes it as the text to start from, any other reader as a
-second argument."
-  (cond ((null value) (funcall reader prompt))
-        ((member reader (list 'read-string #'read-string)) (funcall reader prompt :initial value))
-        (t (funcall reader prompt value))))
 
 (defun menu-changed-p (open)
   "True when the menu OPEN, as EDITOR-MENU has it, has arguments on other than

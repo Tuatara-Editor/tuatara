@@ -7,14 +7,15 @@ Usage: tools/package-reaches.py [--summary] [--packages] [ROOT...]
 
 Each ROOT is a repository (the current directory when left out); with
 --packages the package repositories beside this one (../tuatara-packages/*/)
-are looked at as well. A file's own
-package is the one its first IN-PACKAGE form names; a double-colon reference to
-that package is not counted, and neither is one inside a comment or a string
-that only mentions it. Test files (test/ and a package's test.lisp) are left
-out: they are meant to look inside. Everything else is a reach into a package that did not
-export the name. Prints one line per reach as FILE:LINE: PACKAGE::NAME, then
-the total. With --summary it prints the count for each file instead. The
-count is a fact for the health report: it always exits with 0.
+are looked at as well. A file's own package is the one its first IN-PACKAGE
+form names; a double-colon reference to that package is not counted, and
+neither is one inside a comment or a string that only mentions it. Test files
+(test/ and a package's test.lisp) are left out, as they are meant to look
+inside, and so are the scripts of tools/, which are not the program.
+Everything else is a reach into a package that did not export the name.
+Prints one line per reach as FILE:LINE: PACKAGE::NAME, then the total. With
+--summary it prints the count for each file instead. The count is a fact for
+the health report: it always exits with 0.
 """
 import re
 import sys
@@ -23,6 +24,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lisp_text import code_only
 from repositories import lisp_files, report
+
+def program_files(root):
+    """The Lisp files of ROOT that are part of the program or a package: those of lisp_files, but tools/."""
+    return [name for name in lisp_files(root) if not name.startswith("tools/")]
+
 
 OWN = re.compile(r"\(in-package\s+#?:?([^\s)]+)", re.I)
 REACH = re.compile(r"(?<![\w:.-])#?:?([A-Za-z][\w.-]*)::([^\s()'`,\"]+)")
@@ -40,7 +46,7 @@ def reaches(text):
 
 def main(argv):
     """Run the check for the command line ARGV; return the exit status."""
-    return report(argv, lisp_files, lambda _, text: [f"{n}: {reference}" for n, reference in reaches(text)],
+    return report(argv, program_files, lambda _, text: [f"{n}: {reference}" for n, reference in reaches(text)],
                   "references past a package boundary with two colons")
 
 

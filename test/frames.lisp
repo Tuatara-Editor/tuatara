@@ -847,7 +847,7 @@ second frame waiting its turn on it."
 (define-test (frames others-painted-when-a-setting-changes)
   ;; a setting changed by a command, however it sets it, paints a frame not worked in again,
   ;; though no buffer it shows changed
-  (let ((tuatara.command::*frame-at-least-every* 0) (counts '()) (was tuatara-user:*debug-on-error*))
+  (let ((tuatara.command::*frame-at-least-every* 0) (counts '()) (was tuatara-user:*backtrace-on-error*))
     (flet ((note-paints (editor)
              (push (tuatara.frontend.fake:fake-frames
                     (tuatara.command::frame-frontend (second (tuatara.command:editor-frames editor))))
@@ -860,15 +860,15 @@ second frame waiting its turn on it."
                                (push #'note-paints
                                      (tuatara.command:editor-post-command-functions tuatara.command:*editor*))))
                      '(0 "a b")
-                     '(0 "M-x t o g g l e - d e b u g - o n - e r r o r RET")
+                     '(0 "M-x t o g g l e - b a c k t r a c e - o n - e r r o r RET")
                      '(0 "c"))
-             (is eq (not was) (not (not tuatara-user:*debug-on-error*)))
+             (is eq (not was) (not (not tuatara-user:*backtrace-on-error*)))
              ;; noted after a, b, the toggle and c: no paint of the second frame until the toggle;
              ;; after c, it had been painted for the setting
              (destructuring-bind (after-c . before) counts
                (is = 1 (length (remove-duplicates before)) "~s" counts)
                (true (> after-c (first before)) "~s" counts)))
-        (setf tuatara-user:*debug-on-error* was)))))
+        (setf tuatara-user:*backtrace-on-error* was)))))
 
 (define-test (frames find-file-in-another)
   ;; C-x 5 f, C-x 5 b and C-x 5 d open a file, a buffer and a directory in a new frame, worked in;
@@ -1208,3 +1208,25 @@ second frame waiting its turn on it."
         (true (search "Carry on?" shown) "~s" shown)
         (true answer)
         (true (search "Compiling in the background..." (said)))))))
+
+(define-test (frames alarm-shown-in-every-frame)
+  ;; the mode lines' alarm lights, flashes and goes out in a frame on another display too, though nothing
+  ;; it shows changed: through a flash and a key, that frame is painted lit, dark, lit and unlit
+  (let ((lit '())
+        (quarter (floor internal-time-units-per-second 4))
+        (tuatara.command::*frame-at-least-every* 0))
+    (sb-int:encapsulate 'tuatara.command::paint-other-frame 'noting-alarm
+                        (lambda (function &rest arguments)
+                          (multiple-value-prog1 (apply function arguments)
+                            (push (and (tuatara.command::mode-line-alarm-lit-p) t) lit))))
+    (unwind-protect
+         (run-frames (list (list 0 (lambda ()
+                                     (setf tuatara.command:*last-input-time*
+                                           (- (get-internal-real-time) (* 40 quarter)))
+                                     (tuatara.command:mode-line-alarm-start)))
+                           (list 0 (lambda () (decf tuatara.command::*mode-line-alarm-since* quarter)))
+                           (list 0 (lambda () (decf tuatara.command::*mode-line-alarm-since* (* 3 quarter))))
+                           '(0 "C-g"))
+                     :count 2)
+      (sb-int:unencapsulate 'tuatara.command::paint-other-frame 'noting-alarm))
+    (true (search '(t nil t nil) (reverse lit)) "painted ~s" (reverse lit))))

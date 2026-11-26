@@ -27,7 +27,7 @@ the parser. Release them with RELEASE-PARSE."
 
 (defun release-parse (tree parser)
   "Release TREE and PARSER, made by PARSE-STRING."
-  (tuatara.syntax:delete-tree tree)
+  (tuatara.syntax:free-tree tree)
   (tuatara.syntax:delete-parser parser))
 
 (defun rich-ranges (grammar text query-source)
@@ -1090,7 +1090,7 @@ and its SYNTAX; the buffer is to be killed by the caller."
                   (is eq :failed why "~s" text)
                   (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "abc begin !x def"))))
                     (true tree "after ~s" text)
-                    (when tree (tuatara.syntax:delete-tree tree))))
+                    (when tree (tuatara.syntax:free-tree tree))))
              (tuatara.syntax:delete-parser parser))))))))
 
 (define-test (syntax failing-grammar-turned-off)
@@ -1219,7 +1219,7 @@ and its SYNTAX; the buffer is to be killed by the caller."
     (unwind-protect
          (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "[1, 2]"))))
            (prog1 (and tree t)
-             (when tree (tuatara.syntax:delete-tree tree))))
+             (when tree (tuatara.syntax:free-tree tree))))
       (tuatara.syntax:delete-parser parser))))
 
 (defun call-with-own-helper (function)

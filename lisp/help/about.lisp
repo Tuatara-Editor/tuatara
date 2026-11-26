@@ -4,7 +4,7 @@
 ;;;; M-x about-tuatara (C-h C-a) shows *About Tuatara*: the name in large
 ;;;; letters, the version, the copyright and licence, where its sources are, and
 ;;;; the ways in for a newcomer, each a button. C-h C-c shows the licence, C-h
-;;;; C-w its part on warranty; M-x credits says where Tuatara's ideas come from.
+;;;; C-w its part on warranty; M-x describe-credits says where Tuatara's ideas come from.
 ;;;; A button is text that does something when RET is pressed on it or it is
 ;;;; clicked; TAB and S-TAB go from one to the next.
 
@@ -95,14 +95,14 @@ buffer."
                        (line "  Copyright (C) 2026 Michael A Jones.~%")
                        (line "  Tuatara is free software under the ")
                        (put "GNU General Public License" :button #'describe-copying)
-                       (line ", version 3 or any later~%  version, which you may share and change on its terms (~a).~%"
+                       (line ", version 3~%  or any later version, which you may share and change on its terms (~a).~%"
                              (command-key-words 'describe-copying))
                        (line "  It comes with ")
                        (put "absolutely no warranty" :button #'describe-no-warranty)
                        (line " (~a).~%" (command-key-words 'describe-no-warranty))
                        (line "  Where its ideas come from: the ")
-                       (put "credits" :button #'credits)
-                       (line " (~a).~%" (command-key-words 'credits))
+                       (put "credits" :button #'describe-credits)
+                       (line " (~a).~%" (command-key-words 'describe-credits))
                        (line "  Its sources: ")
                        (put *project-address* :button (lambda () (open-address *project-address*)))
                        (line "; ")
@@ -261,10 +261,10 @@ version)."
     ("SBCL" "the Common Lisp Tuatara is written in and runs on")
     ("alexandria, cl-ppcre, ASDF and Quicklisp" "the Common Lisp libraries Tuatara is built with; each one's"
      "licence goes with every release"))
-  "Where Tuatara's ideas come from, as \\[credits] shows them: each a name and
+  "Where Tuatara's ideas come from, as \\[describe-credits] shows them: each a name and
 the lines saying what came from it.")
 
-(define-command credits ()
+(define-command describe-credits ()
   "Show where Tuatara's ideas come from: the projects it owes, and what it took
 from each."
   (let ((buffer (buffer-in-mode "*Credits*" 'about-mode)))

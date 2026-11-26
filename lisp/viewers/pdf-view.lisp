@@ -1007,7 +1007,7 @@ from and at the point of the window showing it."
           (t (let ((kept (tuatara.buffer:buffer-point buffer)))
                (setf (tuatara.buffer:buffer-point buffer) (tuatara.display:window-point window))
                (unwind-protect
-                    (with-current-buffer buffer
+                    (with-buffer-current (buffer)
                       (pdf-view-turn buffer (pdf-view-of buffer) step)
                       (setf (tuatara.display:window-point window) (tuatara.buffer:buffer-point buffer)))
                  (setf (tuatara.buffer:buffer-point buffer) kept)))))))
@@ -1293,11 +1293,11 @@ is shown."
   (let ((view (pdf-view-of buffer)))
     (setf (pdf-view-spot view) (list page (/ (+ left right) 2) (/ (+ top bottom) 2)))
     (if (pdf-view-text-p buffer)
-        (progn (with-current-buffer buffer (pdf-view-go page))
+        (progn (with-buffer-current (buffer) (pdf-view-go page))
                nil)
         (let ((same (eql page (pdf-view-page view))))
           (setf (pdf-view-marked view) (make-pdf-mark page (list left top right bottom)))
-          (with-current-buffer buffer (pdf-view-go page :top (if same (pdf-view-top view) 0)))
+          (with-buffer-current (buffer) (pdf-view-go page :top (if same (pdf-view-top view) 0)))
           t))))
 
 (defun pdf-view-place-shown (buffer)
@@ -1391,7 +1391,7 @@ size first. The PDF's words may be false: they are what it says."
 
 (define-major-mode pdf-attachments-mode special-mode
   "The files embedded in a PDF (\\<pdf-view-mode>\\[pdf-view-attachments] in its view), one a line:
-\\<pdf-attachments-mode>\\[pdf-attachment-save] or \\`RET' on one saves it where you say, taken out of
+\\<pdf-attachments-mode>\\[pdf-view-attachment-save] or \\`RET' on one saves it where you say, taken out of
 the PDF in the sandbox and never opened; \\[list-next-entry] and \\[list-previous-entry] go from one to the next.
 \\[search-filter-regex] narrows the list to the files whose lines match what is typed, as in
 every list, and the keys work on the file on the line. Read-only; \\`q' closes."
@@ -1419,12 +1419,13 @@ a line of its own in it goes on with that line, never taken for another file."
 
 (define-pdf-view-command pdf-view-attachments nil
   "List the files embedded in the PDF, in a buffer beside it, as its program
-reads them in the sandbox; there, \\<pdf-attachments-mode>\\[pdf-attachment-save] saves one."
-  (let ((path (pdf-view-path view)))
+reads them in the sandbox; there, \\<pdf-attachments-mode>\\[pdf-view-attachment-save] saves one."
+  (let ((path (pdf-view-path view))
+        (detach (getf (find-pdf-decoder) :detach)))
     (pdf-view-task view buffer (format nil "Reading the files embedded in ~a" (tuatara.io:native-file-name path))
                    (lambda (fd)
                      (multiple-value-bind (output outcome said)
-                         (tuatara.io:sandbox-run "pdfdetach" '("-list" "fd://0") :input fd :output-limit 1048576)
+                         (tuatara.io:sandbox-run detach '("-list" "fd://0") :input fd :output-limit 1048576)
                        (if (eq outcome :done)
                            (embedded-names (tuatara.text:lenient-string output))
                            (list :failed said))))
@@ -1452,12 +1453,12 @@ reads them in the sandbox; there, \\<pdf-attachments-mode>\\[pdf-attachment-save
                                     (tuatara.buffer:buffer-local list 'pdf-attachments-view) view)
                               (display-buffer list :other t)
                               (message "~d embedded file~:p: ~
-                                        \\<pdf-attachments-mode>\\[pdf-attachment-save] saves the one on the line"
+                                        \\<pdf-attachments-mode>\\[pdf-view-attachment-save] saves the one on the line"
                                        (length names))))))
                    :quiet t)
     (message "Reading the files embedded in ~a..." (tuatara.io:native-file-name path))))
 
-(define-command pdf-attachment-save ()
+(define-command pdf-view-attachment-save ()
   "Save the embedded file on the current line where you say, a new file, or
 one there after asking: taken out of the PDF in the sandbox, as its program
 reads it, and written as it is, never opened. Up to 64 MB. In a list narrowed
@@ -1466,13 +1467,14 @@ by search filters, the file on the line among those they leave."
 
 (defmethod visit-entry ((mode pdf-attachments-mode) list entry other)
   "Save ENTRY, the embedded file on the line of LIST, as
-\\[pdf-attachment-save] does, OTHER or not."
+\\[pdf-view-attachment-save] does, OTHER or not."
   (declare (ignore other))
   (let ((view (tuatara.buffer:buffer-local list 'pdf-attachments-view)))
     (when view
       (destructuring-bind (number name) entry
         (let* ((suggested (attachment-file-name name (format nil "attachment-~d" number)))
                (shown (escape-controls name))
+               (detach (getf (find-pdf-decoder) :detach))
                ;; nothing written beside an untrusted file: your download directory offered instead, made
                ;; when it is not there, so that what is saved stays untrusted
                (directory (if (untrusted-path-p (pdf-view-path view))
@@ -1499,8 +1501,8 @@ by search filters, the file on the line among those they leave."
                              (multiple-value-bind (output outcome said)
                                  (tuatara.io:sandbox-run
                                   "sh"
-                                  (list "-c" "pdfdetach -save \"$1\" -o /tmp/embedded fd://0 && cat /tmp/embedded"
-                                        "sh" (princ-to-string number))
+                                  (list "-c" "\"$2\" -save \"$1\" -o /tmp/embedded fd://0 && cat /tmp/embedded"
+                                        "sh" (princ-to-string number) detach)
                                   :input fd :output-limit (* 64 1024 1024))
                                (if (eq outcome :done)
                                    (handling-errors-reported ("saving ~a" target)
@@ -1509,7 +1511,7 @@ by search filters, the file on the line among those they leave."
                                               (format nil "Saved ~a (~:d octets), not opened" target (length output)))
                                      (error (e) (format nil "~a could not be saved: ~a" shown e)))
                                    (format nil "~a could not be taken out: ~a" shown
-                                           (sandbox-outcome-words outcome said :label "pdfdetach")))))
+                                           (sandbox-outcome-words outcome said :label detach)))))
                            (lambda (said) (message "~a"
                                           (or said (format nil "~a could not be taken out" shown)))))
             (message "Taking ~a out..." shown)))))))
@@ -1545,7 +1547,7 @@ by search filters, the file on the line among those they leave."
                                    ("i" pdf-view-facts) ("a" pdf-view-attachments)))
   (define-key *pdf-view-override-keymap* "C-s" 'pdf-view-search)
   (entry-list-keys 'pdf-attachments-mode "*PDF embedded files*")
-  (define-key *pdf-attachments-keymap* "s" 'pdf-attachment-save)
+  (define-key *pdf-attachments-keymap* "s" 'pdf-view-attachment-save)
   (pushnew 'pdf-view-visit *file-views*)
   (pushnew 'pdf-view-visit *sandboxed-file-views*)
   (pushnew 'stop-decoding *keyboard-quit-functions*)

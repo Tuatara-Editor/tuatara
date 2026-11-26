@@ -15,8 +15,8 @@ lookup of settings by major mode.")
   '((tuatara.defaults::soft-wrap "soft-wrap-mode" "Soft wrap" "Wrap" t)
     (tuatara.defaults::display-fill-column "display-fill-column-mode" "Fill column line" nil t)
     (tuatara.defaults::centred-text "centred-text-mode" "Centred text" "Centred" t)
-    (tuatara.defaults::hl-line "hl-line-mode" "Hl-line" nil t)
-    (tuatara.defaults::cursor-column "cursor-column-mode" "Cursor column" nil t)
+    (tuatara.defaults::current-line "current-line-mode" "Current line" nil t)
+    (tuatara.defaults::current-column "current-column-mode" "Current column" nil t)
     (tuatara.defaults::spellcheck "spellcheck-mode" "Spellcheck" nil t)
     (tuatara.defaults::invisible-characters "invisible-characters-mode" "Invisible characters" "Invisible" t)
     (tuatara.defaults::line-numbers "display-line-numbers-mode" "Line numbers" nil :absolute))
@@ -184,7 +184,7 @@ the buffer shown at the end."
       (tuatara.buffer:kill-buffer calendar))))
 
 (define-test (toggles mode-setting)
-  ;; one lookup of a setting by major mode, for lists of pairs, lists of names and tables
+  ;; one lookup of a setting by major mode, for lists of pairs and lists of names, by a mode or its name
   (let ((org (make-instance 'tuatara.defaults::org-mode)))
     (true (tuatara.modes:names-mode-p 'tuatara.defaults::org-mode 'tuatara.defaults::org-mode))
     (true (tuatara.modes:names-mode-p (intern "ORG" :tuatara-user) 'tuatara.defaults::org-mode))
@@ -199,9 +199,10 @@ the buffer shown at the end."
     (is equal '(t t) (multiple-value-list (tuatara.modes:mode-setting org '(prog-mode text))))
     (is equal '(nil nil) (multiple-value-list (tuatara.modes:mode-setting org '(prog-mode))))
     (is equal '(nil nil) (multiple-value-list (tuatara.modes:mode-setting nil '(text-mode))))
-    (let ((table (make-hash-table :test 'eq)))
-      (setf (gethash 'tuatara.defaults::text-mode table) 8)
-      (is equal '(8 t) (multiple-value-list (tuatara.modes:mode-setting org table))))
+    (is equal '(5 t) (multiple-value-list (tuatara.modes:mode-setting 'tuatara.defaults::org-mode
+                                                                     '((prog-mode . 3) (text-mode . 5)))))
+    (is = 8 (tuatara.modes:mode-value org '((fundamental-mode . 8)) 4))
+    (is = 4 (tuatara.modes:mode-value org '((prog-mode . 8)) 4))
     ;; set-colouring's rules are read by it too: the nearest mode, else every buffer
     (let ((tuatara.defaults::*colouring-rules* '((tuatara.defaults::text-mode :sparse 2) (t :none nil))))
       (is equal '(:sparse 2) (multiple-value-list (tuatara.defaults::colouring-rule org)))

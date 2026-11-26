@@ -243,7 +243,7 @@ may be had."
   "A syntax tree, held by HELPER as its tree NUMBER; RELEASED once let go."
   (helper nil :read-only t :documentation "The helper holding the tree.")
   (number 0 :type fixnum :read-only t :documentation "The tree's number in its helper.")
-  (released nil :documentation "True once the tree was let go (DELETE-TREE)."))
+  (released nil :documentation "True once the tree was let go (FREE-TREE)."))
 
 (defun make-parser (grammar &optional (helper (current-helper)))
   "A new tree-sitter parser for GRAMMAR in HELPER (the one parsing the text
@@ -275,7 +275,7 @@ nodes. NIL when its helper has ended."
       (let ((number (reply-u32 call 0)))
         (and (/= number 0) (%make-tree (tree-helper tree) number))))))
 
-(defun delete-tree (tree)
+(defun free-tree (tree)
   "Release TREE, once: released again, nothing is done, so that its number,
 given to another tree, is never let go for it."
   (unless (sb-ext:compare-and-swap (tree-released tree) nil t)
@@ -422,7 +422,7 @@ NIL for no limit."
       (return-from parse-rope (values nil (helper-gone-why helper) t)))
     (flet ((give-up-tree (number)
              ;; the tree made let go, and the parser made ready for another parse
-             (delete-tree (%make-tree helper number))
+             (free-tree (%make-tree helper number))
              (with-call (reset helper +op-reset+)
                (call-u32 reset (parser-number parser))
                (call-send reset))))
@@ -1338,7 +1338,7 @@ reply cannot be right, which ends HELPER."
                                                        (text-parse-queries parse))))))
          (e 0) (made '()))
     (flet ((malformed ()
-             (dolist (tree made) (delete-tree tree))
+             (dolist (tree made) (free-tree tree))
              (return-from read-text-parses (reply-malformed helper))))
       (values
        (loop for parse in parses
@@ -1350,7 +1350,7 @@ reply cannot be right, which ends HELPER."
                               (tree (cond ((zerop number) nil)
                                           (given (if (= number (tree-number given)) given (malformed)))
                                           ((or (parse-input-failed input) (parse-input-over input))
-                                           (delete-tree (%make-tree helper number)) nil)
+                                           (free-tree (%make-tree helper number)) nil)
                                           (t (first (push (%make-tree helper number) made))))))
                          (incf at 8)
                          (loop for (query start end) in (text-parse-queries parse)

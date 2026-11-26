@@ -583,3 +583,113 @@ rope window by window finds them (MAP-REGEX-MATCHES)."
       (is equal '(6 9) (forward "0a c3 a9"))
       (is equal '(8 9) (forward "a9"))
       (is equal '(nil) (forward "0D 0A 0D")))))
+
+(defun first-per-line-walked (buffer matcher)
+  "The matches of MATCHER in the whole of BUFFER that a replacement asking at
+each without the g flag visits, all left as they are, as (START END)."
+  (let ((next (tuatara.defaults::pieces-next-match buffer matcher t (list (cons 0 (tuatara.buffer:buffer-size buffer)))
+                                                   nil))
+        (pos 0) (walked '()))
+    (loop for m = (and (<= pos (tuatara.buffer:buffer-size buffer)) (funcall next pos))
+          while m
+          do (push (subseq m 0 2) walked)
+             (setf pos (if (= (first m) (second m)) (1+ (second m)) (second m))))
+    (nreverse walked)))
+
+(define-test (search-agreement first-per-line-counted-replaced-and-lit-alike)
+  ;; without the g flag what is counted, walked at each question and lit while a replacement waits are the
+  ;; first match on each line, on a line holding two, with a match running past a line's end, in CR LF text
+  (let ((tuatara.syntax:*parallel-piece* 7))
+    (dolist (crlf '(nil t))
+      (let ((text (let ((end (if crlf (format nil "~c~c" #\Return #\Newline) (string #\Newline))))
+                    (format nil "foo foo~afoo~ao~aab o~afo~aoo foo~a" end end end end end end))))
+        (dolist (pattern '("foo" "o\\s+f" "o\\r?\\n" "o$" "\\b" "o+"))
+          (with-test-buffer (b "*first-per-line*" :text text)
+            (let* ((rope (tuatara.buffer:buffer-text b))
+                   (size (tuatara.text:rope-octet-length rope))
+                   (matcher (tuatara.defaults::make-pattern-matcher pattern :regex t))
+                   (all '()))
+              (tuatara.defaults::stretch-matches (lambda (s e m g) (declare (ignore m g)) (push (list s e) all) nil)
+                                                 rope matcher 0 size t nil nil)
+              (let ((kept (tuatara.defaults::first-per-line rope (nreverse all))))
+                (is = (length kept) (tuatara.defaults::count-first-per-line rope matcher 0 size)
+                    "~s counted~:[~;, CR LF~]" pattern crlf)
+                (is equal kept (first-per-line-walked b matcher) "~s walked~:[~;, CR LF~]" pattern crlf)
+                (is equal (mapcar #'first kept)
+                    (mapcar #'first (tuatara.defaults::matcher-shading rope matcher (list (cons 0 size)) nil))
+                    "~s lit~:[~;, CR LF~]" pattern crlf)))))))))
+
+;;; the matches lit while a replacement is typed, as MATCHES-IN-VIEW finds them for a state
+(defun lit-for-replacement (rope matcher pieces all)
+  "The (START END) of the matches lit in the whole of ROPE while a replacement
+of MATCHER's matches is typed, limited to PIECES, or to the whole text for
+NIL, every match of a line with ALL, else the first of each."
+  (let ((state (tuatara.defaults::make-search-state 0 t t nil (list :flags (if all "g" ""))))
+        (size (tuatara.text:rope-octet-length rope)))
+    (sb-int:encapsulate 'tuatara.defaults::search-pieces 'given (lambda (function state)
+                                                                 (declare (ignore function state))
+                                                                 pieces))
+    (sb-int:encapsulate 'tuatara.defaults::search-flags 'given (lambda (function state)
+                                                                (declare (ignore function state))
+                                                                (if all "g" "")))
+    (unwind-protect
+         (mapcar (lambda (m) (subseq m 0 2))
+                 (tuatara.defaults::matches-in-view state rope matcher (list (cons 0 size)) 0 size))
+      (sb-int:unencapsulate 'tuatara.defaults::search-pieces 'given)
+      (sb-int:unencapsulate 'tuatara.defaults::search-flags 'given))))
+
+(define-test (search-agreement lit-while-typed-as-replaced)
+  ;; the matches lit while a replacement is typed are those it replaces: the first on each line, or every
+  ;; one with g, over the whole text and over pieces (cursors, a block) that begin and end inside lines
+  (let ((tuatara.syntax:*parallel-piece* 7))
+    (dolist (crlf '(nil t))
+      (let ((text (let ((end (if crlf (format nil "~c~c" #\Return #\Newline) (string #\Newline))))
+                    (format nil "foo foo~afoo~ao~aab o~afo~aoo foo~aaaa aaa~a" end end end end end end end))))
+        (dolist (pattern '("foo" "o\\s+f" "o\\r?\\n" "o$" "\\b" "o+" "aa"))
+          (with-test-buffer (b "*lit-as-replaced*" :text text)
+            (let* ((rope (tuatara.buffer:buffer-text b))
+                   (size (tuatara.text:rope-octet-length rope))
+                   (matcher (tuatara.defaults::make-pattern-matcher pattern :regex t)))
+              (dolist (pieces (list nil (list (cons 1 6) (cons 9 size)) (list (cons 0 2) (cons 2 13) (cons 30 size))))
+                (dolist (all '(nil t))
+                  (is equal (mapcar (lambda (m) (subseq m 0 2))
+                                    (tuatara.defaults::pieces-line-matches rope matcher t (or pieces (list (cons 0 size)))
+                                                                           all))
+                      (lit-for-replacement rope matcher pieces all)
+                      "~s in ~s~:[~;, g~]~:[~;, CR LF~]" pattern pieces all crlf))))))))))
+
+(define-modal-test (search-agreement first-per-line-asked-as-replaced-at-once)
+  ;; a match taking a line's end replaced at each question leaves the next line's match to ask at, as the
+  ;; replacement made at once replaces it
+  (let ((text (format nil "o~%ab o~%cd~%")))
+    (is string= (session-text (nth-value 1 (run-keys (format nil "C-x h r r ~a RET" (key-string "o\\n/X")) :text text)))
+        (session-text (nth-value 1 (run-keys (format nil "C-x h r q ~a RET X RET y y" (key-string "o\\n"))
+                                             :text text))))))
+
+(define-test (search-agreement replacement-parts-read-once)
+  ;; & \1 \n \u \l \U \E in a replacement, and what each match costs: the text it makes, no more
+  (dolist (case '(("<&>" "ab" nil "<ab>") ("\\2-\\1" "ab" #("a" "b") "b-a") ("\\u\\1\\n\\l&" "Ab" #("xy") "Xy~%ab")
+                  ("\\U&\\E c" "ab" nil "AB c") ("\\L\\uFOO\\e" "x" nil "Foo") ("\\3" "x" #("a") "")))
+    (destructuring-bind (replacement matched groups wanted) case
+      (is string= (format nil wanted) (tuatara.defaults::expand-replacement replacement matched groups)
+          "~s" replacement)))
+  (let ((text-of (tuatara.defaults::replacement-text-function "<\\1>&\\n" t nil))
+        (groups (vector "b")))
+    (funcall text-of "abc" groups)
+    (let ((before (sb-ext:get-bytes-consed)))
+      (dotimes (i 10000) (funcall text-of "abc" groups))
+      (let ((per-match (/ (- (sb-ext:get-bytes-consed) before) 10000.0)))
+        (true (< per-match 96) "~,1f octets made for each match" per-match)))))
+
+(define-test (search-agreement needle-line-at-a-carriage-return)
+  ;; a needle's line in a block of text read: a carriage return ends a line unless a newline follows it, and
+  ;; one at the block's end, whose next octet is not read yet, ends none
+  (flet ((line (text from)
+           (let ((octets (tuatara.text:string-octets text)))
+             (multiple-value-list (tuatara.syntax::needle-line octets (length octets) (tuatara.text:string-octets "ab")
+                                                               nil from)))))
+    (is equal '(2 5) (line (format nil "x~cab~cy" #\Return #\Return) 0))
+    (is equal '(3 7) (line (format nil "x~c~cab~c~cy" #\Return #\Newline #\Return #\Newline) 0))
+    (is equal '(2 5) (line (format nil "x~cab~c" #\Return #\Return) 0))
+    (is equal '(1 3) (line (format nil "xab") 1))
+    (is equal '(nil) (line "xyz" 0))))

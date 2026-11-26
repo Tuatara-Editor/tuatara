@@ -268,27 +268,10 @@ agenda keeps them (ORG-AGENDA-FILES-KEPT), never opened for it."
 (defun org-file-keyword (text name)
   "The value of TEXT's first #+NAME: line, NAME in any case, blanks about it
 left out, the lines of its blocks (#+begin_ to #+end_) passed over; NIL when
-it has none or that line's is empty."
-  (flet ((blank-p (c) (or (char= c #\Space) (char= c #\Tab)))
-         (begins-p (prefix at end) (and (<= (+ at (length prefix)) end)
-                                        (string-equal prefix text :start2 at :end2 (+ at (length prefix))))))
-    (let ((length (length text)) (size (length name)) (in-block nil))
-      (loop for start = 0 then (1+ end)
-            for end = (or (position #\Newline text :start start) length)
-            do (let ((at (or (position-if-not #'blank-p text :start start :end end) end)))
-                 (cond (in-block (when (begins-p "#+end_" at end) (setf in-block nil)))
-                       ((begins-p "#+begin_" at end) (setf in-block t)))
-                 (when (and (not in-block)
-                            (< (+ at 2 size) end)
-                            (string= "#+" text :start2 at :end2 (+ at 2))
-                            (string-equal name text :start2 (+ at 2) :end2 (+ at 2 size))
-                            (char= (char text (+ at 2 size)) #\:))
-                   (let* ((from (or (position-if-not #'blank-p text :start (+ at 3 size) :end end) end))
-                          (to (if (< from end)
-                                  (1+ (position-if-not #'blank-p text :start from :end end :from-end t))
-                                  from)))
-                     (return (and (< from to) (subseq text from to))))))
-            until (>= end length)))))
+it has none or that line's is empty (MAP-ORG-KEYWORD-LINES)."
+  (map-org-keyword-lines (lambda (value) (return-from org-file-keyword (and (plusp (length value)) value)))
+                         text (list name))
+  nil)
 
 (defun org-file-tags (text)
   "The tags TEXT's #+FILETAGS: line gives every headline of it, in order."
@@ -1323,6 +1306,21 @@ when it has no time of day or the same as that line's."
 (defun org-reminder-entry-p (entry)
   "True when ENTRY carries the tag *ORG-REMINDER-TAG*, its own or inherited."
   (and *org-reminder-tag* (member *org-reminder-tag* (agenda-entry-tags entry) :test #'string=) t))
+
+(defun org-headline-tags-in-force (headline text)
+  "HEADLINE's tags with those it takes from the headlines above it and from
+TEXT's #+FILETAGS:, each once."
+  (let ((tags (org-file-tags text)))
+    (dolist (node (reverse (loop for node = headline then (org-node-parent node)
+                                 while (and node (eq (org-node-type node) 'headline))
+                                 collect node))
+                  tags)
+      (setf tags (org-merge-tags tags (org-property node :tags))))))
+
+(defun org-reminder-headline-p (headline text)
+  "True when HEADLINE of TEXT is a reminder: it carries *ORG-REMINDER-TAG*, its
+own or taken from above."
+  (and *org-reminder-tag* (member *org-reminder-tag* (org-headline-tags-in-force headline text) :test #'string=) t))
 
 (defun org-agenda-reminder-lines (items)
   "ITEMS with the lines of reminders (ORG-REMINDER-ENTRY-P) put right: a

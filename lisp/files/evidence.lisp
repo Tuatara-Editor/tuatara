@@ -1156,9 +1156,9 @@ directories are not copied: their files are. Copied in the background."
            (message "~a is in no evidence directory (*evidence-directories*): nothing copied"
                     (abbreviated-path outside)))
           (t
-           (let* ((directory (read-native-path (format nil "Copy ~a out of evidence to directory: "
-                                                    (rimu-question nil paths))
-                                        :writing t))
+           (let* ((directory (ask-list-question (read-native-path :end " out of evidence to directory: ")
+                                     (rimu-question "Copy" paths)
+                                     :writing t))
                   (refusal (and directory (evidence-refusal "copy into" directory))))
              (cond ((null directory) (message "Nowhere given: nothing copied"))
                    ((not (eq :directory (tuatara.io:path-kind directory)))
@@ -1221,10 +1221,9 @@ or each entry with the directories it matches on disk, and those not read."
                       collect (multiple-value-bind (found whole) (entry-directories-found entry)
                                 (format nil "  ~s: ~:[matches nothing~;~:*~a~]~:[ (not all looked through)~;~]~@[; ~a~]"
                                         (evidence-entry-given entry)
-                                        (and found (format nil "~:d directory~:p, ~{~a~^, ~}~:[~;, …~]" (length found)
-                                                           (mapcar #'abbreviated-path
-                                                                   (subseq found 0 (min 3 (length found))))
-                                                           (> (length found) 3)))
+                                        (and found (format nil "~:d director~:@p, ~a" (length found)
+                                                           (names-shown found :most 3 :name-of #'abbreviated-path
+                                                                              :separator :words)))
                                         whole
                                         (case (evidence-entry-links entry)
                                           ((nil) "the links it matches still being looked for")

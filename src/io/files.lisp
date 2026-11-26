@@ -349,7 +349,8 @@ to, NIL when that is nowhere; else NIL.")
 LABELS what ls -l marks after their permissions (LISTED-LABEL). Only the
 directory is opened, without changing its access time where the system allows
 (your own directories); what is in it is examined, never opened, so that named pipes
-and devices are safe to list. NIL, and the reason as a second value, when it
+and devices are safe to list, and nothing is mounted where an entry or a link leads to an
+automount point (as under /net). NIL, and the reason as a second value, when it
 cannot be read."
   (handler-case
       (let ((fd (open-for-reading directory t :accept '(:directory) :wanted "a directory"))
@@ -357,7 +358,7 @@ cannot be read."
         (unwind-protect
              (map-directory-fd
               (lambda (octets)
-                (push (multiple-value-bind (stamp used device) (statx-octets fd octets #x100)
+                (push (multiple-value-bind (stamp used device) (statx-octets fd octets +at-symlink-nofollow+)
                         (let* ((kind (and stamp (stamp-kind stamp)))
                                (target (and (eq kind :symlink) (link-octets fd octets))))
                           (make-listed (tuatara.text:octets-string octets) octets stamp (or used 0)

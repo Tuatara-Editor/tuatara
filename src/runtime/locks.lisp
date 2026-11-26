@@ -29,13 +29,20 @@ for every descriptor of it duplicated from FD too."
   (%flock fd +lock-let-go+)
   nil)
 
-(defun log-in-use-p (native)
-  "True when another session has the log at NATIVE open (OPEN-ROTATED-LOG
-holds a shared lock on it for as long as it writes there)."
-  (let ((fd (handler-case (sb-posix:open native (logior sb-posix:o-rdonly sb-posix:o-nofollow +o-cloexec+))
+(defun lock-held-p (native &key shared)
+  "True when a lock on the file at NATIVE, a path as the system spells it, is
+held now, by another process or this one: one held alone, or with SHARED a
+shared one as well; NIL when it is free or there is no such file. Only a plain
+file counts: a link is not followed, and a named pipe or a device there is
+never waited on. A log is in use while a session writes to it
+\(OPEN-ROTATED-LOG holds a shared lock on it), so (LOCK-HELD-P LOG :SHARED T)
+tells whether one does."
+  (let ((fd (handler-case (sb-posix:open native (logior sb-posix:o-rdonly sb-posix:o-nonblock sb-posix:o-nofollow
+                                                        +o-cloexec+))
               (sb-posix:syscall-error () nil))))
     (and fd
-         (unwind-protect (not (lock-fd fd))
+         (unwind-protect (and (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:fstat fd)))
+                              (not (lock-fd fd :shared (not shared))))
            (sb-posix:close fd)))))
 
 (defun open-rotated-log (native &key rotate (keep 3))
@@ -46,17 +53,20 @@ writing to it, a new one is begun, the logs of the sessions before kept as
 NATIVE.1, the one just before, to NATIVE.KEEP; while a session writes to the
 log no other puts it aside: one beginning meanwhile writes after its lines.
 The debug log and the log of standard error are kept so. A symbolic link at
-NATIVE is not followed, and programs started are not given the descriptor. An
-error when it cannot be opened."
-  (when (and rotate (not (log-in-use-p native)))
+NATIVE is not followed, nor anything but a plain file written to (a named pipe
+there is put aside when rotating, else refused), and programs started are not
+given the descriptor. An error when it cannot be opened."
+  (when (and rotate (not (lock-held-p native :shared t)))
     (flet ((name (n) (if (zerop n) native (format nil "~a.~d" native n))))
       (loop for n from (1- keep) downto 0
             do (handler-case (sb-posix:rename (name n) (name (1+ n)))
                  (sb-posix:syscall-error () nil)))))
   (let ((fd (sb-posix:open native (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-append sb-posix:o-nofollow
-                                         +o-cloexec+)
+                                         sb-posix:o-nonblock +o-cloexec+)
                            #o600)))
     (with-fd-closed-on-error (fd)
+      (unless (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:fstat fd)))
+        (error "~a is not a plain file" native))
       (handler-case (sb-posix:fchmod fd #o600)
         (sb-posix:syscall-error () nil))
       ;; the shared lock is kept from it only for the moment another session looks whether it is in use

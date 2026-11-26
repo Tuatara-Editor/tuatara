@@ -499,6 +499,28 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
   (tuatara.defaults::org-capture-with "Event" *capture-with-target*
                                       (format nil "* %?~%:PROPERTIES:~%:LOCATION:~%:END:~%")))
 
+(tuatara.command:define-command capture-with-origin-test-command ()
+  "Capture with a template given as text from another buffer than the one
+begun in, as work in the background does, for the test of ORG-CAPTURE-WITH."
+  (let ((origin (tuatara.command:current-buffer))
+        (tuatara.command::*current-buffer* (tuatara.buffer:make-buffer "*capture elsewhere*" :text "")))
+    (tuatara.defaults::org-capture-with "Event" *capture-with-target* (format nil "* %?~%%a~%") :origin origin)))
+
+(define-test (capture with-a-template-given-from-its-origin)
+  ;; the buffer the capture was begun in is the one %a links to, whichever is current when it starts
+  (with-capture (dir agenda)
+    (let ((note (namestring (merge-pathnames "note.org" dir)))
+          (*capture-with-target* (list :olp agenda "Other")))
+      (alexandria:write-string-into-file (format nil "* Garden~%") note)
+      (unwind-protect
+           (progn
+             (run-keys "M-x c a p t u r e - w i t h - o r i g i n - t e s t - c o m m a n d RET D e n t i s t C-c C-c"
+                       :file note :width 100 :height 16)
+             (true (search "[[file:" (file-text agenda)) "~a" (file-text agenda))
+             (true (search "note.org::*Garden][Garden]]" (file-text agenda)) "~a" (file-text agenda)))
+        (let ((elsewhere (tuatara.buffer:find-buffer "*capture elsewhere*")))
+          (when elsewhere (tuatara.buffer:kill-buffer elsewhere)))))))
+
 (define-test (capture with-a-template-given)
   ;; a template a package gives as text, filed under the heading it names
   (with-capture (dir agenda)

@@ -134,8 +134,8 @@ changes.")
 directory stops or starts being kept in memory for want of its drive (looked
 at as the cache is looked through, CLEAR-OLD-CACHE), so that asking costs next
 to nothing."
-  (let ((key (list tuatara-user:*cache-directory* (tuatara.io:own-variable "XDG_CACHE_HOME")
-                   (tuatara.io:own-variable "HOME") (tuatara.io:own-variable "XDG_RUNTIME_DIR")
+  (let ((key (list tuatara-user:*cache-directory* (tuatara.runtime:own-variable "XDG_CACHE_HOME")
+                   (tuatara.runtime:own-variable "HOME") (tuatara.runtime:own-variable "XDG_RUNTIME_DIR")
                    (tuatara.io:directory-in-memory-p 'tuatara-user:*cache-directory*)))
         (seen *cache-root-seen*))
     (if (equal key (car seen))
@@ -826,8 +826,10 @@ those in use are not deleted, and said."
          (busy (remove-if-not (lambda (item) (getf item :in-use)) items))
          (free (set-difference items busy)))
     (cond ((null free) (message "~:[Nothing to delete~;Not deleted: in use~]" busy))
-          ((yes-or-no-p* (format nil "Delete ~:[~a~*~;the ~*~d entries~] from the cache~@[, leaving ~d in use~]?"
-                                 (rest free) (getf (first free) :name) (length free) (and busy (length busy))))
+          ((ask-list-question (yes-or-no-p*)
+             (list-question "Delete" "entry" free :name-of (lambda (item) (getf item :name)) :after "from the cache"
+                                                  :details (and busy (format nil "~d in use ~:*~[~;stays~:;stay~]."
+                                                                             (length busy)))))
            (unmark-list list)
            (tuatara.runtime:make-guarded-thread
             (lambda ()

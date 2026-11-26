@@ -131,7 +131,6 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
 
 (define-test (keys-in-text standard-keys-without-the-leader)
   ;; the leader is empty as standard; what it once held has keys of its own under C-x, C-c and M-g
-  (true (null tuatara.defaults::*tuatara-leader-bindings*))
   (with-editor-session (editor)
     (let ((global (tuatara.command:editor-global-keymap editor)))
       (loop for (keys command) in '(("C-x b" switch-to-buffer)
@@ -151,7 +150,7 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
                                     ("C-x a c" org-capture)
                                     ("C-x a l" org-store-link)
                                     ("C-x a o" org-clock-out)
-                                    ("C-x T h" hl-line-mode)
+                                    ("C-x T h" current-line-mode)
                                     ("C-x T v" display-fill-column-mode)
                                     ("C-x w h" swap-window-left)
                                     ("C-x w t" transpose-window-layout)
@@ -287,19 +286,33 @@ new ones are, and keep the keys the old ones had.")
                  "remove-search-filters" "list-hide-records" "list-show-records" "list-fonts"
                  "list-archive" "rimu-archive" "rimu-extract" "latex-compile-pdf" "latex-compile-pdf-buffer"
                  "latex-compile-pdf-xdg" "copy-latex-template"
+                 "export-latex-compile-pdf" "export-latex-compile-pdf-buffer" "export-latex-compile-pdf-xdg"
+                 "export-latex-template-copy" "org-export-latex-pdf-xdg" "org-export-latex-pdf-enhanced-xdg"
+                 "org-export-docx-xdg" "gpg-import-keys" "gpg-import-keys-region" "pdf-attachment-save" "credits"
+                 "org-metaup" "org-metadown" "org-metaleft" "org-metaright" "org-shiftmetaleft" "org-shiftmetaright"
+                 "org-shiftmetaup" "org-shiftmetadown" "org-shiftright" "org-shiftleft" "org-ctrl-c-ctrl-c"
+                 "org-ctrl-c-minus" "org-do-promote" "org-do-demote" "ielm" "ielm-return"
+                 "pp-macroexpand-last-expression" "pp-macroexpand-all-last-expression"
+                 "calendar-scroll-left-three-months" "calendar-scroll-right-three-months"
                  "make-template-from-docx" "make-template-from-latex" "check-redactions" "copy-capture-template"))
     (false (tuatara.command:find-command old) "~a is still a command" old))
   (dolist (new '("gpg-encrypt-region" "gpg-encrypt-file" "gpg-decrypt-region" "gpg-decrypt-file"
                  "gpg-decrypt-with-passphrase" "gpg-sign-region" "gpg-sign-file" "gpg-verify-region"
-                 "gpg-verify-file" "gpg-keys-manager" "gpg-import-keys" "gpg-import-keys-region"
+                 "gpg-verify-file" "gpg-keys-manager" "gpg-keys-import" "gpg-keys-import-region"
                  "gpg-choose-encryption-keys" "register-copy" "register-insert" "register-jump"
                  "register-point" "register-number" "register-add" "register-prepend" "register-manager"
                  "bookmark-rename" "bookmark-set-categories" "package-update-marked" "search-filter-list"
                  "search-filter-remove" "search-filter-remove-all" "search-filter-hide-records"
                  "search-filter-show-records" "font-list" "rimu-archive-list"
                  "rimu-archive-create" "rimu-archive-extract"
-                 "export-latex-compile-pdf" "export-latex-compile-pdf-buffer" "export-latex-compile-pdf-xdg"
-                 "export-latex-template-copy"
+                 "latex-export-pdf" "latex-export-pdf-buffer" "latex-export-pdf-externally"
+                 "export-template-copy-latex" "org-export-latex-pdf-externally"
+                 "org-export-latex-pdf-enhanced-externally" "org-export-docx-externally"
+                 "org-export-html-externally" "pdf-view-attachment-save" "describe-credits"
+                 "org-move-up" "org-move-down" "org-promote" "org-demote" "org-promote-subtree" "org-demote-subtree"
+                 "org-delete-row" "org-insert-row" "org-next-state" "org-previous-state" "org-act-here"
+                 "org-rule-or-bullet" "lisp-repl" "lisp-repl-return" "lisp-macroexpand" "lisp-macroexpand-all"
+                 "calendar-next-months" "calendar-previous-months"
                  "export-template-from-docx" "export-template-from-latex" "export-check-redactions"
                  "org-capture-template-copy"))
     (true (tuatara.command:find-command new) "~a is not a command" new)))
@@ -324,3 +337,15 @@ new ones are, and keep the keys the old ones had.")
            (true (tuatara.command:find-command new) "~a is not a command" new))
   (with-editor-session (editor)
     (is string= "C-x j" (tuatara.command:substitute-command-keys "\\[jobs-manager]"))))
+
+(define-test (keys-in-text daemon-stop-words-follow-rebinding)
+  ;; where to stop the daemon is said by the key daemon-quit is bound to now, not a key written in
+  (with-editor-session (editor)
+    (let ((global (tuatara.command:editor-global-keymap editor))
+          (lost (tuatara.buffer:make-buffer "lost.txt" :text "x")))
+      (unwind-protect
+           (progn
+             (tuatara.command:define-key global "C-x C-d" nil)
+             (true (search "(M-x daemon-quit)" (tuatara.defaults::lost-changes-words (list lost)))))
+        (tuatara.command:define-key global "C-x C-d" 'tuatara.defaults::daemon-quit)
+        (tuatara.buffer:kill-buffer lost)))))

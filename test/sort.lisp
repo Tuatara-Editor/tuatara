@@ -61,7 +61,7 @@ are rewritten at once."
         (sorted-text "M-x s o r t - l i n e s RET" (format nil "c~%b~%a") :on-disk on-disk))))
 
 (define-test (sorting ignoring-case-and-selections)
-  (let ((tuatara.defaults::*sort-fold-case* t))
+  (let ((tuatara.defaults::*sort-ignores-case* t))
     (is string= (lines-text "apple 1 0x3 e" "apple 12 0x2 a" "Banana 12 0x1 d" "cherry 007 0x0 f" "fig 7 0xff c" "pear 3 0x10 b")
         (sorted-text "M-x s o r t - l i n e s RET" *sort-sample*)))
   ;; without a selection nothing happens, and the echo area says so

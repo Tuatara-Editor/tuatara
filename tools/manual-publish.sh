@@ -61,7 +61,7 @@ if git -C "$pages" diff --cached --quiet; then
   echo "The pages are as $remote has them already"
   exit 0
 fi
-git -C "$pages" commit --quiet -S -m "Manual for $name $version"
+git -C "$pages" commit --quiet -S -s -m "Manual for $name $version"
 if [ "$push" = yes ]; then
   git -C "$pages" push "$remote" HEAD:refs/heads/gh-pages
 else

@@ -439,6 +439,12 @@ or =24bit=, your theme's colours show exactly. Otherwise Tuatara uses as many as
 =16= or =8= overrides that, which helps when a terminal is wrong about itself,
 for instance over a remote connection that does not pass =COLORTERM= on.
 
+Under tmux, or in any terminal whose own description differs from
+=xterm-direct256= (the description Tuatara asks for when it starts for 24-bit
+colour), the keys the terminal sends for =Home=, =End= and the others are read
+from the terminal's own description at the start, so they work as they do in
+other programs.
+
 Pictures (chapter 16) need a terminal that speaks the kitty graphics protocol.
 Under tmux or screen they stay off. The setting =*tui-pictures*= is described
 in chapter 16.

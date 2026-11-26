@@ -15,7 +15,7 @@
 (in-package #:tuatara.defaults)
 
 (defconstant +ssh-most-question+ 4096
-  "The most octets of one question ssh asks that are read. A named pipe passes that many in one piece.")
+  "The most octets of one question ssh asks that are read, however many pieces it comes in.")
 
 (defconstant +ssh-most-answer+ 4096 "The most octets of an answer given to ssh; a longer one counts as none.")
 
@@ -39,6 +39,11 @@ directory: it does nothing for a mere notice of ssh's, else passes the question
 on and reads a first line, y when an answer follows; the answer goes from the
 pipe to ssh by a program reading one line of it, through no argument and no
 variable of the shell. Any other first line ends it with a failure.")
+
+(defparameter *ssh-question-seconds* 2
+  "How long the rest of a question of ssh's is waited for once the first of
+it has come: the script writes it at once, but the shell may write it a line
+at a time.")
 
 (defparameter *ssh-connecting-seconds* 1
   "How long a connection to a server has taken before the echo area says so.")
@@ -310,34 +315,52 @@ asked, as two values: its warnings to you and the rest (SSH-SAID-PARTS)."
                                                                                            (length octets)))))
       (setf (ssh-asking-said asking) (length octets)))))
 
+(defun read-ssh-question (fd)
+  "The question waiting on FD, a pipe of questions of ssh's, as octets, up to
+the zero octet the script ends it with or +SSH-MOST-QUESTION+ octets: read as
+it comes, in as many pieces as the script writes it, for
+*SSH-QUESTION-SECONDS* at most once it has begun. As a second value, true
+when it came whole. NIL when nothing is waiting."
+  (let ((octets (tuatara.text:make-octets +ssh-most-question+)) (end 0) (deadline nil))
+    (loop
+      (let ((got (tuatara.io:with-octets-sap (sap octets)
+                   (sb-unix:unix-read fd (sb-sys:sap+ sap end) (- +ssh-most-question+ end)))))
+        (when (and got (plusp got))
+          (let ((zero (position 0 octets :start end :end (+ end got))))
+            (incf end got)
+            (when zero (return (values (subseq octets 0 zero) t)))
+            (when (= end +ssh-most-question+) (return (values octets t))))))
+      (cond ((zerop end) (return nil))
+            ((null deadline) (setf deadline (tuatara.runtime:deadline-in *ssh-question-seconds*)))
+            ((tuatara.runtime:deadline-passed-p deadline) (return (values (subseq octets 0 end) nil))))
+      (tuatara.io:wait-for-fds (list fd) (max 1/100 (tuatara.runtime:seconds-left deadline))))))
+
 (defun answer-ssh-question (asking)
-  "Read the question waiting in ASKING's pipe, put it to you, and send back
-the answer, or that there is none. True when one was given; NIL when none
-was or too many have been asked, and the connection should end."
-  (let* ((tuatara.runtime:*secret-at-hand* t)
-         (octets (tuatara.text:make-octets +ssh-most-question+))
-         (got (tuatara.io:with-octets-sap (sap octets)
-                (sb-unix:unix-read (ssh-asking-question asking) sap +ssh-most-question+))))
-    (when (null got) (return-from answer-ssh-question t))
-    (when (<= (incf (ssh-asking-asked asking)) +ssh-most-questions+)
-      (let* ((end (or (position 0 octets :end got) got))
-             (answer (ask-ssh-person asking (tuatara.text:lenient-string (subseq octets 0 end))))
-             (line (if answer (tuatara.text:string-octets answer) (tuatara.text:make-octets 0)))
-             (given (and answer (<= (length line) +ssh-most-answer+)))
-             (end-at (and given (or (position 10 line) (length line))))
-             (reply (tuatara.text:make-octets (if given (+ 3 end-at) 2))))
-        (unwind-protect
-             (progn
-               (setf (aref reply 0) (char-code (if given #\y #\n))
-                     (aref reply 1) 10)
-               (when given
-                 (replace reply line :start1 2 :end2 end-at)
-                 (setf (aref reply (1- (length reply))) 10))
-               (tuatara.io:write-octets (ssh-asking-answer asking) reply)
-               (and given t))
-          (wipe-string answer)
-          (fill line 0)
-          (fill reply 0))))))
+  "Read the question waiting in ASKING's pipe (READ-SSH-QUESTION), put it to
+you, and send back the answer, or that there is none, as for a question that
+did not come whole. True when one was given; NIL when none was or too many
+have been asked, and the connection should end."
+  (let ((tuatara.runtime:*secret-at-hand* t))
+    (multiple-value-bind (question whole) (read-ssh-question (ssh-asking-question asking))
+      (when (null question) (return-from answer-ssh-question t))
+      (when (<= (incf (ssh-asking-asked asking)) +ssh-most-questions+)
+        (let* ((answer (and whole (ask-ssh-person asking (tuatara.text:lenient-string question))))
+               (line (if answer (tuatara.text:string-octets answer) (tuatara.text:make-octets 0)))
+               (given (and answer (<= (length line) +ssh-most-answer+)))
+               (end-at (and given (or (position 10 line) (length line))))
+               (reply (tuatara.text:make-octets (if given (+ 3 end-at) 2))))
+          (unwind-protect
+               (progn
+                 (setf (aref reply 0) (char-code (if given #\y #\n))
+                       (aref reply 1) 10)
+                 (when given
+                   (replace reply line :start1 2 :end2 end-at)
+                   (setf (aref reply (1- (length reply))) 10))
+                 (tuatara.io:write-octets (ssh-asking-answer asking) reply)
+                 (and given t))
+            (wipe-string answer)
+            (fill line 0)
+            (fill reply 0)))))))
 
 ;;; Questions of ssh run by another program
 

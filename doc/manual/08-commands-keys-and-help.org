@@ -388,7 +388,7 @@ how you find out which of two letters that look alike you have.
 Tuatara says short things in the echo area, one at a time, and they are gone
 after a moment. ~C-h e~ shows them all in =*Messages*=, the latest at the end,
 with repeats counted. It is the first place to look when something went by too
-fast to read. The buffer keeps the last =*message-log-max*= lines.
+fast to read. The buffer keeps the last =*messages-kept*= lines.
 
 ~C-h N~ shows =*Notifications*=: what was told to you during this session by
 the agenda, when an entry marked for a reminder came due, and by packages.
@@ -398,7 +398,7 @@ comes. Set it to =nil= to keep them in the buffer only.
 
 #+table: commands view-echo-area-messages view-notifications
 
-#+table: settings *message-log-max* *notify-program*
+#+table: settings *messages-kept* *notify-program*
 
 ** The tutor and manual pages
 
@@ -441,16 +441,15 @@ file and the health check. ~TAB~ and ~S-TAB~ go from one button to the next,
 ~RET~ presses one, and a click does too. Opening a web address from it asks
 first and uses your desktop's browser.
 
-~C-h C-c~ shows the licence, the GNU General Public License, version 3 or
-later, and ~C-h C-w~ the part of it that says there is no warranty.
-~M-x credits~ shows the projects that Tuatara owes its ideas to and what it
+~C-h C-c~ shows the licence, the GNU General Public License, version 3 or later,
+and ~C-h C-w~ the part of it that says there is no warranty. ~M-x
+describe-credits~ shows the projects that Tuatara owes its ideas to and what it
 took from each. ~M-x tuatara-version~ says which Tuatara this is: the version,
-the commit and date it was built from, the Steel Bank Common Lisp (SBCL) it
-runs on and whether it shows in a window or a terminal. With ~C-u~ it writes
-the line at the cursor instead of saying it, which is useful in a report of a
-fault.
+the commit and date it was built from, the Steel Bank Common Lisp (SBCL) it runs
+on and whether it shows in a window or a terminal. With ~C-u~ it writes the line
+at the cursor instead of saying it, which is useful in a report of a fault.
 
-#+table: commands about-tuatara describe-copying describe-no-warranty credits tuatara-version
+#+table: commands about-tuatara describe-copying describe-no-warranty describe-credits tuatara-version
 
 ** Checking what your system has
 
@@ -501,29 +500,29 @@ runs the selection, and ~M-x eval-buffer~ runs the whole buffer. They run only
 in Lisp buffers, and run nothing in a file opened with care because you do
 not trust it.
 
-~M-x ielm~ opens =*ielm*=, a buffer with a prompt where you type Lisp and
-read the answer below. ~RET~ runs the input when it is whole expressions and
+~M-x lisp-repl~ opens =*Lisp REPL*=, a buffer with a prompt where you type Lisp
+and read the answer below. ~RET~ runs the input when it is whole expressions and
 starts a new line when it is not. ~M-p~ and ~M-n~ bring back earlier inputs, and
 ~C-c C-u~ clears what you typed. The modal keys are off in it, so you type at
 once without ~i~.
 
 If Lisp meets an error, the echo area says what it was. ~M-x
-toggle-debug-on-error~ makes it show the calls under way too, in
+toggle-backtrace-on-error~ makes it show the calls under way too, in
 =*Backtrace*=. That is for people who write Lisp, and is easy to leave off.
 
 #+begin_try Try it, with a sum
 1. Press ~M-:~, type =(* 12 7)= and press ~RET~. The echo area shows
    =(* 12 7) => 84=, then the same number in other bases.
-2. Press ~M-x~, type =ielm= and press ~RET~. After the prompt type
+2. Press ~M-x~, type =lisp-repl= and press ~RET~. After the prompt type
    =(reverse "kiwi")= and press ~RET~. The answer is ="iwik"=.
 3. Press ~M-p~. The input comes back. Press ~C-c C-u~ to take it away.
-4. Press ~C-x k~ and ~RET~ to close =*ielm*=. It has changed, so it asks;
+4. Press ~C-x k~ and ~RET~ to close =*Lisp REPL*=. It has changed, so it asks;
    type =y= and press ~RET~.
 #+end_try
 
-#+table: commands eval-expression eval-last-expression eval-print-last-expression eval-top-level-form eval-region eval-buffer ielm ielm-return ielm-send-input ielm-previous-input ielm-next-input ielm-kill-input ielm-change-working-buffer ielm-tab toggle-debug-on-error
+#+table: commands eval-expression eval-last-expression eval-print-last-expression eval-top-level-form eval-region eval-buffer lisp-repl lisp-repl-return lisp-repl-send-input lisp-repl-previous-input lisp-repl-next-input lisp-repl-kill-input lisp-repl-change-working-buffer lisp-repl-tab toggle-backtrace-on-error
 
-#+table: settings *debug-on-error*
+#+table: settings *backtrace-on-error*
 
 ** Binding keys yourself
 

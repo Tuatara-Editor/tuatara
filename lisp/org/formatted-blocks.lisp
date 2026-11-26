@@ -525,8 +525,7 @@ with no title or no tags gets no headline. NIL when it cannot be read."
         (let* ((tags (cond (exclude-tags "") (tags (format nil ":~{~a:~}" tags))))
                (body (formatted-without-front-matter text t))
                (heading (cond ((not (and title tags)) "")
-                              (add-links (format nil "* [[denote:~a][~a]] ~a~%~%"
-                                                 (formatted-identifier file) title tags))
+                              (add-links (format nil "* ~a ~a~%~%" (formatted-denote-link file title nil) tags))
                               (t (format nil "* ~a ~a~%~%" title tags))))
                ;; the tags put in their column first, then the note's own headlines a level down
                (aligned (and title tags (not exclude-tags)))

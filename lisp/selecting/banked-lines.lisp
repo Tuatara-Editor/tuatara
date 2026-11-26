@@ -60,6 +60,10 @@ gone are forgotten, the list of banks kept as it is while none has gone."
   "True when BUFFER has lines banked (BANKED-SPANS-NOW)."
   (and (buffer-banks buffer) (plusp (length (banked-spans-now buffer)))))
 
+(defun clear-banks (&optional (buffer (current-buffer)))
+  "Let go of every banked line of BUFFER, the text left as it is."
+  (setf (buffer-banks buffer) '()))
+
 (defun span-line-count (buffer spans)
   "How many lines of BUFFER SPANS, each (START . END), take in."
   (loop for (start . end) in spans
@@ -257,7 +261,7 @@ beside each other at once; the banks elsewhere are kept."
 (define-command bank-clear ()
   "Let go of every banked line of this buffer; the text is left as it is."
   (let* ((b (current-buffer)) (count (banked-line-count b)))
-    (setf (buffer-banks b) '())
+    (clear-banks b)
     (if (zerop count)
         (message "No banked lines")
         (message "Discarded ~d banked line~:p" count))))

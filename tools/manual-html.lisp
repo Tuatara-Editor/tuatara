@@ -144,7 +144,7 @@ text still finds its heading."
 
 (defun site (contents version main &key whole)
   "The HTML of a page's layout: the contents column, named CONTENTS, and MAIN beside it, VERSION
-saying which version it is for (for version 0.90.40).
+saying which version it is for.
 The column links to the whole manual on one page, or with WHOLE back to the chapters, and holds the
 button that changes between light and dark colours."
   (format nil "<div class=\"site\">
@@ -263,7 +263,8 @@ its main file say it (;;;; Needs: Tuatara 0.90.35), or NIL."
          (file (merge-pathnames (format nil "~a.lisp" (if (uiop:string-prefix-p "tuatara-" name) (subseq name 8) name))
                                 directory)))
     (when (probe-file file)
-      (loop for line in (subseq (uiop:read-file-lines file) 0 (min 10 (length (uiop:read-file-lines file))))
+      (loop with lines = (uiop:read-file-lines file)
+            for line in (subseq lines 0 (min 10 (length lines)))
             for match = (nth-value 1 (cl-ppcre:scan-to-strings "^;+ *Needs: *Tuatara +([0-9.]+)" line))
             when match return (aref match 0)))))
 

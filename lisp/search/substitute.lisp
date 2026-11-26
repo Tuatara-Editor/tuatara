@@ -140,44 +140,74 @@ buffer's, BUFFER-NEWLINE), \\t a tab."
     ((#\n #\r) newline)
     (#\t #.(string #\Tab))))
 
+(defun replacement-parts (replacement &optional (newline (string #\Newline)))
+  "REPLACEMENT, read in a regular expression, as a vector of its parts in
+order: a string, written as it is; a number, the text of that group, 0 the
+whole match; :UPPER-ONCE or :LOWER-ONCE, the next character upper or lower
+case; :UPPER, :LOWER or NIL, all that follows so until the next of these. &
+and \\0 stand for the whole match and \\1 to \\9 for a group. \\n and
+\\r stand for a line break, NEWLINE (the buffer's, BUFFER-NEWLINE), and \\t
+for a tab. \\u and \\l make the next character upper or lower case, \\U and
+\\L all that follows until \\E or \\e. Any other escaped character, such as
+\\& \\/ or \\\\, stands for itself. Read once for all the matches."
+  (let ((parts '()) (text (make-string-output-stream)) (i 0) (n (length replacement)))
+    (flet ((part (part)
+             (let ((written (get-output-stream-string text)))
+               (when (plusp (length written)) (push written parts)))
+             (push part parts)))
+      (loop while (< i n)
+            do (let ((c (char replacement i)))
+                 (cond ((char= c #\&) (part 0) (incf i))
+                       ((and (char= c #\\) (< (1+ i) n))
+                        (let ((d (char replacement (1+ i))))
+                          (incf i 2)
+                          (case d
+                            ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9) (part (digit-char-p d)))
+                            ((#\n #\r #\t) (write-string (replacement-escape d newline) text))
+                            (#\u (part :upper-once))
+                            (#\l (part :lower-once))
+                            (#\U (part :upper))
+                            (#\L (part :lower))
+                            ((#\E #\e) (part nil))
+                            (t (write-char d text)))))
+                       (t (write-char c text) (incf i)))))
+      (part nil)
+      (coerce (nreverse (rest parts)) 'simple-vector))))
+
+(defun replacement-from-parts (parts matched groups)
+  "The text PARTS (REPLACEMENT-PARTS) produce for a match of the text MATCHED
+whose groups matched GROUPS (a vector, or NIL), a group that took no part
+giving nothing. Makes the text only."
+  (declare (type simple-vector parts))
+  (flet ((part-text (part)
+           (cond ((stringp part) part)
+                 ((eql part 0) matched)
+                 ((numberp part) (let ((k (1- part)))
+                                   (and groups (< k (length groups)) (aref groups k)))))))
+    (let ((out (make-string (loop for part across parts
+                                  sum (length (or (part-text part) "")))))
+          (at 0) (mode nil) (once nil))
+      (declare (type fixnum at))
+      (loop for part across parts
+            do (case part
+                 ((:upper-once :lower-once) (setf once part))
+                 ((:upper :lower nil) (setf mode part))
+                 (t (let ((text (part-text part)))
+                      (when text
+                        (loop for c across (the string text)
+                              do (setf (char out at)
+                                       (cond (once (prog1 (if (eq once :upper-once) (char-upcase c) (char-downcase c))
+                                                     (setf once nil)))
+                                             ((eq mode :upper) (char-upcase c))
+                                             ((eq mode :lower) (char-downcase c))
+                                             (t c)))
+                                 (incf at)))))))
+      out)))
+
 (defun expand-replacement (replacement matched groups &optional (newline (string #\Newline)))
   "The text REPLACEMENT produces for a match of the text MATCHED whose groups
-matched GROUPS (a vector, or NIL). & and \\0 stand for the whole match and \\1
-to \\9 for a group. \\n and \\r stand for a line break, NEWLINE (the buffer's,
-BUFFER-NEWLINE), and \\t for a tab. \\u and \\l make the next character upper
-or lower case, \\U and \\L all that follows until \\E or \\e. Any other escaped
-character, such as \\& \\/ or \\\\, stands for itself."
-  (let ((mode nil) (once nil))
-    (with-output-to-string (out)
-      (flet ((emit (text)
-               (loop for c across text
-                     do (write-char (cond (once (prog1 (if (eq once :upper) (char-upcase c) (char-downcase c))
-                                                  (setf once nil)))
-                                          ((eq mode :upper) (char-upcase c))
-                                          ((eq mode :lower) (char-downcase c))
-                                          (t c))
-                                    out))))
-        (let ((i 0) (n (length replacement)))
-          (loop while (< i n)
-                do (let ((c (char replacement i)))
-                     (cond ((char= c #\&) (emit matched) (incf i))
-                           ((and (char= c #\\) (< (1+ i) n))
-                            (let ((d (char replacement (1+ i))))
-                              (incf i 2)
-                              (case d
-                                (#\0 (emit matched))
-                                ((#\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
-                                 (let ((k (1- (digit-char-p d))))
-                                   (when (and groups (< k (length groups)) (aref groups k))
-                                     (emit (aref groups k)))))
-                                ((#\n #\r #\t) (emit (replacement-escape d newline)))
-                                (#\u (setf once :upper))
-                                (#\l (setf once :lower))
-                                (#\U (setf mode :upper))
-                                (#\L (setf mode :lower))
-                                ((#\E #\e) (setf mode nil))
-                                (t (emit (string d))))))
-                           (t (emit (string c)) (incf i))))))))))
+matched GROUPS (a vector, or NIL), read as REPLACEMENT-PARTS reads it."
+  (replacement-from-parts (replacement-parts replacement newline) matched groups))
 
 (defun literal-replacement (replacement &optional (newline (string #\Newline)))
   "REPLACEMENT taken as literal text: \\n, \\r and \\t stand for what they do
@@ -193,15 +223,25 @@ A match that ends just after a newline ends on the newline's line; an empty
 match, START being END, on its own line."
   (1+ (tuatara.text:rope-line-end rope (max start (1- end)))))
 
+(defun first-on-line-gate (rope &optional (allowed 0))
+  "A gate that lets through the first match on each line of ROPE, as a
+replacement without the g flag replaces them: a function of a match's START
+and END, called for the matches in order, giving NIL for a match left out and,
+for one let through, the first offset the next may start at
+\(NEXT-LINE-START-AFTER). A match is let through when it starts at or after
+ALLOWED, at first the given one. What is replaced, counted and lit all pass
+this gate, so that they agree."
+  (declare (type fixnum allowed))
+  (lambda (start end)
+    (declare (type fixnum start end))
+    (when (>= start allowed)
+      (setf allowed (next-line-start-after rope end start)))))
+
 (defun first-per-line (rope matches)
   "Of MATCHES, sorted lists (START END ...) in ROPE, the first on each line,
-which a replacement without the g flag replaces: after a kept match, the next
-one kept starts on a later line than the one the match ends on."
-  (let ((allowed 0) (kept '()))
-    (dolist (m matches (nreverse kept))
-      (when (>= (first m) allowed)
-        (push m kept)
-        (setf allowed (next-line-start-after rope (second m) (first m)))))))
+which a replacement without the g flag replaces (FIRST-ON-LINE-GATE)."
+  (let ((gate (first-on-line-gate rope)))
+    (remove-if-not (lambda (m) (funcall gate (first m) (second m))) matches)))
 
 (defun matched-lines (rope matches)
   "How many lines of ROPE MATCHES, sorted lists (START END ...), start on."
@@ -301,13 +341,14 @@ whole text goes on (TUATARA.SYNTAX:JOIN-PIECES)."
   (labels ((count-piece (from to allowed)
              ;; the matches from FROM below TO as one scan finds them, those starting at or
              ;; after ALLOWED kept: how many, where the next kept may start, where the last ends
-             (let ((count 0) (last-end from))
-               (declare (type fixnum count allowed last-end))
+             (let ((count 0) (last-end from) (gate (first-on-line-gate rope allowed)))
+               (declare (type fixnum count allowed last-end) (type function gate))
                (stretch-matches (lambda (s e m g)
                                   (declare (ignore m g) (type fixnum s e))
-                                  (when (>= s allowed)
-                                    (incf count)
-                                    (setf allowed (next-line-start-after rope e s)))
+                                  (let ((next (funcall gate s e)))
+                                    (when next
+                                      (incf count)
+                                      (setf allowed next)))
                                   (setf last-end e)
                                   nil)
                                 rope matcher from to (eql to high) nil stop high)
@@ -377,7 +418,8 @@ text itself. A line break written in REPLACEMENT is NEWLINE, the buffer's."
   (let* ((follow (and fold (not (and regex (replacement-sets-case-p replacement)))))
          (constant (or (not regex) (notany (lambda (c) (find c "&\\")) replacement)))
          (expand (if regex
-                     (lambda (m g) (expand-replacement replacement m g newline))
+                     (let ((parts (replacement-parts replacement newline)))
+                       (lambda (m g) (replacement-from-parts parts m g)))
                      (let ((text (literal-replacement replacement newline)))
                        (lambda (m g) (declare (ignore m g)) text)))))
     (cond ((and constant follow)
@@ -416,19 +458,22 @@ not be finished."
           (when status (return (values (found) status counted)))
           (push (if all these (first-per-line rope these)) runs))))))
 
-(defun pieces-next-match (buffer matcher regex pieces all)
+(defun pieces-next-match (buffer matcher regex pieces all &key stop)
   "A NEXT-MATCH for QUERY-REPLACE-LOOP over PIECES of BUFFER, (START . END) in
 order: from an offset, the next match within a piece, without ALL the first
-on each of its lines. The pieces after a replacement move by the change it
-made to the buffer's size, as only one is made between two calls; as a
-second value, a REST for its \\`!' over what is left of them."
+on each of its lines (FIRST-ON-LINE-GATE, the line a match ends on told by the
+text before it was replaced). The pieces after a replacement move by the
+change it made to the buffer's size, as only one is made between two calls;
+as a second value, a REST for its \\`!' over what is left of them. STOP is
+asked now and then while a match is looked for, as NEXT-LINE-MATCH asks it."
   (let ((pieces (map 'vector (lambda (piece) (cons (car piece) (cdr piece))) pieces))
-        (i 0) (fresh t) (size (tuatara.buffer:buffer-size buffer)))
+        (i 0) (allowed 0) (size (tuatara.buffer:buffer-size buffer)))
     (flet ((settle ()
-             ;; the replacement just made lies in piece I: it and those after it move
+             ;; the replacement just made lies in piece I, before ALLOWED: they and the pieces after it move
              (let ((delta (- (tuatara.buffer:buffer-size buffer) size)))
                (setf size (tuatara.buffer:buffer-size buffer))
                (unless (zerop delta)
+                 (when (plusp allowed) (incf allowed delta))
                  (when (< i (length pieces)) (incf (cdr (aref pieces i)) delta))
                  (loop for j from (1+ i) below (length pieces)
                        do (incf (car (aref pieces j)) delta) (incf (cdr (aref pieces j)) delta))))))
@@ -437,14 +482,13 @@ second value, a REST for its \\`!' over what is left of them."
          (settle)
          (loop while (< i (length pieces))
                do (let* ((piece (aref pieces i))
-                         (rope (tuatara.buffer:buffer-text buffer))
-                         (from (cond ((or fresh (<= pos (car piece))) (max pos (car piece)))
-                                     (all pos)
-                                     (t (min (cdr piece) (next-line-start-after rope pos)))))
-                         (m (next-line-match buffer matcher regex from (cdr piece))))
-                    (if m
-                        (progn (setf fresh nil) (return m))
-                        (setf i (1+ i) fresh t)))))
+                         (m (next-line-match buffer matcher regex (max pos (car piece) allowed) (cdr piece) stop)))
+                    (cond ((eq m :stopped) (return m))
+                          (m (unless all
+                               (setf allowed (funcall (first-on-line-gate (tuatara.buffer:buffer-text buffer))
+                                                      (first m) (second m))))
+                             (return m))
+                          (t (setf i (1+ i) allowed 0))))))
        (lambda (pos)
          (settle)
          (let ((rest (loop for j from i below (length pieces)
@@ -527,40 +571,27 @@ or counted here."
       (setf *last-search-pattern* (cons (search-line-pattern line) regex)
             (tuatara.buffer:buffer-mark-active-p buffer) nil)
       (cond
-        ((and pieces (asking-flags-p flags))
-         (goto (car (first pieces)))
-         (multiple-value-bind (next rest) (pieces-next-match buffer matcher regex pieces all)
-           (query-replace-loop buffer next replacement-for (search-line-pattern line) replacement rest)))
         ((asking-flags-p flags)
-         ;; ask at each match; the scope's end moves as replacements change its length
-         (let ((tail (- (tuatara.buffer:buffer-size buffer) high)) (first t))
-           (flet ((from-for (pos rope high)
-                    (if (or all first)
-                        pos
-                        (min high (next-line-start-after rope pos)))))
-             (goto low)
-             (query-replace-loop buffer
-                                 (lambda (pos)
-                                   (let* ((rope (tuatara.buffer:buffer-text buffer))
-                                          (high (- (tuatara.buffer:buffer-size buffer) tail))
-                                          (from (from-for pos rope high)))
-                                     (setf first nil)
-                                     (next-line-match buffer matcher regex from high stop)))
-                                 replacement-for (search-line-pattern line) replacement
-                                 (lambda (pos)
-                                   ;; ! : the rest at once from the match asked at, gathered within the budget
-                                   (let* ((rope (tuatara.buffer:buffer-text buffer))
-                                          (high (- (tuatara.buffer:buffer-size buffer) tail)))
-                                     (multiple-value-bind (found status count)
-                                         (line-matches rope matcher regex pos high :stop stop)
-                                       (if (eq status :over)
-                                           ;; too many to hold: those in sight at once, the rest in the
-                                           ;; background
-                                           (progn (rewrite-after-sight buffer line regex pos high words flags
-                                                                       matcher replacement-for all)
-                                                  (values nil :background count))
-                                           (values (if all found (first-per-line rope found))
-                                                   status count)))))))))
+         (goto (if pieces (car (first pieces)) low))
+         (multiple-value-bind (next rest)
+             (pieces-next-match buffer matcher regex (or pieces (list (cons low high))) all :stop stop)
+           (query-replace-loop
+            buffer next replacement-for (search-line-pattern line) replacement
+            (if pieces
+                rest
+                ;; ! : the rest at once from the match asked at, gathered within the budget, the scope's end
+                ;; moved as replacements changed its length
+                (let ((tail (- (tuatara.buffer:buffer-size buffer) high)))
+                  (lambda (pos)
+                    (let* ((rope (tuatara.buffer:buffer-text buffer))
+                           (high (- (tuatara.buffer:buffer-size buffer) tail)))
+                      (multiple-value-bind (found status count) (line-matches rope matcher regex pos high :stop stop)
+                        (if (eq status :over)
+                            ;; too many to hold: those in sight at once, the rest in the background
+                            (progn (rewrite-after-sight buffer line regex pos high words flags
+                                                        matcher replacement-for all)
+                                   (values nil :background count))
+                            (values (if all found (first-per-line rope found)) status count))))))))))
         (t
          (let ((rope (tuatara.buffer:buffer-text buffer)) (counting (counting-flags-p flags)))
            (when (and (null pieces) (large-for-here-p low high))

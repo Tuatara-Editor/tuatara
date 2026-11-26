@@ -554,58 +554,48 @@ going. Returns what FUNCTION returns."
   "The keys ANSWERS, characters or key descriptions, in words: y, n or v."
   (format nil "~{~a~#[~; or ~:;, ~]~}" answers))
 
-(defun read-answer-key (prompt answers &key fresh details)
-  "Ask PROMPT in the echo area, answered by one key: one of ANSWERS, a list
-of characters such as (#\\y #\\n). Returns the character, in lower case,
-whatever the case typed. Any other key says which keys answer and asks
-again; \\`C-g' signals QUIT. With FRESH, for a question Tuatara asks of
-itself rather than one a command you gave asks, the key is one pressed once
-the question is shown (READ-KEY with FRESH): keys typed before are thrown
-away, keys being recorded or played have no part in it, and \\`C-g' leaves
-a recording of keys going on. DETAILS, what each answer does, warnings and
-anything longer than the prompt should hold, are shown beside it while it is
-asked (CALL-WITH-QUESTION-DETAILS)."
-  (asking-with-details (details)
-    (let ((asked prompt))
-      (loop
-        (let* ((key (read-key asked :fresh fresh))
-               (base (tuatara.frontend:key-base key))
-               (char (and (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))
-                          (characterp base) (char-downcase base))))
-          (cond ((quit-key-p key) (quit-asking fresh))
-                ((and char (member char answers)) (return char))
-                (t (setf asked (format nil "Answer ~a. ~a" (answer-keys-words answers) prompt)))))))))
-
-(defun read-key-choice (prompt choices)
+(defun read-key-choice (prompt choices &key fresh fold-case aliases details)
   "Ask PROMPT in the echo area, answered by one key of CHOICES. Each choice
 is a pair of a KEY, as KEY-DESCRIPTION writes it (\"j\", \"M\", \"C-x\"), and the
-WORDS saying what that key does, as in (\"j\" . \"one\"). The prompt ends with
-the keys (j, m, M or n) and each key with its words is shown beside it
-\(CALL-WITH-QUESTION-DETAILS). The case of a key counts. Returns the KEY of the
-choice made, as given; any other key says which keys answer and asks again;
-\\`C-g' signals QUIT."
+WORDS saying what that key does, as in (\"j\" . \"one\"), or NIL. The prompt
+ends with the keys (j, m, M or n), and beside it are shown DETAILS, then each
+key that has words with its words (CALL-WITH-QUESTION-DETAILS). The case of a
+key counts; with FOLD-CASE a letter typed answers in lower case, Y as y.
+ALIASES, pairs (ALIAS . KEY) such as (\"SPC\" . \"y\"), are keys that answer as
+KEY does. Returns the KEY of the choice made, as given; any other key says
+which keys answer and asks again; \\`C-g' signals QUIT. With FRESH, for a
+question Tuatara asks of itself rather than one a command you gave asks, the
+key is one pressed once the question is shown (READ-KEY with FRESH): keys
+typed before are thrown away, keys being recorded or played have no part in
+it, and \\`C-g' leaves a recording of keys going on."
   (let* ((keys (mapcar (lambda (choice) (string (car choice))) choices))
-         (question (format nil "~a (~a)" prompt (answer-keys-words keys))))
-    (asking-with-details ((format nil "~{~a~^~%~}"
-                                  (loop for (key . words) in choices collect (format nil "~a  ~a" key words))))
+         (question (format nil "~a (~a) " prompt (answer-keys-words keys)))
+         (width (reduce #'max keys :key #'length :initial-value 0))
+         (lines (loop for (key . words) in choices
+                      when words collect (format nil "~va  ~a" width key words))))
+    (asking-with-details ((cond ((and details lines) (format nil "~a~%~%~{~a~^~%~}" details lines))
+                                (lines (format nil "~{~a~^~%~}" lines))
+                                (t details)))
       (loop for asked = question then (format nil "Answer ~a. ~a" (answer-keys-words keys) question)
-            do (let ((key (read-key asked)))
-                 (when (quit-key-p key) (quit-asking nil))
-                 (let ((choice (find (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) choices
-                                     :key (lambda (choice) (string (car choice))) :test #'string=)))
+            do (let ((key (read-key asked :fresh fresh)))
+                 (when (quit-key-p key) (quit-asking fresh))
+                 (let* ((described (tuatara.frontend:key-description (tuatara.frontend:key-spec key)))
+                        (typed (if (and fold-case (= 1 (length described))) (string-downcase described) described))
+                        (typed (or (cdr (assoc typed aliases :test #'string=)) typed))
+                        (choice (find typed choices :key (lambda (choice) (string (car choice))) :test #'string=)))
                    (when choice (return (car choice)))))))))
 
 (defun y-or-n-p* (prompt &key fresh details)
   "Ask PROMPT, a question whose answer is easily undone, answered by one
-key, y or n, no RET (READ-ANSWER-KEY): true for y, false for n; any other
-key says which keys answer and asks again; \\`C-g' signals QUIT. With
-FRESH, for a question that comes without a command of yours asking it (a
-language server's, one while you type), only a key pressed once it is shown
-answers it (READ-ANSWER-KEY's FRESH). A question whose yes destroys or
+key, y or n, no RET (READ-KEY-CHOICE): true for y, false for n, in either
+case; any other key says which keys answer and asks again; \\`C-g' signals
+QUIT. With FRESH, for a question that comes without a command of yours asking
+it (a language server's, one while you type), only a key pressed once it is
+shown answers it (READ-KEY-CHOICE's FRESH). A question whose yes destroys or
 writes over what cannot be had back asks for a typed answer instead
 \(YES-OR-NO-P*). DETAILS are shown beside it while it is asked
 \(CALL-WITH-QUESTION-DETAILS)."
-  (eql #\y (read-answer-key (concatenate 'string prompt " (y or n) ") '(#\y #\n) :fresh fresh :details details)))
+  (equal "y" (read-key-choice prompt '(("y") ("n")) :fresh fresh :fold-case t :details details)))
 
 (defun completing-read (prompt table &key annotate require-match history (initial "") (separator #\/) (filter t)
                                          select reselect preview source default keep-order none taken keymap rewrite
@@ -941,7 +931,7 @@ keys, (y, n or e, then RET). Returns the KEY of the answer typed, the key or
 its word, in any case and with spaces around; any other answer, none at all
 too, says which answers it takes and asks again; \\`C-g' signals QUIT. A
 question whose answer is easily undone is answered by one key instead
-\(READ-ANSWER-KEY). DETAILS are shown beside it while it is asked, the
+\(READ-KEY-CHOICE). DETAILS are shown beside it while it is asked, the
 answers given again included (CALL-WITH-QUESTION-DETAILS)."
   (asking-with-details (details)
     (let* ((keys (mapcar #'first answers))

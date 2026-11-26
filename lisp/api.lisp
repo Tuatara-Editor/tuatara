@@ -8,8 +8,8 @@
 ;;;; and these are the names it may use (*API*, and *API-FROM-LIBRARIES* of
 ;;;; the libraries it is built with): they keep their meaning, everything
 ;;;; else Tuatara may change. Positions are octets from 0 into a buffer's text
-;;;; as it is now, as the core counts them; the names that count characters
-;;;; from 1 (point, goto-char) are an init file's, never here.
+;;;; as it is now, as the core counts them. An init file and the Lisp typed at
+;;;; M-: reach these names too (TUATARA-USER uses TUATARA).
 ;;;; Loaded last, when every name below is defined.
 
 (in-package #:tuatara.defaults)
@@ -123,6 +123,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.command:define-command tuatara.command:define-command-alias tuatara.modes:define-major-mode define-face
     tuatara-user:define-theme tuatara.packages:define-package-setting tuatara.packages:declare-package-needs
     tuatara.command:define-key tuatara.command:define-keys tuatara.command:label-keys tuatara.modes:mode-keymap
+    tuatara.modes:add-mode-hook
     tuatara.runtime:define-job-words tuatara.runtime:define-record tuatara.command:substitute-command-keys
     commands-for-mode buttons-in-mode
     tuatara.modes:fundamental-mode special-mode text-mode org-mode org-agenda-mode
@@ -138,7 +139,11 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.buffer:with-narrowing-lifted tuatara.buffer:buffer-line-start tuatara.buffer:buffer-line-end
     tuatara.buffer:buffer-line-text tuatara.buffer:buffer-char-at tuatara.buffer:buffer-forward-char
     tuatara.buffer:buffer-char-before buffer-crlf-p tuatara.buffer:buffer-mark-active-p tuatara.buffer:buffer-version
+    tuatara.buffer:buffer-modified-p
     tuatara.buffer:buffer-local delete-spans tuatara.modes:buffer-major-mode tuatara.modes:set-major-mode buffer-in-mode
+    tuatara.buffer:buffer-insert tuatara.buffer:buffer-line-number tuatara.buffer:buffer-forward-line buffer-count-words
+    tuatara.buffer:narrow-buffer tuatara.buffer:widen-buffer tuatara.buffer:with-narrowing-kept
+    tuatara.buffer:with-point-kept tuatara.command:with-buffer-current kill-text
     tuatara.command:show-buffer tuatara.command:display-buffer tuatara.command:display-buffer-at
     tuatara.command:buffer-window tuatara.command:leave-window tuatara.display:window-point
     tuatara.command:pop-to-buffer tuatara.command:abbreviated-path tuatara.modes:find-or-make-buffer
@@ -157,13 +162,13 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     ;; telling what has just happened, on the desktop and in *Notifications*
     notify
     ;; lists and text made by a command
-    set-made-text render-pieces render-table-list pieces-text collecting-pieces table-cell table-heading-pieces
-    table-row-pieces list-entry-at tuatara.terminal-emulator:ansi-pieces set-search-filtering search-filters
-    search-filter-p search-filter-string search-filter-where search-filter-match-p light-search-filters
+    set-made-text render-pieces render-table-list redraw-table-rows pieces-text collecting-pieces table-cell
+    table-heading-pieces table-row-pieces list-entry-at tuatara.terminal-emulator:ansi-pieces set-search-filtering
+    search-filters search-filter-p search-filter-string search-filter-where search-filter-match-p light-search-filters
     search-filter-regex search-filter-list search-filter-remove-all add-search-filter entries-left-by-filters
     refilter-search-filters marked-list-mode sectioned-list-mode
     sectioned-pieces entry-member entry-mark keep-list-marks list-acted-on list-mark-sign list-mark-face list-question
-    list-toggle-section quit-window list-entries-of list-entry-noun delete-entries visit-entry list-visit
+    ask-list-question names-shown list-toggle-section quit-window list-entry-noun delete-entries visit-entry list-visit
     list-visit-other visit-section list-execute list-delete-marked entry-list-keys declare-list-kind list-step-entry list-next-entry
     list-previous-entry
     preview-entry entry-preview-width entry-preview-keys list-toggle-preview side-preview-note
@@ -187,7 +192,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     *file-local-setting-functions* *file-local-taken-functions* *file-views* *org-agenda-file-functions*
     tuatara.command:*tick-functions*
     ;; showing a file a way of its own
-    *sandboxed-file-views* file-view-stamp file-view-path file-view-show file-view-refuses file-view-can-draw-p
+    *sandboxed-file-views* file-view-stamp file-view-path file-view-show file-view-refuses
     reading-buffer show-reading-result
     buffer-private-directory visit-path visit-path-as-text image-view-visit pdf-view-visit pdf-file-p office-view-visit
     view-made-text tuatara.io:safe-visit-p *file-changing-commands*
@@ -201,7 +206,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.io:file-system-error tuatara.io:copy-regular-file tuatara.io:write-new-file tuatara.io:make-directory
     tuatara.io:remove-file tuatara.io:delete-tree tuatara.io:random-name tuatara.io:copy-to-free-name
     tuatara.io:call-with-free-file tuatara.io:append-to-file tuatara.io:call-with-state-lock
-    tuatara.io:fit-name tuatara.io:percent-decoded tuatara.io:file-text tuatara.io:ensure-directories
+    tuatara.io:fit-name tuatara.io:percent-decoded tuatara.io:percent-encoded tuatara.io:file-text
+    tuatara.io:ensure-directories
     ;; evidence, and the places nothing is written in
     tuatara.io:writing-refusal tuatara.io:writing-refused copy-file-checked tuatara.io:percent-decoded-octets file-kind
     tuatara.io:octets-kind tuatara.io:octets-picture-size tuatara.io:kind-name-disagrees-p tuatara.io:+binary-sample+
@@ -211,7 +217,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.text:octets-signed tuatara.text:base64-octets tuatara.text:base64-string tuatara.text:octets-words
     tuatara.text:octets-string
     tuatara.text:octets-latin-1 tuatara.text:charset-text tuatara.text:utf-16-text tuatara.text:string-octets
-    tuatara.text:string-octet-length tuatara.text:char-octet-length tuatara.text:fold-content-line
+    tuatara.text:string-octet-length tuatara.text:char-octet-length tuatara.text:string-octet-char-index
+    tuatara.text:fold-content-line
     tuatara.text:content-text-escaped tuatara.text:content-parameter-text
     tuatara.text:string-line-start tuatara.text:parse-decimal tuatara.text:whole-number
     tuatara.text:lenient-string tuatara.text:merge-ranges tuatara.text:string-hash tuatara.text:octets-hash
@@ -242,7 +249,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.io:visit-file put-text-by-lines line-edits save-buffer-with-care
     ;; text from elsewhere written into Org safely, and read back
     org-safe-line org-safe-line-words org-escape-block org-unescape-block tuatara.io:inflate tuatara.io:zlib-deflate tuatara.text:xml-parse
-    xmp-fields jpeg-metadata octets-metadata tuatara.io:jpeg-segments file-sha256 fd-sha256 octets-sha256 octets-md5
+    xmp-fields jpeg-metadata octets-metadata exif-tags exif-tag exif-thumbnail-place exif-resolution
+    tuatara.io:jpeg-segments file-sha256 fd-sha256 octets-sha256 octets-md5
     shown-file
     ;; PDF objects, read from octets alone
     pdf-object-at pdf-date-words *pdf-item-limit* tuatara.io:pdf-header-at pdf-white-p pdf-get pdf-dictionary-p
@@ -255,21 +263,21 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.text:xml-unprefixed
     ;; programs from outside, shut in
     tuatara.io:find-program tuatara.io:program-missing tuatara.io:program-output tuatara.io:sandbox-run
-    tuatara.io:program-variable tuatara.io:own-variable tuatara.io:own-directory
+    tuatara.io:program-variable tuatara.runtime:own-variable
     ;; a function of the package run on files from outside, in a Tuatara of its own shut in
     tuatara.packages:sandbox-call tuatara.packages:sandbox-call-report
     tuatara.packages:sandbox-call-heap
     ;; a program of your own run on what a job gives it through a pipe, its arguments split as a shell would
     tuatara.io:call-with-program tuatara.io:filter-through-program tuatara.text:command-words
-    tuatara.io:read-stream-octets tuatara.io:sandbox-find-program run-on-copies copies-original-names
+    tuatara.io:sandbox-find-program run-on-copies copies-original-names
     run-on-copies-for-report sandbox-outcome-words sandbox-pdf program-health-words user-program-path
     start-detached open-externally-file new-private-directory private-cache-directory private-state-directory
     ;; entries of the cache kept to be used again, and the copies of files read from other machines
     define-cache-kind find-cache-entry make-cache-entry note-cache-entry remote-copy-origin
     ;; whether a file came from outside and is not trusted
-    untrusted-path-p
+    untrusted-path-p read-here-p
     tuatara.io:replace-file tuatara.io:memory-file tuatara.io:call-with-memory-file
-    sandbox-font-directories pdf-view-make
+    pdf-view-make
     ;; pictures turned into pixels in the sandbox, and their pixels read
     decode-picture tuatara.frontend:image-width tuatara.frontend:image-height tuatara.frontend:image-channels
     tuatara.frontend:image-pixels write-private-copy attachment-file-name
@@ -278,9 +286,9 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     rimu-take-out rimu-each-line rimu-show-paths rimu-show-file rimu-list-p rimu-list-directory rimu-path
     rimu-set-column
     ;; delimited data, regular expressions, and lines changed all at once
-    csv-mode tsv-mode filter-lines filter-line-matcher mode-record-fields make-record-fields csv-delimiter csv-fields
+    csv-mode tsv-mode mode-record-fields make-record-fields csv-delimiter
     csv-field-spans csv-field-bounds csv-value-bounds csv-field-value csv-header-names
-    rope-record-start csv-record-end tuatara.syntax:compile-regex tuatara.syntax:luhn-p tuatara.syntax:iban-check-p
+    tuatara.syntax:compile-regex tuatara.syntax:luhn-p tuatara.syntax:iban-check-p
     tuatara.syntax:iban-length
     selected-lines rewrite-lines line-diff
     ;; sentences, prose and what a file says of its settings
@@ -289,7 +297,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     *removed-sentence-abbreviations* sentence-abbreviations-in-force abbreviation-before-p switched-by-count
     too-large-here-p
     ;; the selection, banked lines, and whether a buffer may be changed
-    selected-region selection-range banked-spans span-line-count buffer-banks check-writable buffer-read-only-p
+    selected-region selection-range banked-spans banked-p clear-banks span-line-count check-writable buffer-read-only-p
     list-preview-p file-declares set-file-local-setting *file-local-variables*)
   "The names a package may use, exported from TUATARA: each keeps its meaning
 from one version of Tuatara to the next.")

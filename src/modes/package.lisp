@@ -18,4 +18,4 @@ generic function specialised on the mode class.")
            #:mode-indent-lines
            #:mode-info-p #:mode-info-name #:mode-info-parent #:mode-info-doc #:mode-info-lighter
            #:mode-info-keymap #:mode-info-modal-class #:mode-info-hooks #:mode-precedence #:shebang-interpreter
-           #:names-mode-p #:mode-setting #:buffer-setting))
+           #:names-mode-p #:mode-setting #:mode-value #:buffer-setting))

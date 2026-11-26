@@ -140,13 +140,14 @@ lately, then the others."
 (defun path-completion-tick (editor)
   "Tick function: once the directory of the path typed is read, list its
 entries beside the cursor, if that path is still being typed there and no
-other list is shown; true while it is being read."
+other list is shown; :WAITING while it is being read, the reading waking the
+editor (*TICK-FUNCTIONS*)."
   (let ((listing *path-listing*))
     (when listing
       (destructuring-bind (buffer start directory gathering) listing
         (multiple-value-bind (found done) (take-gathered gathering)
           (if (not done)
-              t
+              :waiting
               (let ((window (editor-window editor)))
                 (setf *path-listing* nil)
                 (when (and (first found) window

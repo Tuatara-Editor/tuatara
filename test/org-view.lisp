@@ -675,7 +675,7 @@ window draws them with (set-face :org-level-1 :height 2)."
 (define-modal-test (org checkbox-typed)
   ;; [ typed after a list item's bullet makes a checkbox at once, point after its space; checkboxes shown as written
   (dolist (pairs '(nil t))
-    (let ((tuatara-user:*electric-pair-mode* pairs))
+    (let ((tuatara-user:*auto-close-mode* pairs))
       (multiple-value-bind (lines editor) (org-screen "i - SPC [ x ESC" :text "")
         (is string= "- [ ] x" (session-text editor) "pairs ~a" pairs)
         (is string= "- [ ] x" (first lines)))

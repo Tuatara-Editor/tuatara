@@ -748,9 +748,9 @@ the dates by rule, with examples of each. The lines are filled to
      (write-help-section s "Repeaters"
                          :intro "After the time, a sign, a number and a unit letter:"
                          :rows (append
-                                '("+1w" "again a week on from the date it had, as often as it is done (cumulate)"
-                                  "++1w" "a week on from the date it had until that is still to come: a task done
-                                  late goes on to its next date in the future (catch up)"
+                                '("+1w" "a week on from the date it had, as many weeks as it takes to reach a
+                                  date still to come: a task done late goes on to its first date to come"
+                                  "++1w" "read as +1w"
                                   ".+1w" "a week on from the day it is done (restart)"
                                   "+1w/2w" "a limit after a slash is accepted and not acted on")
                                 (list "units" (format nil "~{~a~^, ~}"

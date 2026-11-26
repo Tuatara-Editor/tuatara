@@ -279,6 +279,30 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
   (is string= "a + b * c" (tuatara.defaults::org-export-visible-text "a + b * c"))
   (is string= "zeta" (tuatara.defaults::clocktable-sort-key "=Zeta=" #\a)))
 
+(define-test (org-internals keyword-lines-in-blocks-passed-over)
+  ;; a #+TODO: or #+STARTUP: line shown in a block, as an example, sets nothing; one after the block does
+  (let ((example (format nil "#+begin_example~%#+TODO: A | B~%#+STARTUP: content~%#+end_example~%")))
+    (is equal tuatara.defaults::*org-standard-todo-keywords* (tuatara.defaults::org-todo-keywords-of example))
+    (is equal '(("NEXT") . ("DONE"))
+        (tuatara.defaults::org-todo-keywords-of (format nil "~a#+todo: NEXT | DONE~%" example)))
+    (is string= "x" (tuatara.defaults::org-file-keyword (format nil "~a#+FILETAGS:  x ~%" example) "filetags"))
+    (let ((buffer (org-internals-buffer (format nil "~a#+STARTUP: overview~%" example))))
+      (unwind-protect (is equal '("overview") (tuatara.defaults::org-startup-options buffer))
+        (tuatara.buffer:kill-buffer buffer)))))
+
+(define-test (org-internals plain-text-of-a-long-cell)
+  ;; marks and links that never close cost no more than the cell's length; they still come off as before
+  (dolist (unit '("*a " "[[x][a "))
+    (let ((cell (with-output-to-string (out) (dotimes (i (floor 200000 (length unit))) (write-string unit out)))))
+      (multiple-value-bind (plain ended) (within-seconds 2 (lambda () (tuatara.defaults::org-plain-text cell)))
+        (true ended)
+        (is string= cell plain))))
+  (is string= "y and z b" (tuatara.defaults::org-plain-text "[[x][y]] and [[z]] [[a][b]]"))
+  (is string= "a b *c d" (tuatara.defaults::org-plain-text "*a* /b/ *c d"))
+  (is string= "*a*" (tuatara.defaults::org-plain-text "**a**"))
+  (is string= "x*y* *a" (tuatara.defaults::org-plain-text "x*y* *a"))
+  (is string= (format nil "*a~%b*") (tuatara.defaults::org-plain-text (format nil "*a~%b*"))))
+
 (define-test (org-internals dynamic-blocks-as-parsed)
   ;; what the parse calls a dynamic block is what updating the blocks finds: no blank needed after
   ;; #+BEGIN:, #+END with or without its colon, a line with more after #+END: no end
@@ -364,7 +388,10 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
                           (tuatara.export::org-macro-choices b)
                           :key #'tuatara.command:candidate-string
                           :test #'string=)))
-           (is string= "declared: second" (tuatara.command:candidate-annotation who)))
+           (is string= "declared: second" (tuatara.command:candidate-annotation who))
+           ;; a call is taken away by org-macro-unwrap, not by a choice
+           (false (find "none" (tuatara.export::org-macro-choices b)
+                        :key #'tuatara.command:candidate-string :test #'string=)))
       (tuatara.buffer:kill-buffer b)))
   (with-test-directory (dir)
     (alexandria:write-string-into-file (format nil "#+MACRO: R [$1]~%")
@@ -1018,3 +1045,31 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
          (docx (docx-text (tuatara.defaults::org-docx-document note))))
     (true (search "\\renewcommand{\\labelenumi}{\\Roman{enumi}.}" latex))
     (true (search "upperRoman" docx))))
+
+(define-test (org-internals whole-parse-asked-while-a-worker-runs)
+  ;; a mapped note edited while its whole parse runs: the parse of the text as it is now still comes
+  (let ((buffer (org-internals-buffer (format nil "* One~%Text~%")))
+        (gate (sb-thread:make-semaphore))
+        (tuatara.defaults::*org-parse-at-once* 0)
+        (tuatara.defaults::*org-parse-wait* 0))
+    (setf (tuatara.buffer:buffer-mapping buffer) :mapped)
+    (sb-int:encapsulate 'tuatara.defaults::org-assemble 'held
+                        (lambda (function &rest arguments)
+                          (sb-thread:wait-on-semaphore gate :timeout 10)
+                          (apply function arguments)))
+    (unwind-protect
+         (let ((state (tuatara.defaults::org-buffer-state buffer)))
+           (tuatara.defaults::org-buffer-parse buffer)
+           (tuatara.buffer:buffer-insert buffer 0 "x")
+           (let ((version (tuatara.buffer:buffer-version buffer)))
+             (tuatara.defaults::org-buffer-parse buffer)
+             (sb-thread:signal-semaphore gate 2)
+             (true (loop repeat 250
+                         when (let ((result (tuatara.defaults::org-state-result state)))
+                                (and result (>= (tuatara.defaults::org-version-number (third result))
+                                                (tuatara.defaults::org-version-number version))))
+                           return t
+                         do (sleep 1/50)))))
+      (sb-int:unencapsulate 'tuatara.defaults::org-assemble 'held)
+      (setf (tuatara.buffer:buffer-mapping buffer) nil)
+      (tuatara.buffer:kill-buffer buffer))))

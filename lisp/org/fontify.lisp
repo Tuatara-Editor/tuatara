@@ -28,16 +28,18 @@ it, \\[org-indent-mode] for the buffer.
 (defun org-startup-options (buffer)
   "The words of BUFFER's #+STARTUP: lines (overview, indent, ...), in order
 and in lower case: every such line in its first *ORG-STARTUP-READ-LIMIT*
-octets, a line cut there read as far as that. The text is read where it is
-kept, a window at a time; only those lines are copied out of it.
+octets, a line cut there read as far as that, the lines of its blocks
+\(#+begin_ to #+end_) passed over. The text is read where it is kept, a window
+at a time; only those lines are copied out of it.
 Complexity: O(the octets read)."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (limit (min (tuatara.text:rope-octet-length rope) *org-startup-read-limit*))
-         (keyword "#+STARTUP:")
+         (keywords #("#+STARTUP:" "#+BEGIN_" "#+END_"))
          (window (make-array 65536 :element-type '(unsigned-byte 8)))
-         ;; where the reading is: at a line's start, in KEYWORD (MATCHED octets of it), in a
-         ;; #+STARTUP: line's words (VALUE), or past a line that is none
-         (state :start) (matched 0) (value nil)
+         ;; where the reading is: at a line's start, in KEYWORD (MATCHED octets of it, which of
+         ;; KEYWORDS known from its third), in a #+STARTUP: line's words (VALUE), or past a line that
+         ;; is none; IN-BLOCK between a #+begin_ line and its #+end_
+         (state :start) (matched 0) (keyword nil) (value nil) (in-block nil)
          (words '()))
     (flet ((take ()
              (setf words
@@ -54,15 +56,23 @@ Complexity: O(the octets read)."
                      do (ecase state
                           (:start (case octet
                                     ((10 13 32 9))
-                                    (35 (setf state :keyword matched 1))
+                                    (35 (setf state :keyword matched 1 keyword nil))
                                     (t (setf state :skip))))
-                          (:keyword (cond ((member octet '(10 13)) (setf state :start))
-                                          ((char-equal (code-char octet) (char keyword matched))
-                                           (when (= (incf matched) (length keyword))
-                                             (setf state :value
-                                                   value (make-array 16 :element-type '(unsigned-byte 8)
-                                                                        :adjustable t :fill-pointer 0))))
-                                          (t (setf state :skip))))
+                          (:keyword
+                           (let ((c (code-char octet)))
+                             (when (and (= matched 2) (null keyword))
+                               (setf keyword (find c keywords :key (lambda (k) (char k 2)) :test #'char-equal)))
+                             (let ((k (or keyword "#+")))
+                               (cond ((member octet '(10 13)) (setf state :start))
+                                     ((and (< matched (length k)) (char-equal c (char k matched)))
+                                      (when (and (= (incf matched) (length k)) keyword)
+                                        (cond ((eq k (svref keywords 1)) (setf in-block t state :skip))
+                                              ((eq k (svref keywords 2)) (setf in-block nil state :skip))
+                                              (in-block (setf state :skip))
+                                              (t (setf state :value
+                                                       value (make-array 16 :element-type '(unsigned-byte 8)
+                                                                            :adjustable t :fill-pointer 0))))))
+                                     (t (setf state :skip))))))
                           (:value (if (member octet '(10 13))
                                       (progn (take) (setf state :start))
                                       (vector-push-extend octet value)))
@@ -113,7 +123,7 @@ Numbered items keep their numbers; the file keeps its bullets.
 
 (define-setting *org-checkbox-signs* nil
   "The signs list items' checkboxes show.
-\\[org-ctrl-c-ctrl-c] ticks them as before; the file keeps [ ], [-] and [X].
+\\[org-act-here] ticks them as before; the file keeps [ ], [-] and [X].
 - a list of (CHECKBOX . SIGN): each checkbox shown as its sign followed by a
   space, so that a sign drawn wider than one column shows whole, as in
   '((\"[ ]\" . \"☐\") (\"[-]\" . \"◐\") (\"[X]\" . \"☑\")).

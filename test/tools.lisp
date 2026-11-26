@@ -33,12 +33,11 @@ its @EXEC@ replaced by EXEC."
 
 (define-test (tools application-entries-as-before)
   ;; the application entry the program writes is, byte for byte, the one the scripts wrote: the packages'
-  ;; and the AppImage's (tuatara), the AppImage installed (its path, a style), the project's own
+  ;; and the AppImage's (tuatara), the AppImage installed (its path), the project's own
   (is string= (template-with-exec "tuatara.desktop.in" "tuatara") (tuatara.terminal::desktop-entry :application))
   (is string= (template-with-exec "tuatara.desktop.in"
-                                  "\"/home/k a/50%%/x\\\\\\\\y\\\\\"z\\\\`\\\\$w|q&r/tuatara\" --dark")
-      (tuatara.terminal::desktop-entry :application :program "/home/k a/50%/x\\y\"z`$w|q&r/tuatara"
-                                                    :arguments '("--dark")))
+                                  "\"/home/k a/50%%/x\\\\\\\\y\\\\\"z\\\\`\\\\$w|q&r/tuatara\"")
+      (tuatara.terminal::desktop-entry :application :program "/home/k a/50%/x\\y\"z`$w|q&r/tuatara"))
   (is string= (template-with-exec "tuatara.desktop.in" "\"/opt/my tools/tuatara-tui.sh\"")
       (tuatara.terminal::desktop-entry :application :program "/opt/my tools/tuatara-tui.sh")))
 
@@ -58,7 +57,7 @@ or is not installed here; what it says as a second value."
   ;; starting a client that falls back to an editor of its own
   (with-test-directory (directory)
     (let* ((dir (namestring (merge-pathnames "applications/" directory)))
-           (paths (tuatara.terminal::write-application-entries dir "/opt/tuatara 1/tuatara" "--light")))
+           (paths (tuatara.terminal::write-application-entries dir "/opt/tuatara 1/tuatara")))
       (is equal (list (concatenate 'string dir "tuatara.desktop")
                       (concatenate 'string dir "tuatara-client.desktop"))
           paths)
@@ -67,7 +66,7 @@ or is not installed here; what it says as a second value."
           (true valid "~a: ~a" path said)))
       (let ((client (file-text (second paths))))
         (true (search (format nil "~%Name=Tuatara (client)~%") client))
-        (true (search (format nil "~%Exec=\"/opt/tuatara 1/tuatara\" --light --gui --client --fallback %F~%") client)))
+        (true (search (format nil "~%Exec=\"/opt/tuatara 1/tuatara\" --gui --client --fallback %F~%") client)))
       ;; asked by the environment, as the scripts ask: the directory there, the program and its words as arguments
       (let ((again (namestring (merge-pathnames "again/" directory))))
         (sb-posix:setenv "TUATARA_DESKTOP_ENTRIES" again 1)
@@ -79,9 +78,9 @@ or is not installed here; what it says as a second value."
             (file-text (concatenate 'string again "tuatara-client.desktop")))))))
 
 (define-test (tools desktop-entries-request-checked)
-  ;; the request to write desktop entries is taken only for this program and option words, into a directory
-  ;; named from the root: a file named on the command line with the variable left set never becomes a
-  ;; program the desktop runs, and the program starts as it would
+  ;; the request to write desktop entries is taken only for this program and no word after it, into a
+  ;; directory named from the root: a file named on the command line with the variable left set never
+  ;; becomes a program the desktop runs, and the program starts as it would
   (with-test-directory (directory)
     (let* ((dir (namestring (merge-pathnames "applications/" directory)))
            (evidence (namestring (put-file (merge-pathnames "attachment.exe" directory) "MZ"))))
@@ -94,14 +93,14 @@ or is not installed here; what it says as a second value."
                  (false (sb-posix:getenv "TUATARA_DESKTOP_ENTRIES") "the request goes, taken or not")
                  (values code said))))
         (dolist (refused (list (list dir evidence) (list "applications/" "tuatara")
-                               (list dir "tuatara" evidence) (list dir "tuatara" "--dark" "~/x.exe")
+                               (list dir "tuatara" evidence) (list dir "tuatara" "--gui")
                                (list dir)))
           (multiple-value-bind (code said) (apply #'asked refused)
             (false code "~s taken" refused)
             (true (search "TUATARA_DESKTOP_ENTRIES left alone" said))
             (false (probe-file (concatenate 'string dir "tuatara.desktop")))))
-        (is eql 0 (asked dir "tuatara" "--dark"))
-        (true (search (format nil "~%Exec=tuatara --dark --gui %F~%")
+        (is eql 0 (asked dir "tuatara"))
+        (true (search (format nil "~%Exec=tuatara --gui %F~%")
                       (file-text (concatenate 'string dir "tuatara.desktop"))))))
     ;; this program (the AppImage's path when it runs from one), or the launcher of the checkout it was
     ;; built in
@@ -111,11 +110,10 @@ or is not installed here; what it says as a second value."
         (put-file (ensure-directories-exist file) ""))
       (false (tuatara.terminal::desktop-entries-refusal "/a/" (list self) :self self))
       (false (tuatara.terminal::desktop-entries-refusal "/a/" (list launcher) :self self))
-      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh" "--light") :self "/bin/sh"))
+      (true (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh" "--light") :self "/bin/sh"))
       (true (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh") :self self))))
-  ;; every word of the Exec line quoted as it needs
-  (is string= "--dark" (tuatara.terminal::exec-argument "--dark" :plain t))
-  (is string= "\"a b\"" (tuatara.terminal::exec-argument "a b" :plain t)))
+  ;; the program quoted as the Exec line needs
+  (is string= "\"a b\"" (tuatara.terminal::exec-argument "a b")))
 
 (define-test (tools desktop-entries-program-named-from-root)
   ;; the program an entry starts is named from the root, never relative to where the request was made; an
@@ -344,6 +342,26 @@ generate_parser \"$1\" \"$cli\" 2>&1; echo \"went on\"" (tools-script "grammar-b
         (put "lisp/terminal/shim.c" "int changed;")
         (isnt = 0 (nth-value 1 (run)))))))
 
+(define-test (tools inside-starts-toolbox-only-from-its-own-environment)
+  ;; another HOME, data or configuration directory, a CONTAINERS_ variable or no runtime
+  ;; directory around toolbox moves podman to a new pause process, losing every running
+  ;; container: refused before toolbox is asked anything, even which containers there are
+  (flet ((own-p (environment)
+           (string= "yes" (string-trim '(#\Newline)
+                                       (bash-output (format nil "home=$(getent passwd \"$(id -un)\" | cut -d: -f6)
+export HOME=\"$home\" XDG_RUNTIME_DIR=/run/user/1; unset XDG_DATA_HOME XDG_CONFIG_HOME
+~a
+. '~a'; own_environment_p 2>/dev/null && echo yes || echo no" environment (tools-script "inside.sh")))))))
+    (true (own-p ""))
+    (true (own-p "export XDG_DATA_HOME=\"$home/.local/share\""))
+    (false (own-p "export HOME=/tmp/fence-home"))
+    (false (own-p "export XDG_DATA_HOME=/tmp/fence-data"))
+    (false (own-p "export XDG_CONFIG_HOME=/tmp/fence-config"))
+    (false (own-p "export CONTAINERS_STORAGE_CONF=/tmp/storage.conf"))
+    (false (own-p "unset XDG_RUNTIME_DIR")))
+  (let ((text (tools-text "inside.sh")))
+    (true (< (search "own_environment_p || return 1" text) (search "toolbox list --containers" text)))))
+
 (define-test (tools inside-says-what-is-missing)
   ;; run on this system, a program that is not installed is said with what to install,
   ;; after env and its NAME=VALUE words, as the package tests run sbcl; one that is runs
@@ -416,6 +434,19 @@ printed, the error output after the output."
       (uiop:run-program (list* "bash" (tools-script "licence-names.sh") arguments)
                         :output :string :error-output :string :ignore-error-status t)
     (values status (concatenate 'string out error))))
+
+(define-test (tools licence-names-boost-and-unicode-not-mit)
+  ;; the Boost and the Unicode licence open as the MIT one does, and are named as themselves
+  (with-test-directory (directory)
+    (flet ((names (name text)
+             (let ((path (uiop:native-namestring (write-test-file directory name text))))
+               (string-right-trim '(#\Newline) (nth-value 1 (licence-names-of path))))))
+      (is string= "BSL-1.0"
+          (names "boost/LICENSE" "Permission is hereby granted, free of charge, to any person or organization
+obtaining a copy of the software and accompanying documentation covered by this license"))
+      (is string= "Unicode-3.0"
+          (names "unicode/LICENSE" "UNICODE LICENSE V3 Permission is hereby granted, free of charge, to any person
+obtaining a copy of data files and any associated documentation (the Data Files)")))))
 
 (define-test (tools licence-names-read-from-the-text)
   ;; each licence a file holds is named, two in one file both; a label agrees
@@ -1196,18 +1227,16 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
     (true (search "run: tools/appimage.sh" workflow))
     (false (cl-ppcre:scan "tools/appimage\\.sh [^\\s#]" workflow))))
 
-(define-test (tools legacy-styles-only)
-  ;; --dark and --light go in the desktop entry only when the legacy AppImage installs itself
+(define-test (tools install-desktop-takes-no-style)
+  ;; --dark and --light went with the legacy AppImage: install-desktop.sh refuses an argument after FILE
   (with-test-directory (directory)
     (let ((file (uiop:native-namestring (write-test-file directory "Tuatara.AppImage" "not one"))))
-      (flet ((install (&rest environment)
-               (nth-value 1 (uiop:run-program (list "bash" (tools-script "install-desktop.sh") "--appimage" file "--dark")
-                                              :output nil :error-output :string :ignore-error-status t
-                                              :environment (list* (format nil "HOME=~a" (uiop:native-namestring directory))
-                                                                  "PATH=/usr/bin:/bin" environment)))))
-        (true (search "taken by the legacy AppImage alone" (install)))
-        (true (search "taken by the legacy AppImage alone" (install "TUATARA_APPIMAGE=current")))
-        (true (search "is no AppImage" (install "TUATARA_APPIMAGE=legacy")))))))
+      (flet ((install (argument)
+               (uiop:run-program (list "bash" (tools-script "install-desktop.sh") "--appimage" file argument)
+                                 :output nil :error-output :string :ignore-error-status t
+                                 :environment (list (format nil "HOME=~a" (uiop:native-namestring directory))
+                                                    "PATH=/usr/bin:/bin"))))
+        (true (search "is not an option" (nth-value 1 (install "--dark"))))))))
 
 (define-test (tools bundled-libraries-each-once)
   ;; the libraries the AppImage bundles are listed once each, a root library
@@ -1495,7 +1524,9 @@ print(harness.count_text(sys.argv[2], b'a'))"
       (write-test-file directory "r/b.lisp"
                        (format nil "(in-package #:one)~%(defun ask-it (prompt) (read-string prompt))~%~
                                     (defun stop-words (job) (format nil \"Stop ~~a?~~@[ ~~a~~]\" job nil))~%")))
-    (uiop:run-program (list "bash" "-c" "cd \"$1\" && git init -q && git add . && git -c user.name=t -c user.email=t@example.invalid commit -q -m x"
+    (uiop:run-program (list "bash" "-c"
+                            (concatenate 'string "cd \"$1\" && git init -q && git add . && "
+                                         "git -c user.name=t -c user.email=t@example.invalid commit -q -m x")
                             "_" (uiop:native-namestring (merge-pathnames "r/" directory))))
     (let ((out (run-python-tool "long-prompts.py" (uiop:native-namestring (merge-pathnames "r/" directory)))))
       (true (search "r/a.lisp:2: yes-or-no-p* 153" out) "~a" out)
@@ -1508,6 +1539,25 @@ print(harness.count_text(sys.argv[2], b'a'))"
       (true (search "r/a.lisp:13: y-or-n-p* 18, list" out) "~a" out)
       (false (search (format nil "~%r/b.lisp") out) "~a" out)
       (true (search "6 questions" out) "~a" out))))
+
+(define-test (tools health-lists-prompts-with-lists-and-explanations)
+  ;; a list question inside a format prompt, and a prompt that explains before its question mark, are listed
+  (with-test-directory (directory)
+    (write-test-file directory "r/a.lisp"
+                     (format nil "(in-package #:one)~%~
+                                  (defun f (items) (read-several ~
+                                    (format nil \"Take off ~~a: \" (list-question nil \"message\" items))))~%~
+                                  (defun g (n) (yes-or-no-p* ~
+                                    (format nil \"Paste ~~d lines; the program runs each; go on?\" n)))~%~
+                                  (defun h () (yes-or-no-p* \"Delete the file?\"))~%"))
+    (uiop:run-program (list "bash" "-c"
+                            (concatenate 'string "cd \"$1\" && git init -q && git add . && "
+                                         "git -c user.name=t -c user.email=t@example.invalid commit -q -m x")
+                            "_" (uiop:native-namestring (merge-pathnames "r/" directory))))
+    (let ((out (run-python-tool "long-prompts.py" (uiop:native-namestring (merge-pathnames "r/" directory)))))
+      (true (search "r/a.lisp:2: read-several 21, list" out) "~a" out)
+      (true (search "r/a.lisp:3: yes-or-no-p* 53, before ?" out) "~a" out)
+      (false (search "r/a.lisp:4:" out) "~a" out))))
 
 (defun tools-text (name)
   "The text of the file NAME in this repository's tools/."
@@ -1904,7 +1954,10 @@ print(*[p.name for p in repositories.package_roots()])"
     (write-test-file directory "r/a.lisp"
                      (format nil "(in-package #:one)~%(format t \"two::g ~~a ; x\" (y))~%(f #\\; three::i)~%~
                                   #| four::j |#~%(five::k \"a;b\" six::l)~%"))
-    (uiop:run-program (list "bash" "-c" "cd \"$1\" && git init -q && git add . && git -c user.name=t -c user.email=t@example.invalid commit -q -m x"
+    (write-test-file directory "r/tools/t.lisp" (format nil "(in-package #:one)~%(seven::m)~%"))
+    (uiop:run-program (list "bash" "-c"
+                            (concatenate 'string "cd \"$1\" && git init -q && git add . && "
+                                         "git -c user.name=t -c user.email=t@example.invalid commit -q -m x")
                             "_" (uiop:native-namestring (merge-pathnames "r/" directory))))
     (let ((out (run-python-tool "package-reaches.py" (uiop:native-namestring (merge-pathnames "r/" directory)))))
       (false (search "two::g" out))
@@ -1912,4 +1965,5 @@ print(*[p.name for p in repositories.package_roots()])"
       (true (search "three::i" out))
       (true (search "five::k" out))
       (true (search "six::l" out))
+      (false (search "seven::m" out) "the files of tools/ are not counted")
       (true (search "3 references" out) "~a" out))))

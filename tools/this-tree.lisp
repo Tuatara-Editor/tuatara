@@ -1,7 +1,7 @@
 ;;;; tools/this-tree.lisp --- Load Tuatara's systems from this tree and no other one Quicklisp or ASDF knows of.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; Loaded by what starts the editor or its tools from the sources (tools/tui.lisp, tools/swank.lisp, in_tree of
+;;;; Loaded by what starts the editor or its tools from the sources (tools/tui.lisp, in_tree of
 ;;;; tools/inside.sh), so that a checkout elsewhere, which ASDF may know of first, is never the one run.
 
 (load (merge-pathnames "quicklisp.lisp" *load-truename*))

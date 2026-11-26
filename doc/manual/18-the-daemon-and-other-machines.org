@@ -48,8 +48,19 @@ reads what you type in a terminal.
   in the terminal. The client draws that window itself, with the graphics card
   as =*gui-renderer*= says, just as plain =tuatara --gui= does. ~M-x
   check-health~ in it measures each way of drawing on the client's machine.
-- =tuatara --stop= stops the daemon. It asks about any change you have not
-  saved, as described under "Stopping the daemon" below.
+- =tuatara --stop= stops the daemon. It asks nothing; it writes the changes
+  you have not saved as auto-saved copies first, as described under
+  "Stopping the daemon" below. It ends by saying =tuatara: The daemon NAME
+  (pid:1234) is stopped=, with the daemon's process number (pid).
+
+- =tuatara --daemons= lists the daemons running on this computer, one line
+  each: the name to give =--client= and =--stop=, its process number, when it
+  started, how many clients show it and how many buffers hold changes not
+  saved. It says =No daemon is running= when there is none. A daemon that
+  ended without tidying up, its socket left behind, is said to be gone, and one
+  that does not answer within 2 seconds, or whose connection fails while it is
+  asked, is said to be not answering; asking changes nothing in a daemon. =tuatara --daemons=pinetree= lists those on the
+  server pinetree, asked over ssh as a client on another machine is (below).
 
 Words that mean the same as for plain =tuatara= work after =--client= too: a
 line number such as =+40= before a file name, =--safe= and =--hex=. Chapter 12
@@ -81,7 +92,7 @@ buffers apart. =--start= goes with a name as well: =tuatara --client=work
 ~C-x C-c~ in a client closes that client. Its screen goes, your terminal is
 yours again, and the daemon carries on. Buffers with changes you have not
 saved stay as they are, ready for the next client. To end the daemon itself,
-use =daemon-quit= or =tuatara --stop=.
+press ~C-x C-d~ (=daemon-quit=) or use =tuatara --stop=.
 
 A client also closes when its last buffer is closed. If you press ~C-x k~ on
 the only buffer a client has, the client ends as if you had pressed ~C-x C-c~.
@@ -232,30 +243,34 @@ the person who opened them.
 
 ** Stopping the daemon
 
-~M-x daemon-quit~ in any client, or =tuatara --stop= in a terminal, stops the
-daemon. It asks about every change you have not saved, in every buffer of
-every client, those of ended clients included, one group at a time. For each
-group you press one of three keys:
+~C-x C-d~ (=daemon-quit=) in any client stops the daemon. It asks one
+question about every buffer of the daemon that holds changes you have not
+saved, in every client, those of ended clients included. The names of the
+buffers stand beside the question, as with ~C-x C-c~ in chapter 7:
 
-- ~s~ saves the changes of that group.
-- ~l~ leaves them unsaved. They are lost.
+- ~y~ then ~RET~ saves them all, waits for the saves, then stops the daemon.
+  When a save is refused or fails, the daemon keeps running and says which
+  buffers are not saved.
+- ~n~ then ~RET~ stops the daemon without saving. Each change is first
+  written to its auto-saved copy, so ~M-x recover-file~ can take it back. A
+  buffer no copy keeps, such as a new buffer with no file, is named beside the
+  question as lost.
 - ~C-g~ stops the question and keeps the daemon running.
 
-The daemon ends only when the saves you chose have been written. If you press
-~C-g~ while it waits, it carries on running and says that saves are still
-under way. Every other client is told that the daemon ends, gives its terminal
-back and exits.
+Every other client is told that the daemon ends, gives its terminal back and
+exits with code 1. ~C-x C-c~ in a client still closes that client alone.
 
-=tuatara --stop= typed where there is no terminal, in a script, cannot ask. It
-stops the daemon only when no change would be lost. It writes unsaved changes
-as auto-saved copies, if the auto-save setting of chapter 7 allows it. When
-some change has no copy, the daemon goes on, and the message says how to stop
-it from a terminal. When the system itself asks the daemon to end, as at
-logout, there is also no one to ask. It writes its auto-saved copies first and
-waits up to thirty seconds for saves already begun.
+=tuatara --stop=, typed in a terminal or not, asks nothing. It writes the
+changes not saved as auto-saved copies, as the auto-save setting of chapter 7
+allows, and then stops the daemon. When some change has no copy, such as a
+new buffer or an encrypted file, the daemon goes on. The terminal says which
+buffers hold such changes. Stop the daemon from a client with ~C-x C-d~ then.
+When the system itself asks the daemon to end, as at logout, there is also no
+one to ask. It writes its auto-saved copies first and waits up to thirty
+seconds for saves already begun.
 
-A daemon told to stop always ends. If it has not ended in 60 seconds, or in 90
-when there was no terminal to ask, the daemon is ended all the same, so that a
+A daemon told to stop always ends. If it has not ended in 60 seconds, the
+daemon is ended all the same, so that a
 new daemon of that name can start. Before it goes, it writes in its log
 (=~/.cache/tuatara/daemon-NAME.log=) which threads were running and the calls
 its editor was waiting in. The log names functions only, never what they were
@@ -275,7 +290,7 @@ group, and open safely when a client takes the group up.
 1. Add =(setf *keep-session* t)= to your init file and restart the daemon
    with =tuatara --stop= followed by =tuatara --daemon=.
 2. Type =tuatara --client ~/notes.txt=, then press ~C-x C-c~. Type =tuatara
-   --stop= and answer ~s~ if asked.
+   --stop=.
 3. Start the daemon again and type =tuatara --client=. The group of the
    client that ended last is taken up, and =notes.txt= is open.
 #+end_try

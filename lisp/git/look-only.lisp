@@ -511,6 +511,44 @@ the shadow past *GIT-SHADOW-MOST*."
                              (tuatara.io:copy-open-file-to in from to))))
                (sb-posix:close in)))))))
 
+(defun git-shadow-octets (path)
+  "The octets the copy at PATH in a shadow holds: a file's size, or the sizes
+of every file within a directory, no link followed; 0 when nothing is there."
+  (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
+    (case (and stamp (tuatara.io:stamp-kind stamp))
+      (:regular (tuatara.io:stamp-size stamp))
+      (:directory (loop for (name nil size own) in (tuatara.io:directory-entries path)
+                        sum (case own
+                              (:regular size)
+                              (:directory (git-shadow-octets (tuatara.io:path-join path name)))
+                              (t 0))))
+      (t 0))))
+
+(defun git-replacing-copy (shadow path function)
+  "Call FUNCTION, of no arguments, which copies into SHADOW what takes the
+place of the copy at PATH there, and return what it returns: that copy's
+octets are taken off what SHADOW counts as copied (GIT-SHADOW-COPIED), and
+counted again when FUNCTION is refused and the copy stays."
+  (let ((old (min (git-shadow-octets path) (git-shadow-copied shadow))) (done nil))
+    (decf (git-shadow-copied shadow) old)
+    (unwind-protect (multiple-value-prog1 (funcall function) (setf done t))
+      (unless done (incf (git-shadow-copied shadow) old)))))
+
+(defun git-copy-over (top from to what shadow)
+  "Copy the file FROM, of the repository at TOP, into SHADOW as WHAT
+\(GIT-COPY-FILE) to a new name beside TO, then rename it over TO, so that a
+run of git reading the shadow meanwhile finds the old copy or the new one,
+never half of one; TO's octets counted no longer (GIT-REPLACING-COPY). TO is
+taken away when FROM is not there."
+  (git-replacing-copy shadow to
+                      (lambda ()
+                        (if (tuatara.io:path-kind from :follow nil)
+                            (let ((fresh (format nil "~a.~a" to (tuatara.io:random-name))))
+                              (git-copy-file top from fresh what shadow)
+                              (when (tuatara.io:path-kind fresh :follow nil)
+                                (tuatara.io:rename-path fresh to :replace t)))
+                            (tuatara.io:remove-file-if-there to)))))
+
 (defun git-copy-tree (top from to what shadow)
   "Copy the directory FROM, of the repository at TOP, into TO, in SHADOW: its
 directories made, its files copied as WHAT (GIT-COPY-FILE), a link or anything
@@ -628,21 +666,33 @@ must be a directory. GIT-REFUSED otherwise."
   "Copy into SHADOW the logs of the references of the repository at TOP, its
 own directories DIRECTORY and COMMON, WHICH of them: :STASH the stash's alone,
 :ALL every one (HEAD's from DIRECTORY); again only when they changed since they
-were copied last."
+were copied last, to a new place first and then put in the old one's, so that a
+run of git reading the shadow meanwhile finds whole logs."
   (let* ((from (tuatara.io:path-join common (if (eq which :stash) "logs/refs/stash" "logs/")))
          (rows (if (eq which :stash) (git-file-row from) (git-tree-entries top from)))
          (key (cons which rows)))
     (unless (equal key (git-shadow-logs-stamps shadow))
-      (let ((to (tuatara.io:path-join (git-shadow-directory shadow) (if (eq which :stash) "logs/refs/stash" "logs/"))))
+      (let ((place (git-shadow-directory shadow)))
         (if (eq which :stash)
-            (progn (tuatara.io:remove-file-if-there to)
-                   (git-copy-file top from to "logs" shadow))
-            (progn (ignoring-errors-reported ("deleting the copy ~a" to) (tuatara.io:delete-tree to))
-                   (git-copy-tree top from to "logs" shadow)
+            (git-copy-over top from (tuatara.io:path-join place "logs/refs/stash") "logs" shadow)
+            (let ((to (tuatara.io:path-join place "logs"))
+                  (fresh (tuatara.io:path-join place (format nil "logs.~a" (tuatara.io:random-name))))
+                  (aside (tuatara.io:path-join place (format nil "logs.~a" (tuatara.io:random-name)))))
+              (git-replacing-copy
+               shadow to
+               (lambda ()
+                 (handler-bind ((error (lambda (e)
+                                         (declare (ignore e))
+                                         (ignoring-errors-reported ("deleting the copy ~a" fresh)
+                                           (tuatara.io:delete-tree fresh)))))
+                   (git-copy-tree top from fresh "logs" shadow)
                    (unless (string= directory common)
-                     (tuatara.io:remove-file-if-there (tuatara.io:path-join to "HEAD"))
-                     (git-copy-file top (tuatara.io:path-join directory "logs/HEAD") (tuatara.io:path-join to "HEAD")
-                                    "logs" shadow)))))
+                     (git-copy-over top (tuatara.io:path-join directory "logs/HEAD") (tuatara.io:path-join fresh "HEAD")
+                                    "logs" shadow)))
+                 (when (tuatara.io:path-kind to :follow nil)
+                   (tuatara.io:rename-path to aside))
+                 (tuatara.io:rename-path fresh to)))
+              (ignoring-errors-reported ("deleting the copy ~a" aside) (tuatara.io:delete-tree aside)))))
       (setf (git-shadow-logs-stamps shadow) key))))
 
 (defun make-git-shadow-of (top directory common)
@@ -694,13 +744,7 @@ has no index. GIT-REFUSED when one is not a file."
         (place (git-shadow-directory shadow)))
     (unless (equal rows (git-shadow-index-stamps shadow))
       (dolist (name (cons "index" (mapcar #'first (rest rows))))
-        (let ((from (tuatara.io:path-join directory name))
-              (to (tuatara.io:path-join place name))
-              (fresh (tuatara.io:path-join place (format nil "~a.~a" name (tuatara.io:random-name)))))
-          (if (tuatara.io:path-kind from :follow nil)
-              (progn (git-copy-file top from fresh "index" shadow)
-                     (tuatara.io:rename-path fresh to :replace t))
-              (tuatara.io:remove-file-if-there to))))
+        (git-copy-over top (tuatara.io:path-join directory name) (tuatara.io:path-join place name) "index" shadow))
       (setf (git-shadow-index-stamps shadow) rows))))
 
 (defparameter *git-commands-without-index*
@@ -939,6 +983,17 @@ when it is there, or there is none."
       (and directory (not (and own (string= directory own) (string= common own)))
            (if (string= directory common) directory (format nil "~a (its common directory ~a)" directory common))))))
 
+(defun git-look-only-reason (top)
+  "Why git only reads the repository at TOP, a phrase, or NIL when you trust
+it and git reads its own directory (GIT-READS-ONLY-P): it is evidence or
+answered look only (PROJECT-LOOK-ONLY-REASON), its .git leads into a
+repository that is, or it is not trusted at all."
+  (and (git-reads-only-p top)
+       (or (project-look-only-reason top)
+           (and (project-trusted-p top)
+                (format nil "its git directory ~a is of a repository looked at only" (git-directory-elsewhere top)))
+           "it is not trusted")))
+
 (defun call-git-reading (top directory arguments function)
   "Call FUNCTION with the arguments, the environment and the directory to run in
 that git reads the repository at TOP with, not trusted, ARGUMENTS asked for in
@@ -953,7 +1008,7 @@ raw forms. The shadow is let go of once FUNCTION returns."
       (error 'git-refused :operation (or (first (git-command-words arguments)) "") :path top
                           :reason (escape-controls (format nil "~a is looked at only (~a): ~a"
                                                            (abbreviated-path top)
-                                                           (or (project-look-only-reason top) "it is not trusted")
+                                                           (or (git-look-only-reason top) "it is not trusted")
                                                            refusal)))))
   (multiple-value-bind (dir common) (git-real-directories top)
     (let ((words (git-command-words arguments)))

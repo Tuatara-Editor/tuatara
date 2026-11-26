@@ -185,9 +185,11 @@ nothing for a line that does not match."
                  ;; the line from LINE, its text to END, the next from NEXT; its octets in OCTETS from AT
                  (declare (type fixnum line end next at))
                  (incf since (- next line))
-                 (when (and progress (> since 262144))
-                   (sb-ext:atomic-incf (car progress) since)
-                   (setf since 0))
+                 (when (> since 262144)
+                   ;; asked by the octets too, so that a run of long lines does not keep a stop waiting
+                   (when progress (sb-ext:atomic-incf (car progress) since))
+                   (setf since 0)
+                   (when (and halt (funcall halt)) (return-from matching)))
                  (multiple-value-bind (start text-end after)
                      (if ends (line-record memo rope line next ends) (values line end next))
                    (let* ((first (= start line))
@@ -531,7 +533,7 @@ background) and undo and redo go through, the filters worked out again
 after them (REFILTER-TOUCHED)."
   (let ((bounds (tuatara.display:hidden-bounds buffer)))
     (when (and bounds
-               (not (and *editor* (member (editor-this-command *editor*) '(undo redo))))
+               (not tuatara.buffer:*undoing*)
                (not (and (= 1 (length edits))
                          (let ((edit (aref edits 0)))
                            (and (zerop (tuatara.text:edit-start edit))
@@ -548,6 +550,6 @@ after them (REFILTER-TOUCHED)."
 
 (defun stretch-before (bounds position)
   "The index in BOUNDS (TUATARA.DISPLAY:HIDE-RANGES) of the first stretch
-that ends at POSITION or after it, less one, by halving."
+ending at or after POSITION less one, found by halving."
   (let ((k (tuatara.runtime:bisect (k 0 (ash (length bounds) -1)) (< (1+ (aref bounds (1+ (* 2 k)))) position))))
     (* 2 k)))

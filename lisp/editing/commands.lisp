@@ -33,7 +33,7 @@ from its partner (UNJOINED-LINE-ENDS)."
 
 (defun insert-count ()
   "The count of a command that inserts that many: the prefix argument, or 1;
-an error when it is negative or more than 10,000,000."
+an error when it is negative or more than *INSERT-COUNT-LIMIT*."
   (let ((n (prefix)))
     (cond ((minusp n) (refuse "Repetition argument has to be non-negative"))
           ((> n *insert-count-limit*)
@@ -392,14 +392,14 @@ recorded keys play, moving up on the first line fails the play."
 (define-command forward-word ()
   "Move point to the end of the next word (or the prefix argument's worth,
 back with a negative one): past what is not a word, then past the word. No
-further than 64 MB, which is said at once."
+further than *TEXT-SCAN-LIMIT* octets, which is said at once."
   (let ((n (prefix)))
     (goto (if (minusp n) (words-backward (current-buffer) (point) (- n)) (words-forward (current-buffer) (point) n)))))
 
 (define-command backward-word ()
   "Move point to the start of the previous word (or the prefix argument's
-worth, forward with a negative one). No further than 64 MB, which is said at
-once."
+worth, forward with a negative one). No further than *TEXT-SCAN-LIMIT*
+octets, which is said at once."
   (let ((n (prefix)))
     (goto (if (minusp n) (words-forward (current-buffer) (point) (- n)) (words-backward (current-buffer) (point) n)))))
 
@@ -1104,31 +1104,31 @@ would keep it.
   clipboard. 8 million as standard."
   :values (integer 0 *))
 
-(define-setting *kill-ring-max* 120
+(define-setting *kill-ring-length* 120
   "The most kills the kill ring keeps; older ones are forgotten. Raise it to
 yank text cut long ago; each kill kept holds its text in memory, up to
-*KILL-RING-MAX-SIZE* all together. Lower it to forget sooner.
+*KILL-RING-OCTETS* all together. Lower it to forget sooner.
 - a whole number, 1 or more: how many kills are kept. 120 as standard."
   :values (integer 1 *))
 
-(define-setting *kill-ring-max-size* (* 64 1024 1024)
+(define-setting *kill-ring-octets* (* 64 1024 1024)
   "The most characters (octets, for a kill kept where it is) the kills on the
 kill ring may hold together: past it the oldest are forgotten, the latest
 always kept, however large. Lower it to hold less memory with kills.
 - a whole number, 1 or more: the characters. 64 M (67,108,864) as standard.
-- nil: no limit but *KILL-RING-MAX*."
+- nil: no limit but *KILL-RING-LENGTH*."
   :values (or (member nil) (integer 1 *)))
 
 (defun push-kill (text)
-  "Put TEXT first on the kill ring, forgetting the kills past *KILL-RING-MAX*,
-and the oldest past *KILL-RING-MAX-SIZE* together."
-  (let ((tail (nthcdr (1- (max 1 *kill-ring-max*)) (push text (editor-kill-ring *editor*)))))
+  "Put TEXT first on the kill ring, forgetting the kills past *KILL-RING-LENGTH*,
+and the oldest past *KILL-RING-OCTETS* together."
+  (let ((tail (nthcdr (1- (max 1 *kill-ring-length*)) (push text (editor-kill-ring *editor*)))))
     (when tail (setf (cdr tail) nil)))
-  (when *kill-ring-max-size*
+  (when *kill-ring-octets*
     (let ((total 0))
       (loop for cell on (editor-kill-ring *editor*)
             do (incf total (kill-size (car cell)))
-               (when (and (cdr cell) (> (+ total (kill-size (cadr cell))) *kill-ring-max-size*))
+               (when (and (cdr cell) (> (+ total (kill-size (cadr cell))) *kill-ring-octets*))
                  (setf (cdr cell) nil)
                  (return))))))
 
@@ -1311,7 +1311,7 @@ shown instead, and the key pressed again kills."
            (let ((b (current-buffer)))
              (goto (kill-span b start end :prepend (< (point) end)))
              (setf (tuatara.buffer:buffer-mark-active-p b) nil)))
-          (t (message "The region is empty")))))
+          (t (say-not-run 'kill-region)))))
 
 (define-command kill-ring-save ()
   "Copy the text between point and mark to the kill ring without deleting it;
@@ -1323,7 +1323,7 @@ left out, the copy holding only the lines shown."
           ((and start (< start end))
            (copy-region-text (current-buffer) start end)
            (setf (tuatara.buffer:buffer-mark-active-p (current-buffer)) nil))
-          (t (message "The region is empty")))))
+          (t (say-not-run 'kill-ring-save)))))
 
 (defun copy-region-text (buffer start end)
   "Copy the text of BUFFER from START below END to the kill ring and the
@@ -1401,7 +1401,7 @@ is a keyboard macro's work."
 
 ;;; The mark ring
 
-(define-setting *mark-ring-max* 16
+(define-setting *mark-ring-length* 16
   "How many marks each buffer's mark ring keeps, and the global mark ring
 across buffers; past that the oldest goes.
 - a whole number, 0 or more: how many marks are kept; 16 as standard."
@@ -1432,19 +1432,19 @@ back to the mark before.
 (defun push-mark (&key (position (point)) quiet activate (buffer (current-buffer)))
   "Set BUFFER's mark at POSITION (point by default), the mark it had put on
 its mark ring; when the newest mark of the global mark ring is another
-buffer's, this one goes there too (*MARK-RING-MAX* kept in each). Says Mark
+buffer's, this one goes there too (*MARK-RING-LENGTH* kept in each). Says Mark
 set unless QUIET; ACTIVATE makes the region active."
   (let ((old (tuatara.buffer:buffer-mark buffer))
         (version (tuatara.buffer:buffer-version buffer)))
     (when old
       (let ((ring (cons (tuatara.text:make-anchor version old) (mark-ring buffer))))
         (setf (tuatara.buffer:buffer-local buffer 'mark-ring)
-              (if (> (length ring) *mark-ring-max*) (subseq ring 0 *mark-ring-max*) ring))))
+              (if (> (length ring) *mark-ring-length*) (subseq ring 0 *mark-ring-length*) ring))))
     (setf (tuatara.buffer:buffer-mark buffer) position)
     (unless (and *global-mark-ring* (eq (car (first *global-mark-ring*)) buffer))
       (push (cons buffer (tuatara.text:make-anchor version position)) *global-mark-ring*)
-      (when (> (length *global-mark-ring*) *mark-ring-max*)
-        (setf *global-mark-ring* (subseq *global-mark-ring* 0 *mark-ring-max*))))
+      (when (> (length *global-mark-ring*) *mark-ring-length*)
+        (setf *global-mark-ring* (subseq *global-mark-ring* 0 *mark-ring-length*))))
     (unless quiet (message "Mark set"))
     (when activate (setf (tuatara.buffer:buffer-mark-active-p buffer) t))
     nil))

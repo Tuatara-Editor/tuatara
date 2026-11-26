@@ -36,7 +36,7 @@
                 #:rimu-show-nearest #:rimu-source #:rimu-source-buffer-name #:rimu-source-call-with-entry
                 #:rimu-source-listing #:rimu-source-open #:rimu-source-refusal-words #:rimu-source-shown
                 #:rimu-source-taken #:rimu-source-top #:rimu-toggle #:rimu-toggle-picture
-                #:rimu-update #:rimu-verify-files #:save-buffer-with-care #:save-buffers-kill-editor
+                #:rimu-update #:save-buffer-with-care #:save-buffers-kill-editor
                 #:plain-path-p #:say-in-background #:sectioned-pieces #:set-made-text #:show-file-metadata
                 #:show-list-text #:shown-file #:special-mode #:ssh-askpass-window-p #:ssh-refusal-words
                 #:table-list-rows #:text-columns #:trash-changed

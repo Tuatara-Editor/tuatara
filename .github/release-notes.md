@@ -24,8 +24,8 @@ chmod +x Tuatara-x86_64.AppImage
 **Packages**, installed with the system's own package manager, which brings the libraries Tuatara needs:
 
 ```sh
-sudo dnf install ./tuatara-@VERSION@-*.x86_64.rpm         # Fedora 40 and newer
-sudo apt install ./tuatara_@VERSION@*_amd64.deb           # Ubuntu 24.04 and newer
+sudo dnf install ./tuatara-@VERSION@-*.x86_64.rpm         # Fedora 44 and newer
+sudo apt install ./tuatara_@VERSION@*_amd64.deb           # Ubuntu 26.04 and newer
 sudo pacman -U tuatara-@VERSION@*-x86_64.pkg.tar.zst      # Arch
 ```
 

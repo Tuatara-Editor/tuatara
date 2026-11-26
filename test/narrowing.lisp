@@ -446,30 +446,24 @@ or :HUNG, so that each of several sessions in a test says how it ended."
       (tuatara.buffer:kill-buffer b))))
 
 (define-test (narrowing init-file-lisp-sees-the-part)
-  ;; the Lisp of an init file and M-: sees the part shown as the whole buffer: lines and
-  ;; characters end at its edges, and a loop over its lines ends
+  ;; the Lisp of an init file and M-: sees the part shown as the whole buffer: lines end at its
+  ;; edges, and a loop over its lines ends
   (let ((b (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "narrowing lisp") :text *narrowing-text*)))
     (unwind-protect
          (let ((result
                  (bounded-call
                   (lambda ()
-                    (let ((tuatara.command:*current-buffer* b))
-                      (tuatara.buffer:narrow-buffer b 4 14)
-                      (list (progn (tuatara-user:goto-char (tuatara-user:point-min))
-                                   (loop while (zerop (tuatara-user:forward-line 1)) count t))
-                            (progn (tuatara-user:goto-char (tuatara-user:point-min)) (tuatara-user:forward-line -1))
-                            (progn (tuatara-user:goto-char (tuatara-user:point-max))
-                                   (handler-case (progn (tuatara-user:forward-char 1) :moved)
-                                     (error (e) (princ-to-string e))))
-                            (tuatara-user:char-after (tuatara-user:point-max))
-                            (progn (tuatara-user:goto-char (tuatara-user:point-min)) (tuatara-user:char-before))
-                            (list (tuatara-user:point-min) (tuatara-user:point-max))
-                            (progn (tuatara.buffer:narrow-buffer b 5 12)
-                                   (tuatara-user:goto-char 7)
-                                   (list (tuatara-user:line-beginning-position) (tuatara-user:line-end-position)
-                                         (tuatara-user:line-number-at-pos)
-                                         (tuatara-user:line-number-at-pos nil t)))))))))
-           (is equal (list 2 -1 "End of buffer" nil nil '(5 15) '(6 8 1 2)) result))
+                    (flet ((on (byte n) (multiple-value-list (tuatara:buffer-forward-line b byte n))))
+                      (tuatara:narrow-buffer b 4 14)
+                      (list (loop with p = (tuatara:buffer-start b)
+                                  for (next short) = (on p 1)
+                                  while (zerop short)
+                                  do (setf p next)
+                                  count t)
+                            (on 4 -1) (on 14 1) (on 0 0)
+                            (progn (tuatara:narrow-buffer b 5 12)
+                                   (list (on 6 0) (on 6 1) (on 9 1)))))))))
+           (is equal '(2 (4 1) (14 1) (4 0) ((5 0) (8 0) (12 0))) result))
       (tuatara.buffer:kill-buffer b))))
 
 (define-test (narrowing jobs-taken-in-at-once-or-later)

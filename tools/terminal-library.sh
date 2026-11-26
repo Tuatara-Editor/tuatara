@@ -38,6 +38,11 @@ recipe=1
 wanted="$( (cat "$pin" "$root/lisp/terminal/layout.c" "$root/lisp/terminal/shim.c"; echo "recipe $recipe") |
   sha256sum | cut -c1-16)-$target"
 if [ -n "$say_stamp" ]; then echo "$wanted"; exit 0; fi
+# the layout program below is built and run here, so a target of another processor cannot be built
+if [ "${target%%-*}" != "$(uname -m)" ]; then
+  echo "tools/terminal-library.sh: $target is for another processor than this machine's ($(uname -m))." >&2
+  exit 1
+fi
 if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ] && [ -f "$out/libghostty-vt.so" ]; then exit 0; fi
 if ! command -v zig >/dev/null || [ "$(zig version)" != "$zig_wanted" ]; then
   echo "tools/terminal-library.sh: Zig $zig_wanted is needed to build the terminal library" \

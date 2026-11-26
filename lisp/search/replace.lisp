@@ -3,8 +3,9 @@
 ;;;;
 ;;;; The two ways a replacement typed at the search prompt is carried out
 ;;;; (substitute.lisp): every match as one edit batch, or match by
-;;;; match with y n ! . q. There are no separate replace commands; M-%, C-z r q
-;;;; and NORMAL state's r q and r r open the search prompt set up for replacing.
+;;;; match with y n ! . q. The replace commands (M-%, C-z r q, NORMAL state's
+;;;; r q and r r, replace-regexp and the rest) open the search prompt set up for
+;;;; replacing; what is typed there is carried out here.
 
 (in-package #:tuatara.defaults)
 
@@ -48,11 +49,13 @@ is replaced too, its fold kept folded and what replaces it hidden with it
 
 (defun query-replace-loop (buffer next-match replacement-for from-description to-description rest)
   "Walk the matches from point: NEXT-MATCH (a function of a byte offset) returns
-the next (START END ...) or NIL, or :STOPPED when a key or \`C-g' cut its
-search short, which ends the walk saying so; REPLACEMENT-FOR gives each match's replacement
-text. At each match, lit in :search-current with point after it, ask \\`y'
-\(replace), \\`n' (skip), \\`!' (replace all remaining as one batch), \\`.'
-\(replace and stop), \\`q' or \\`RET' (stop).
+the next (START END ...) or NIL, or :STOPPED when a key or \\`C-g' cut its
+search short, which ends the walk saying so; REPLACEMENT-FOR gives each match's
+replacement text. At each match, lit in :search-current with point after it,
+ask \\`y' or \\`SPC' (replace), \\`n' or \\`DEL' (skip), \\`!' (replace all
+remaining as one batch), \\`.' (replace and stop), \\`q' or \\`RET' (stop),
+the pattern and replacement shortened on the question's line; \\`C-g' gives
+up as with any question, what was replaced kept.
 REST gathers all the remaining matches for \\`!' from the start of the match
 asked at, as three values: the list, NIL or a reason it gave up (:STOPPED,
 :OVER, or :BACKGROUND when it handed them to a job of their own) and a
@@ -78,19 +81,21 @@ Returns the number replaced."
                   (tuatara.display:unfold-region buffer (first m) (second m))))
               (goto (second m))
               (setf *asked-match* (list buffer (first m) (second m)))
-              (let* ((key (read-key (format nil (substitute-command-keys
-                                                 "Query replacing ~a with ~a: (\\`y' \\`n' \\`!' \\`.' \\`q')"
-                                                 :marks t :for-format t)
-                                            from-description to-description)))
-                     (base (tuatara.frontend:key-base key)))
+              (let ((choice (read-key-choice (format nil "Query replacing ~a with ~a:"
+                                                     (tuatara.display:shorten-string from-description 24 :one-line t)
+                                                     (tuatara.display:shorten-string to-description 24 :one-line t))
+                                             '(("y" . "replace this one") ("n" . "skip this one")
+                                               ("!" . "replace this one and all after it")
+                                               ("." . "replace this one and stop") ("q" . "stop"))
+                                             :aliases '(("SPC" . "y") ("DEL" . "n") ("RET" . "q")))))
                 (setf *asked-match* nil)
-                (case base
-                  ((#\y #\Space)
+                (case (char choice 0)
+                  (#\y
                    (let ((after (tuatara.buffer:buffer-replace buffer (first m) (second m)
                                                                (funcall replacement-for m))))
                      (incf replaced) (goto after)
                      (setf pos (if (= after (tuatara.buffer:buffer-size buffer)) (1+ after) (past m after)))))
-                  ((#\n #\Backspace :backspace)
+                  (#\n
                    (setf pos (if (= (second m) (tuatara.buffer:buffer-size buffer))
                                  (1+ (second m))
                                  (past m (second m)))))

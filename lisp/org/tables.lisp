@@ -420,43 +420,43 @@ A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked ou
     (org-table-insert-empty-row model (org-table-row model))
     (org-table-go model (org-table-row model) (min (org-table-field model) (max 0 (1- (org-table-columns model)))))))
 
-(define-command org-metaup ()
+(define-command org-move-up ()
   "In an Org table, move the row up; on a list item, move it with its
 sub-items above the item before it; else move the subtree up (\\`M-k')."
   (unless (or (org-table-move-row -1) (org-move-item :up)) (org-move-subtree :up)))
 
-(define-command org-metadown ()
+(define-command org-move-down ()
   "In an Org table, move the row down; on a list item, move it with its
 sub-items below the item after it; else move the subtree down (\\`M-j')."
   (unless (or (org-table-move-row 1) (org-move-item :down)) (org-move-subtree :down)))
 
-(define-command org-metaleft ()
+(define-command org-promote ()
   "In an Org table, move the column left; on a list item, set it out a level,
 or every item the selection's lines begin; else promote the headline
 \(\\`M-h')."
-  (unless (or (org-table-move-column -1) (org-shift-items -1 nil)) (org-promote nil -1)))
+  (unless (or (org-table-move-column -1) (org-shift-items -1 nil)) (org-change-headline-level nil -1)))
 
-(define-command org-metaright ()
+(define-command org-demote ()
   "In an Org table, move the column right; on a list item, set it in a level
 under the item before it, or every item the selection's lines begin; else
 demote the headline (\\`M-l')."
-  (unless (or (org-table-move-column 1) (org-shift-items 1 nil)) (org-promote nil 1)))
+  (unless (or (org-table-move-column 1) (org-shift-items 1 nil)) (org-change-headline-level nil 1)))
 
-(define-command org-shiftmetaleft ()
+(define-command org-promote-subtree ()
   "In an Org table, delete the column; on a list item, set it out a level
 with the items under it; else promote the subtree (\\`M-H')."
-  (unless (or (org-table-delete-column) (org-shift-items -1 t)) (org-promote t -1)))
+  (unless (or (org-table-delete-column) (org-shift-items -1 t)) (org-change-headline-level t -1)))
 
-(define-command org-shiftmetaright ()
+(define-command org-demote-subtree ()
   "In an Org table, put an empty column before this one; on a list item, set
 it in a level with the items under it; else demote the subtree (\\`M-L')."
-  (unless (or (org-table-insert-column) (org-shift-items 1 t)) (org-promote t 1)))
+  (unless (or (org-table-insert-column) (org-shift-items 1 t)) (org-change-headline-level t 1)))
 
-(define-command org-shiftmetaup ()
+(define-command org-delete-row ()
   "In an Org table, delete the row point is in (\\`M-S-<up>')."
   (unless (org-table-kill-row) (message "Not in a table")))
 
-(define-command org-shiftmetadown ()
+(define-command org-insert-row ()
   "In an Org table, put an empty row above this one (\\`M-S-<down>')."
   (unless (org-table-insert-row) (message "Not in a table")))
 
@@ -468,10 +468,10 @@ and in with the items under them, else promote and demote subtrees;
 \\`C-c -' puts a rule below a table row, and gives a list its next kind of
 bullet."
   (let ((keymap (mode-keymap 'org-mode)))
-    (define-keys keymap '(("M-j" org-metadown) ("M-k" org-metaup) ("M-<down>" org-metadown) ("M-<up>" org-metaup)
-                          ("M-h" org-metaleft) ("M-l" org-metaright) ("M-<left>" org-metaleft)
-                          ("M-<right>" org-metaright)
-                          ("M-H" org-shiftmetaleft) ("M-L" org-shiftmetaright)
-                          ("M-S-<left>" org-shiftmetaleft) ("M-S-<right>" org-shiftmetaright)
-                          ("M-S-<up>" org-shiftmetaup) ("M-S-<down>" org-shiftmetadown)
-                          ("C-c -" org-ctrl-c-minus)))))
+    (define-keys keymap '(("M-j" org-move-down) ("M-k" org-move-up) ("M-<down>" org-move-down) ("M-<up>" org-move-up)
+                          ("M-h" org-promote) ("M-l" org-demote) ("M-<left>" org-promote)
+                          ("M-<right>" org-demote)
+                          ("M-H" org-promote-subtree) ("M-L" org-demote-subtree)
+                          ("M-S-<left>" org-promote-subtree) ("M-S-<right>" org-demote-subtree)
+                          ("M-S-<up>" org-delete-row) ("M-S-<down>" org-insert-row)
+                          ("C-c -" org-rule-or-bullet)))))

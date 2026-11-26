@@ -4,52 +4,68 @@
 ;;;; A tab character reaches the next tab stop, the stops being every
 ;;;; *tab-width* columns. TAB indents the line where the major mode indents
 ;;;; (Lisp, Rust, C, shell scripts), and completes the name at point when the
-;;;; line was indented already (*tab-always-indent*); elsewhere, and C-z TAB
+;;;; line was indented already (*tab-key-action*); elsewhere, and C-z TAB
 ;;;; anywhere, it goes on to the next stop, putting spaces in, or a tab
-;;;; character where *indent-tabs-mode* says so. Both are Emacs's settings
-;;;; by Emacs's names, with 4 and spaces as the standard. Each can be set for a
-;;;; major mode and the modes derived from it (set-tab-width,
-;;;; set-indent-tabs-mode), and M-x indent-tabs-mode switches one buffer: the
-;;;; buffer's own setting counts first, then its mode's, then that of the mode
-;;;; it derives from, and so on, then the one for all.
+;;;; character where *indent-with-tabs* says so, with 4 and spaces as the
+;;;; standard. Each can be set for a major mode and the modes derived from it
+;;;; (*tab-width-modes*, *indent-with-tabs-modes*), and M-x
+;;;; indent-with-tabs-mode switches one buffer: the buffer's own setting counts
+;;;; first, then its mode's, then that of the mode it derives from, and so on,
+;;;; then the one for all.
 
 (in-package #:tuatara.defaults)
 
 (define-setting *tab-width* 4
   "The columns from one tab stop to the next: a tab character shows its text
 on at the next stop, and \\[indent-for-tab-command] goes on to it. For every
-buffer whose major mode has no width of its own (set-tab-width).
+buffer whose major mode has no width of its own (*tab-width-modes*).
 - a whole number from 1 to 64: the columns. 4 as standard."
   :values (integer 1 64))
 
-(define-setting *indent-tabs-mode* nil
+(define-setting *indent-with-tabs* nil
   "Whether indentation puts tab characters in where \\[indent-for-tab-command]
 and indentation go on to a tab stop, for every buffer whose major mode says
-nothing of its own (set-indent-tabs-mode). \\[quoted-insert] \\`TAB' puts a tab
+nothing of its own (*indent-with-tabs-modes*). \\[quoted-insert] \\`TAB' puts a tab
 character in whatever this says.
 - t: put tabs in.
 - nil: put spaces in (the standard)."
   :values boolean)
 
-(defvar *mode-tab-widths* (make-hash-table :test 'eq)
-  "The tab widths set for major modes (set-tab-width), by the mode's name.")
+(define-setting *tab-width-modes* '()
+  "The columns from one tab stop to the next for major modes and the modes
+made from them, the nearest mode counting first; other buffers have
+*tab-width*. For example, in the init file: (setf *tab-width-modes* '((c-mode
+. 8) (prog-mode . 2))).
+- a list of (MODE . COLUMNS): MODE a mode's name, with or without -mode;
+  COLUMNS a whole number from 1 to 64."
+  :values (list-of (cons symbol (integer 1 64))))
 
-(defvar *mode-indent-tabs* (make-hash-table :test 'eq)
-  "Whether tab characters or spaces go in, set for major modes
-(set-indent-tabs-mode), by the mode's name.")
+(define-setting *indent-with-tabs-modes* '()
+  "Whether indentation puts tab characters in, for major modes and the modes
+made from them, the nearest mode counting first; other buffers have
+*indent-with-tabs*. Tab-separated data (tsv-mode) has tabs unless this says
+otherwise. For example, in the init file: (setf *indent-with-tabs-modes*
+'((makefile . t) (go . t))).
+- a list of (MODE . TABS): MODE a mode's name, with or without -mode; TABS t
+  for tabs, nil for spaces."
+  :values (list-of (cons symbol boolean)))
 
-;; tabs are what separates the fields of tab-separated data
-(setf (gethash 'tsv-mode *mode-indent-tabs*) t)
+(defparameter *indent-with-tabs-default-modes* '((tsv-mode . t))
+  "The modes indented with tabs where *INDENT-WITH-TABS-MODES* leaves them out:
+tabs are what separates the fields of tab-separated data.")
 
 (defun buffer-tab-width (buffer)
   "The columns from one tab stop to the next in BUFFER (see *TAB-WIDTH*): a
 whole number from 1 to 64, 4 when the setting is none."
-  (tuatara.display:sensible-tab-width (buffer-setting buffer :tab-width *mode-tab-widths* *tab-width*) 4))
+  (tuatara.display:sensible-tab-width
+   (buffer-setting buffer :tab-width (setting-in-force '*tab-width-modes*) *tab-width*) 4))
 
 (defun buffer-indent-tabs-p (buffer)
   "True when \\[indent-for-tab-command] and indentation put tab characters in
-BUFFER, NIL when they put spaces in (see *INDENT-TABS-MODE*)."
-  (and (buffer-setting buffer :indent-tabs-mode *mode-indent-tabs* *indent-tabs-mode*) t))
+BUFFER, NIL when they put spaces in (see *INDENT-WITH-TABS*)."
+  (and (buffer-setting buffer :indent-with-tabs (setting-in-force '*indent-with-tabs-modes*) *indent-with-tabs*
+                       *indent-with-tabs-default-modes*)
+       t))
 
 (defmethod tuatara.display:host-tab-width ((host defaults-host) buffer)
   "The columns from one tab stop to the next in BUFFER (BUFFER-TAB-WIDTH)."
@@ -119,7 +135,7 @@ not before COLUMN."
               do (setf col (next-tab-stop col width)) (incf tabs))))
     (concatenate 'string (make-string tabs :initial-element #\Tab) (spaces (max 0 (- column col))))))
 
-;;; Setting them for a major mode
+;;; Naming a major mode
 
 (defun mode-named (name)
   "The major mode NAME stands for, matched by name from any package: the mode
@@ -130,35 +146,14 @@ org-mode. Signals an error when there is none."
         (find (concatenate 'string (symbol-name name) "-MODE") modes :key #'symbol-name :test #'string=)
         (refuse "No major mode called ~(~a~); there are ~{~(~a~)~^, ~}." name modes))))
 
-(defun tuatara-user:set-tab-width (mode columns)
-  "Put the tab stops COLUMNS columns apart (1 to 64) in buffers of major mode
-MODE and the modes derived from it, where a tab character shows and where
-\\[indent-for-tab-command] goes; other buffers keep *tab-width*. MODE is a
-mode's name, with or without -mode. For example, in the init file:
-(set-tab-width 'c-mode 8), or (set-tab-width 'prog 2) for every programming
-language."
-  (let ((found (mode-named mode)))
-    (unless (tuatara.display:sensible-tab-width columns nil)
-      (refuse "The columns must be a whole number from 1 to 64, not ~s." columns))
-    (setf (gethash found *mode-tab-widths*) columns)))
-
-(defun tuatara-user:set-indent-tabs-mode (mode tabs)
-  "Put tab characters in (TABS true) or spaces (TABS NIL) where
-\\[indent-for-tab-command] and indentation go on to a tab stop, in buffers of
-major mode MODE and the modes derived from it; other buffers keep
-*indent-tabs-mode*. MODE is a mode's name, with or without -mode. For example,
-in the init file: (set-indent-tabs-mode 'bash t). Tab-separated data
-(tsv-mode) has tabs unless set otherwise."
-  (setf (gethash (mode-named mode) *mode-indent-tabs*) (and tabs t)))
-
 ;;; Commands
 
 (define-command tab-to-tab-stop ()
   "Go on to the next tab stop, putting spaces in up to it, or a tab character
-where the buffer wants tabs (*indent-tabs-mode*, set-indent-tabs-mode,
-\\[indent-tabs-mode]); with a count, that many stops. The stops are every
+where the buffer wants tabs (*indent-with-tabs*, *indent-with-tabs-modes*,
+\\[indent-with-tabs-mode]); with a count, that many stops. The stops are every
 *tab-width* columns (4), or as set for the buffer's major mode
-(set-tab-width). \\[tab-to-tab-stop] runs it, and \\[indent-for-tab-command]
+(*tab-width-modes*). \\[tab-to-tab-stop] runs it, and \\[indent-for-tab-command]
 where the major mode does not indent; \\[quoted-insert] \\`TAB' puts a tab
 character in whatever the settings say."
   (let ((b (current-buffer)) (count (max 1 (insert-count))))
@@ -194,7 +189,7 @@ them."
                (:backspace (code-char 127))
                (t nil))))))
 
-(define-setting *tab-always-indent* :complete
+(define-setting *tab-key-action* :complete
   "What \\[indent-for-tab-command] does where the major mode indents lines
 \(Lisp, Rust, C, shell scripts). Where the mode does not indent (text, Org,
 CSV), it goes on to the next tab stop.
@@ -223,7 +218,7 @@ which are text. Without a selection it says so and does nothing."
 (define-command indent-for-tab-command ()
   "Indent the current line as its major mode indents it: point in the blanks
 the line begins with goes to where its text begins, point in its text stays
-with the text. When that changes nothing and *tab-always-indent* is :complete
+with the text. When that changes nothing and *tab-key-action* is :complete
 (as standard), complete the name at point instead, as
 \\<lisp-mode>\\[completion-at-point] does in Lisp. With the selection active,
 indent the lines it touches. Where the mode does not indent (text, Org, CSV),
@@ -242,7 +237,7 @@ anywhere. After a snippet's key, the snippet (\\[snippet-insert])."
              (when (eq (indent-lines b start end) :none) (tab-to-tab-stop))))
           (t
            (let ((in-blanks (<= p (+ line (line-indentation b line)))))
-             (if (and (null *tab-always-indent*) (not in-blanks))
+             (if (and (null *tab-key-action*) (not in-blanks))
                  (tab-to-tab-stop)
                  (let ((changed (indent-lines b line line :blank-lines t)))
                    (cond ((eq changed :none) (tab-to-tab-stop))
@@ -251,7 +246,7 @@ anywhere. After a snippet's key, the snippet (\\[snippet-insert])."
                           (when in-blanks
                             (let ((line (tuatara.buffer:buffer-line-start b (point))))
                               (goto (+ line (line-indentation b line)))))
-                          (when (and (eq *tab-always-indent* :complete) (eql changed 0) (= (point) p))
+                          (when (and (eq *tab-key-action* :complete) (eql changed 0) (= (point) p))
                             (complete-at-point-in b :quiet t)))))))))))
 
 (define-command quoted-insert ()
@@ -270,12 +265,12 @@ character's code."
               (hex-overwrite (tuatara.text:string-octets text))
               (goto (tuatara.buffer:buffer-insert (current-buffer) (point) text)))))))
 
-(define-command indent-tabs-mode ()
+(define-command indent-with-tabs-mode ()
   "Switch the current buffer between tab characters and spaces where
 \\[indent-for-tab-command] and indentation go on to a tab stop; with a count,
 tabs when it is positive, spaces when it is zero or less. Other buffers keep
-what their major modes and *indent-tabs-mode* say."
+what their major modes and *indent-with-tabs* say."
   (let* ((b (current-buffer))
          (tabs (switched-by-count (buffer-indent-tabs-p b))))
-    (setf (tuatara.buffer:buffer-local b :indent-tabs-mode) tabs)
-    (message "Indent-Tabs mode ~:[disabled~;enabled~] in current buffer" tabs)))
+    (setf (tuatara.buffer:buffer-local b :indent-with-tabs) tabs)
+    (message "Indent with tabs ~:[off~;on~] in this buffer" tabs)))

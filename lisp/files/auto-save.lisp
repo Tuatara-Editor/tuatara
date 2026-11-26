@@ -185,6 +185,20 @@ thread: as the editor stops with no one to ask whether to save it."
     (setf (tuatara.buffer:buffer-local buffer 'auto-save-written) (tuatara.buffer:buffer-content-number buffer)
           (tuatara.buffer:buffer-local buffer 'auto-save-file) file)))
 
+(defun auto-save-every-change ()
+  "Write the changes not saved of every buffer that may be auto-saved
+\(AUTO-SAVE-WANTED-P) to its auto-saved copy at once, on this thread, those
+whose copy holds them already left as they are, so that \\[recover-file] takes
+them back however the editor ends next. How many were written."
+  (let ((written 0))
+    (dolist (buffer tuatara.buffer:*buffers* written)
+      (when (and (tuatara.buffer:buffer-modified-p buffer) (auto-save-wanted-p buffer)
+                 (not (eql (tuatara.buffer:buffer-local buffer 'auto-save-written)
+                           (tuatara.buffer:buffer-content-number buffer))))
+        (ignoring-errors-reported ("auto-saving ~a" (tuatara.buffer:buffer-name buffer))
+          (auto-save-now buffer)
+          (incf written))))))
+
 (defmethod tuatara.runtime:job-take-in ((job auto-save-job))
   "Note the copy written, or say why it was not; a buffer saved meanwhile has
 its copy deleted, the file holding all it has."
@@ -347,7 +361,8 @@ the section, \\[list-fold-heading] folds it. \\[list-mark-entry] marks a copy (>
 unmarks it, \\[list-unmark-all] unmarks them all. \\[list-delete-marked]
 deletes the marked copies (the one on the line when none is),
 \\[list-execute] those marked for deletion, after asking, their files not
-touched. \\[revert-buffer] lists them again, and \\[quit-window] closes."
+touched. \\[list-toggle-preview] shows the copy on the line beside the list,
+read only. \\[revert-buffer] lists them again, and \\[quit-window] closes."
   :lighter "Auto-saves" :interactive nil)
 
 (defvar *auto-saves-keymap* (mode-keymap 'auto-saves-mode)
@@ -418,6 +433,13 @@ the line."
   "An auto-saved copy."
   "auto-save")
 
+(defmethod preview-entry ((mode auto-saves-mode) list copy)
+  "The auto-saved COPY itself beside the list, opened safely: read only, its
+text as it is, nothing in it run."
+  (declare (ignore list))
+  (multiple-value-bind (buffer existing) (tuatara.io:visit-file (getf copy :copy) :safe t)
+    (values buffer (not existing))))
+
 (defmethod visit-entry ((mode auto-saves-mode) list copy other)
   "Open the file of COPY and offer to take its changes in (\\[recover-file]); a
 file no longer there is opened as a new one."
@@ -431,13 +453,10 @@ file no longer there is opened as a new one."
   "Delete the auto-saved copies, after asking; their files are not touched."
   (declare (ignore mark))
   (let ((copies (list-entries-of list keys)))
-    (if (yes-or-no-p* (format nil "~a?" (list-question "Delete the auto-saved changes of" "file" copies :the nil
-                                                       :name-of (lambda (copy)
-                                                                  (tuatara.io:native-file-name (getf copy :file)))))
-                      :details (format nil "~{~a~%~}~@[and ~d more~]"
-                                       (mapcar (lambda (copy) (abbreviated-path (getf copy :file)))
-                                               (subseq copies 0 (min 20 (length copies))))
-                                       (and (> (length copies) 20) (- (length copies) 20))))
+    (if (ask-list-question (yes-or-no-p*)
+          (list-question "Delete the auto-saved changes of" "file" copies :the nil
+                         :name-of (lambda (copy) (tuatara.io:native-file-name (getf copy :file)))
+                         :details (names-shown copies :name-of (lambda (copy) (abbreviated-path (getf copy :file))))))
         (progn (dolist (copy copies)
                  (delete-auto-save-copy (getf copy :copy)))
                (unmark-list list)
@@ -452,8 +471,8 @@ whose auto-saved changes are newer than them (AUTO-SAVES-STARTUP-NOTICE).")
   "Tick function: say once, as the editor starts, how many files have
 auto-saved changes newer than them, and how to see them
 \(\\[auto-saves-manager]); they are counted in the background, so that a file
-on a drive not answering cannot hold the start up. Looks again every
-twentieth of a second until they are."
+on a drive not answering cannot hold the start up. :WAITING while they are
+counted, the counting waking the editor (*TICK-FUNCTIONS*)."
   (declare (ignore editor))
   (let ((counting *auto-saves-counting*))
     (cond ((null counting)
@@ -466,8 +485,8 @@ twentieth of a second until they are."
                                      (funcall give (count :newer (ignoring-errors-reported ("listing the auto-saves")
                                                                    (auto-save-copies))
                                                           :key (lambda (c) (getf c :state))))))))
-           1/20)
-          ((not (gathering-done counting)) 1/20)
+           :waiting)
+          ((not (gathering-done counting)) :waiting)
           (t
            (setf *tick-functions* (remove 'auto-saves-startup-notice *tick-functions*)
                  *auto-saves-counting* nil)
@@ -481,14 +500,19 @@ twentieth of a second until they are."
 (defun install-auto-save ()
   "Have buffers' changes not saved auto-saved (*AUTO-SAVE*), their copies
 deleted on a save, a file whose copy is newer said so when visited, and how
-many have newer copies said as the editor starts; bind the keys of their list."
+many have newer copies said as the editor starts; bind the keys of their list,
+\\`P' showing the copy on the line beside it.
+The scratch buffers' text is kept with them when *SCRATCH-TEXT-KEPT* says so
+\(INSTALL-SCRATCH-TEXTS)."
   (setf *auto-saves-counting* nil)
   (pushnew 'auto-save-tick *tick-functions*)
+  (install-scratch-texts)
   (pushnew 'delete-auto-save *after-save-functions*)
   (pushnew 'auto-save-reverted *before-reload-functions*)
   (pushnew 'auto-save-visited tuatara.buffer:*find-file-functions*)
   (pushnew 'auto-save-killed tuatara.buffer:*kill-buffer-functions*)
   (when *auto-save* (pushnew 'auto-saves-startup-notice *tick-functions*))
-  (entry-list-keys 'auto-saves-mode "the list of auto-saved copies"))
+  (entry-list-keys 'auto-saves-mode "the list of auto-saved copies")
+  (entry-preview-keys 'auto-saves-mode "the list of auto-saved copies (\\[auto-saves-manager])"))
 
 (commands-for-mode 'auto-saves-mode "the list of auto-saved copies (\\[auto-saves-manager])" 'list-visit)

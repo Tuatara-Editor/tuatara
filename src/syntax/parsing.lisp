@@ -33,7 +33,9 @@ only once typing has paused for *SYNTAX-SLICE-PAUSE*.")
   "Seconds redisplay waits for a parse started after an edit, before it shows
 the text with the colours of the tree as it was. It does not wait at all while
 parses after edits take longer than this, as they do in very large files: the
-edit shows at once, and its colours a moment later.")
+edit shows at once, and its colours a moment later. It waits as long for the
+text in other languages it shows (a code block in Markdown), parsed in the
+background, before showing it without their colours, given once parsed.")
 
 (defparameter *edits-logged* 16
   "How many of a text's latest edits are kept, for colours worked out before
@@ -148,7 +150,9 @@ than edited to match it. JOB is the parse asked for or running, EDITS the edits
 made since it started (to apply to its tree), newest first; NEXT is that job
 until the parse thread WORKER takes it up, and ENDING tells WORKER to end.
 GENERATION counts the trees, for caches; INJECTED keeps the trees of the text in
-other languages parsed for its colours (KEEP-INJECTED-TREES); BROKEN is set when
+other languages parsed for its colours (KEEP-INJECTED-TREES), INJECTED-PARSE
+those being parsed in the background and INJECTED-ROUND counts the times such
+trees were taken in; BROKEN is set when
 the text could not be parsed, and TOO-BIG while the text is larger than
 *SYNTAX-SIZE-LIMIT*. LAST-UPDATE is how long the last parse after an edit took,
 in internal time units, and SLICE-COST the last parse of lines coloured from a
@@ -202,6 +206,10 @@ again (*LOCAL-ROOM*), or NIL.")
   (edits-logged 0 :type fixnum :documentation "How many edits were logged (LOG-EDIT).")
   (injected nil :documentation "The trees of text in other languages kept for the
 colours, as (GENERATION . TABLE), or NIL.")
+  (injected-parse nil :documentation "The texts in other languages being parsed in the background for the
+colours (INJECTED-PARSE), or NIL.")
+  (injected-round 0 :type fixnum :documentation "A number that changes whenever trees of text in other
+languages parsed in the background are taken in, for caches.")
   (worker nil :documentation "The thread that parses the text, or NIL while none is needed.")
   (next nil :documentation "The parse handed to the parse thread and not yet taken up, or NIL.")
   (ending nil :documentation "True once the parse thread is to end.")
@@ -264,7 +272,7 @@ editor's own thread."
                    (and (not (helper-shared helper))
                         (not (eq helper (tuatara.buffer:buffer-local (syntax-buffer syntax) :syntax-helper))))))
       (when (and (helper-alive helper) (helper-shared helper))
-        (when (syntax-tree syntax) (delete-tree (syntax-tree syntax)))
+        (when (syntax-tree syntax) (free-tree (syntax-tree syntax)))
         (delete-parser (syntax-parser syntax)))
       (when (syntax-tree syntax)
         (setf (syntax-tree syntax) nil (syntax-current syntax) nil)
@@ -278,7 +286,7 @@ editor's own thread."
   "Forget SYNTAX's tree, its edits and the running parse's result, so the text
 is parsed afresh."
   (when (syntax-tree syntax)
-    (delete-tree (syntax-tree syntax))
+    (free-tree (syntax-tree syntax))
     (setf (syntax-tree syntax) nil))
   (let ((job (syntax-job syntax)))
     (when job
@@ -354,7 +362,7 @@ is back."
                ;; a slow grammar's parse waits until typing pauses (REFRESH-SYNTAX starts it)
                (unless (and (null copy) (syntax-tree syntax) (parse-paused-p syntax))
                  (request-parse syntax :old (shiftf copy nil))))
-          (when copy (delete-tree copy)))))))
+          (when copy (free-tree copy)))))))
 
 ;;; Parsing
 
@@ -395,7 +403,7 @@ the next is asked for; the editor carries on."
                         nil)
                       (error () nil)))
       (unwind-protect
-           (when (parse-job-old job) (delete-tree (parse-job-old job)))
+           (when (parse-job-old job) (free-tree (parse-job-old job)))
         (sb-thread:with-mutex ((syntax-lock syntax))
           (setf (parse-job-result job) tree
                 (parse-job-ended job) (get-internal-real-time)
@@ -520,7 +528,7 @@ the parse to begin from (EDIT-TREE), released when it is not used, also when
 this ends before the parse has it."
   (let ((rope (syntax-rope syntax)))
     (flet ((let-go ()
-             (when old (delete-tree old) (setf old nil))))
+             (when old (free-tree old) (setf old nil))))
       (unwind-protect
            (cond ((or (syntax-job syntax) (and (syntax-current syntax) (not fresh)) (null rope)
                       (not (parsable-p syntax))))
@@ -551,7 +559,7 @@ this ends before the parse has it."
                                       (syntax-edits syntax) '())
                                 t))
                       ;; no thread to parse in: give up on this text
-                      (when (parse-job-old job) (delete-tree (parse-job-old job)))
+                      (when (parse-job-old job) (free-tree (parse-job-old job)))
                       (sb-alien:free-alien (sb-alien:sap-alien cancel (* (sb-alien:signed 32))))
                       (setf (syntax-broken syntax) t)))))
         ;; not taken by a parse: let go, however this ends
@@ -563,7 +571,7 @@ the tree is of no use, in which case it is released too."
   (sb-alien:free-alien (sb-alien:sap-alien (parse-job-cancel job) (* (sb-alien:signed 32))))
   (let ((tree (parse-job-result job)))
     (if (and tree (parse-job-obsolete job))
-        (progn (delete-tree tree) nil)
+        (progn (free-tree tree) nil)
         tree)))
 
 (defun job-finished-p (syntax job)
@@ -603,8 +611,8 @@ another parse if the tree is not current."
                          (syntax-patched syntax) nil))
                (if (and edits (not (nth-value 1 (edit-tree tree edits))))
                    ;; not told of the edits made meanwhile: of no use, the text parsed afresh
-                   (progn (delete-tree tree) (drop-tree syntax))
-                   (progn (when (syntax-tree syntax) (delete-tree (syntax-tree syntax)))
+                   (progn (free-tree tree) (drop-tree syntax))
+                   (progn (when (syntax-tree syntax) (free-tree (syntax-tree syntax)))
                           (setf (syntax-tree syntax) tree
                                 (syntax-current syntax) (null edits))
                           (incf (syntax-generation syntax)))))
@@ -781,8 +789,12 @@ BUFFER's file stays mapped for it (BUFFER-LENT-P)."
                      (tuatara.buffer:buffer-lent-p buffer) t)
                (tuatara.runtime:left-running worker "A parse"))))
       (when (and (syntax-tree syntax) (not running))
-        (delete-tree (syntax-tree syntax)))
+        (free-tree (syntax-tree syntax)))
       (forget-injected-trees syntax)
+      (let ((thread (abandon-injected-parse syntax)))
+        (unless (tuatara.runtime:join-within thread)
+          (setf (tuatara.buffer:buffer-lent-p buffer) t)
+          (tuatara.runtime:left-running thread "A parse of text in another language")))
       (setf (syntax-tree syntax) nil)
       ;; a parser left alone after its grammar failed is not touched again
       (unless (or running (null (syntax-parser syntax)))

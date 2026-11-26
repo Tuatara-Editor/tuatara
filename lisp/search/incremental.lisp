@@ -279,7 +279,7 @@ or NIL and why the pattern does not compile), compiled once per pattern."
   (let ((line (search-line-of state)))
     (or (and (getf (search-state-preset state) :every-after-percent)
              (plusp (length (search-line-flags line)))
-             "no flags here: a / in the pattern or the replacement is written \\/, and % in front replaces every match")
+             "no flags here")
         (search-line-problem line)
         (and (plusp (length (search-line-pattern line)))
              (multiple-value-bind (matcher problem) (search-matcher state)
@@ -364,22 +364,6 @@ to when it is made of several (SEARCH-SCOPE); NIL for one."
 (defun in-pieces-p (pieces start end)
   "True when the text from START to END lies within one of PIECES."
   (some (lambda (piece) (and (<= (car piece) start) (<= end (cdr piece)))) pieces))
-
-(defun pieces-matches-only (rope pieces matches per-line)
-  "MATCHES, in order, that lie within PIECES, also in order; with PER-LINE the
-first on each line of each piece only. One walk through both lists."
-  (let ((runs '()) (run '()) (piece nil))
-    (flet ((close-run ()
-             (when run (push (if per-line (first-per-line rope (nreverse run)) (nreverse run)) runs))
-             (setf run '())))
-      (dolist (m matches)
-        ;; the pieces ending before this match can hold none of the later ones either
-        (loop while (and pieces (< (cdr (first pieces)) (second m))) do (pop pieces))
-        (when (and pieces (<= (car (first pieces)) (first m)))
-          (unless (eq piece (first pieces)) (close-run) (setf piece (first pieces)))
-          (push m run)))
-      (close-run)
-      (loop for r in (nreverse runs) append r))))
 
 (defun search-keeps-region-p (state)
   "True when the region active as STATE began stays live: a search begun right
@@ -838,34 +822,36 @@ buffer, or take them away when they are lit, as \\[keyboard-quit] does."
 (defun matches-in-view (state rope matcher stretches low high &key texts)
   "STATE's matches of MATCHER in ROPE that start within STRETCHES, (START .
 END) in order, and end by HIGH, as lists (START END TEXT GROUPS), in order,
-TEXT and GROUPS only with TEXTS. For a replacement, only those it replaces:
-within its pieces, and without the g flag the first on each line, each
-stretch then looked through from its line's start, not before LOW. As a
-second value :SLOW, the matches NIL, when the pattern is too slow on this text
-to find them in a moment. The one way the matches lit on screen and the
-replacements shown beside them are found."
-  (let ((per-line (and (search-replacing-p state) (not (every-match-flags-p (search-flags state))))))
-    (multiple-value-bind (found cut)
-        (tuatara.runtime:stoppable-work ((list nil) :slow tuatara.runtime:*slow-call-seconds*)
-          (let ((out '()) (last -1))
-            (loop for (start . end) in stretches
-                  do (stretch-matches (lambda (s e m g)
-                                        ;; a line's start looked back to finds some twice
-                                        (when (> s last)
-                                          (push (list s e m g) out)
-                                          (setf last s))
-                                        nil)
-                                      rope matcher
-                                      (if per-line (max low (tuatara.text:rope-line-start rope start)) start)
-                                      end (= end high) texts nil high))
-            (nreverse out)))
-      (if (eq cut :slow)
-          (values nil :slow)
-          (values (let ((pieces (search-pieces state)))
-                    (cond (pieces (pieces-matches-only rope pieces found per-line))
-                          (per-line (first-per-line rope found))
-                          (t found)))
-                  nil)))))
+TEXT and GROUPS only with TEXTS. For a replacement, only those it replaces
+\(CHANGES-IN-VIEW): within its pieces, each searched as the replacement
+searches it, and without the g flag the first on each line, each stretch
+then looked through from its line's start, not before LOW or its piece's
+start. As a second value :SLOW, the matches NIL, when the pattern is too
+slow on this text to find them in a moment. The one way the matches lit on
+screen and the replacements shown beside them are found."
+  (let* ((all (not (and (search-replacing-p state) (not (every-match-flags-p (search-flags state))))))
+         (pieces (coerce (search-pieces state) 'simple-vector))
+         (n (length pieces)))
+    (flet ((first-piece (position)
+             ;; the index of the first piece ending after POSITION
+             (tuatara.runtime:bisect (mid 0 n) (<= (cdr (svref pieces mid)) position))))
+      (changes-in-view rope
+                       (lambda (function from to)
+                         (let ((bound (if (plusp n) (cdr (svref pieces (first-piece from))) high)))
+                           (stretch-matches (lambda (s e m g) (funcall function s e m g) nil)
+                                            rope matcher from to (= to bound) texts nil bound)))
+                       (if (plusp n)
+                           ;; the stretches cut to the pieces, each piece searched on its own
+                           (loop for (start . end) in stretches
+                                 nconc (loop for i from (first-piece start) below n
+                                             for (p-start . p-end) = (svref pieces i)
+                                             while (< p-start end)
+                                             when (< (max start p-start) (min end p-end))
+                                               collect (cons (max start p-start) (min end p-end))))
+                           stretches)
+                       all
+                       :low (if (plusp n) (lambda (start) (car (svref pieces (first-piece start)))) low)
+                       :keep #'list))))
 
 (defun search-ranges (state window rows &key current scope)
   "STATE's matches in ROWS of WINDOW as highlight ranges: with CURRENT its
@@ -1430,13 +1416,14 @@ match: \\`y' replaces, \\`n' leaves it and goes to the next, \\`!' replaces all
 the rest, \\`.' replaces and stops, \\`q' stops. The first match on each line
 is asked at; with a % in front, %pattern/replacement, every match. In the
 selected text when there is some, else on the line at point, or in the whole
-buffer after a % in front; no flags; the word or symbol at point offered as
-the pattern, selected. & and \\1 in the replacement stand for the match and
-its first group. How many matches there are to ask at shows before the prompt
-as the pattern is typed. A match in folded text is asked at too, its fold
-opened first. A match of more than 4 KB that runs across lines and needs text
-further on can be missed, as regex-search-forward says;
-\\[query-replace-regexp-thorough] finds every match of up to a megabyte."
+buffer after a % in front; no flags, a / in the pattern or the replacement
+written \\/; the word or symbol at point offered as the pattern, selected. &
+and \\1 in the replacement stand for the match and its first group. How many
+matches there are to ask at shows before the prompt as the pattern is typed. A
+match in folded text is asked at too, its fold opened first. A match of more
+than 4 KB that runs across lines and needs text further on can be missed, as
+regex-search-forward says; \\[query-replace-regexp-thorough] finds every match
+of up to a megabyte."
   (search-start t t :preset '(:flags "c" :every-after-percent t) :suggest t))
 
 (define-command replace-regexp ()
@@ -1446,7 +1433,7 @@ before the replacement. In the selected text when there is some, else on the
 line at point, its newline included (so \\n in the pattern joins it to the
 next), the first match on each line is replaced; with a % in front,
 %pattern/replacement, every match in the whole buffer, or in the selected
-text. It takes no flags:
+text. It takes no flags, a / in the pattern or the replacement written \\/:
 \\[query-replace-regexp] asks at each match, and
 \\[regex-search-forward] counts with %pattern//gn. & and \\1 in the replacement stand for
 the match and its first group. How many matches it replaces shows before the

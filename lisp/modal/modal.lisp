@@ -371,19 +371,6 @@ a line at a time and copied, the line in the middle of the window, every
 binding, this window alone on the screen. They are not the keys that move by
 words or select parts of lines, which have nothing to act on there.")
 
-(defparameter *tuatara-leader-bindings* '()
-  "The leader's keys (after \\`SPC' in NORMAL state, or \\`C-x SPC' anywhere)
-as standard: none, the leader being yours alone for keys of your own
-(bind-key with :map :leader; the starter init file lists, commented out, the
-keys it had once). What it had has keys under C-x and C-c
-(\\[describe-bindings] lists them).")
-
-(defparameter *tuatara-leader-labels*
-  '(("i" "input"))
-  "The labels of the leader's prefix keys, which the key hints show after
-\\`SPC' in place of the key (\\`t' +toggle); the init file relabels them with
-bind-key's :label.")
-
 (define-setting *leader-key* "SPC"
   "The key that opens the leader's keys (bind-key's :map :leader) in NORMAL and
 support states, in lists and in the calendar. The key it was on is freed.
@@ -524,12 +511,11 @@ bind the keys that go on with such a command by themselves
                                            ("J" calendar-backward-month) ("K" calendar-forward-month)
                                            ("H" calendar-scroll-right) ("L" calendar-scroll-left)
                                            ("g h" calendar-goto-today) ("g l" calendar-jump-back)
+                                           ("]" calendar-forward-year) ("[" calendar-backward-year)
                                            ("n" calendar-journal-entry)))
   (copy-normal-keys '("%" "y") *tuatara-calendar-keymap*)
   (put-leader-on *leader-key*)
   (define-key *global-keymap* "C-x SPC" *tuatara-leader-keymap*)
-  (define-keys *tuatara-leader-keymap* *tuatara-leader-bindings*)
-  (label-keys *tuatara-leader-keymap* *tuatara-leader-labels*)
   (tuatara-normal-claim-wrap-keys))
 
 (defun modal-sync-after-background (editor)
@@ -577,46 +563,3 @@ already does something (\\<normal>\\[indent-selection-or-line] indents,
           when (eq binding 'wrap-selection-with-key)
             do (define-key *global-keymap* (list prefix spec) binding))))
 
-(define-setting *input-method-keys* '()
-  "Input methods of your own under the leader's i. Each becomes a command,
-input-method-LABEL, on its key; & . and - are taken.
-- a list of (KEY LABEL METHOD): KEY a key, LABEL what it is called, METHOD an
-  input method's name (\\[set-input-method] lists them), such as '((\"s\"
-  \"swedish\" \"swedish-postfix\"))."
-  :values (list-of "(KEY LABEL METHOD)"))
-
-(defparameter *input-method-own-keys* '("&" "." "-")
-  "The keys under the leader's i that are Tuatara's own.")
-
-(defun input-method-key-name (label)
-  "The name of the command LABEL gives for an input method key,
-input-method-LABEL, in TUATARA.DEFAULTS."
-  (intern (string-upcase (format nil "input-method-~a"
-                                 (string-trim "-" (cl-ppcre:regex-replace-all "[^A-Za-z0-9]+" (string-downcase label)
-                                                                              "-"))))
-          :tuatara.defaults))
-
-(defun input-method-key-command (label method)
-  "The command, named input-method-LABEL, that turns METHOD on as
-\\[set-input-method] does, calling it LABEL; made when it is not there. NIL,
-and nothing made, when the name is that of a function that is no such command."
-  (let ((name (input-method-key-name label)))
-    (unless (and (fboundp name) (not (get name 'input-method-key)))
-      (setf (get name 'input-method-key) t)
-      (install-command name
-                       (lambda () (turn-on-input-method method label))
-                       (format nil "Turn on the ~a input method, ~a (*input-method-keys*)." label method)))))
-
-(defun install-input-method-keys ()
-  "Bind the leader's i keys *INPUT-METHOD-KEYS* names, once the init file has
-set it: each to a command turning its method on. An entry that is not three
-strings, names no input method, takes one of Tuatara's own keys, or has a label
-that would replace a function of the editor is left out, and said."
-  (dolist (entry *input-method-keys*)
-    (let ((command (and (alexandria:proper-list-p entry) (= (length entry) 3) (every #'stringp entry)
-                        (find-input-method (third entry))
-                        (not (member (first entry) *input-method-own-keys* :test #'string=))
-                        (input-method-key-command (second entry) (third entry)))))
-      (if command
-          (define-key *tuatara-leader-keymap* (format nil "i ~a" (first entry)) command)
-          (message "*input-method-keys*: ~s is left out" entry)))))

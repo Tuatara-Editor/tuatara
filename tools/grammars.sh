@@ -54,7 +54,9 @@ if [ "${1:-}" = --record ]; then
   fi
 fi
 wanted="$(cat "$root/syntax/grammars.tsv" "$root/syntax/grammar-inputs.sha256" "$root/syntax/syntax.c" "$root/syntax/helper.c" "$root/syntax/safe-ctype.h" "$root/syntax/counted-memory.h" "$root"/syntax/patches/*.patch "$root"/syntax/licenses/*.txt "$0" "$root/tools/grammars-inside.sh" "$root/tools/grammar-build.sh" "$root/tools/fetch.sh" "$root/tools/licence-names.sh" 2>/dev/null | sha256sum | cut -c1-16)"
-if [ -z "$record" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ]; then exit 0; fi
+if [ -z "$record" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ] && [ -x "$out/tuatara-syntax-helper" ]; then
+  exit 0
+fi
 mkdir -p "$out" "$sources" "$root/build/tools"
 . "$root/tools/inside.sh"
 inside bash -euo pipefail "$root/tools/grammars-inside.sh" "$root" "$out" "$sources" "$record"

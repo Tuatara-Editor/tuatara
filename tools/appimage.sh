@@ -42,7 +42,7 @@ cd "$root"
 . tools/fetch.sh
 [ $# -eq 0 ] || { echo "Usage: tools/appimage.sh" >&2; exit 2; }
 name=Tuatara-x86_64.AppImage
-base_image="$ubuntu_current_image"
+base_image="$ubuntu_image"
 container=tuatara-appimage-libs
 tools_dir="$root/build/appimage-tools"
 appdir="$root/build/appimage/Tuatara.AppDir"
@@ -124,7 +124,7 @@ cp "$manifest" "$appdir/tuatara/licenses/bundled-libraries.txt"
 
 # how it starts: the libraries it brings first, the environment as it was given
 # back to the programs it starts (LEAVE-APPIMAGE-ENVIRONMENT), TUATARA_APPIMAGE
-# saying which AppImage it is; --install-desktop and --remove-desktop put it in
+# saying it runs from the AppImage; --install-desktop and --remove-desktop put it in
 # the desktop's applications and take it out (tools/install-desktop.sh, inside
 # it).
 {
@@ -132,7 +132,7 @@ cp "$manifest" "$appdir/tuatara/licenses/bundled-libraries.txt"
 #!/bin/sh
 here="$(dirname "$(readlink -f "$0")")"
 APPRUN
-  echo "export TUATARA_APPIMAGE=current"
+  echo "export TUATARA_APPIMAGE=1"
   cat <<'APPRUN'
 case "${1:-}" in
   --install-desktop) shift; exec "$here/install-desktop.sh" --appimage "${APPIMAGE:?run the AppImage file itself}" "$@" ;;

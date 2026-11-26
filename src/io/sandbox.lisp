@@ -1543,7 +1543,10 @@ whose job's stop request (TUATARA.RUNTIME:*JOB*) stops it."
     (let ((copy (if (or in-memory (memory-copy-p size))
                     (sealed-memory-file "tuatara-decode" (lambda (copy) (copy-for-decoder fd copy size)) :kept kept)
                     (disk-copy fd size kept))))
-      (tuatara.runtime:with-fd-closed-on-error (copy "the copy of a file")
+      (handler-bind ((error (lambda (condition)
+                              (declare (ignore condition))
+                              (tuatara.runtime:ignoring-errors-reported ("closing the copy of a file")
+                                (close-sealed-copy copy)))))
         (unless (and (same-content-p stamp (fd-stamp fd "a file")) (= size (fd-size copy -1)))
           (error 'file-system-error :operation "decode" :path "a file"
                                     :reason "it changed while it was copied for the decoder")))

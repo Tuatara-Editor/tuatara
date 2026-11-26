@@ -84,8 +84,8 @@ from the rope up to the init file.
 
    | System                                  | Download                      | Install                                       |
    |-----------------------------------------+-------------------------------+-----------------------------------------------|
-   | Fedora 40 and newer                     | =tuatara-….x86_64.rpm=        | =sudo dnf install ./tuatara-*.x86_64.rpm=     |
-   | Ubuntu 24.04 and newer, Debian 13       | =tuatara_…_amd64.deb=         | =sudo apt install ./tuatara_*_amd64.deb=      |
+   | Fedora 44 and newer                     | =tuatara-….x86_64.rpm=        | =sudo dnf install ./tuatara-*.x86_64.rpm=     |
+   | Ubuntu 26.04 and newer                  | =tuatara_…_amd64.deb=         | =sudo apt install ./tuatara_*_amd64.deb=      |
    | Arch                                    | =tuatara-…-x86_64.pkg.tar.zst= | =sudo pacman -U tuatara-*-x86_64.pkg.tar.zst= |
    | Omarchy                                 | =tuatara-…-x86_64.pkg.tar.zst= | =sudo pacman -U tuatara-*-x86_64.pkg.tar.zst= |
    | Anything else, or nothing installed     | =Tuatara-x86_64.AppImage=     | see /The AppImages/ below                     |
@@ -243,7 +243,7 @@ keys, faces and themes.
 
 * Status
 
-Version 0.90.46, a pre-release: in daily use by its author, its parts tested
+Version 0.90.47, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 

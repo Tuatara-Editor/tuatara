@@ -116,11 +116,11 @@ for WHAT (words, as a file's name) asked for there (GPG-READ-PASSPHRASE): with
 ENCRYPTING, a plist of :KEYS and :SYMMETRIC, the one to encrypt it with, typed
 twice, and only when it is encrypted with a passphrase; with PATH, the one
 opening the encrypted file there, only when a passphrase opens it
-\(OPENPGP-SYMMETRIC-P); with neither, the one opening it. NIL when nothing is
-asked, as when gpg-agent's pinentry asks."
+\(OPENPGP-PASSPHRASE-OPENS-P, its first octets read); with neither, the one
+opening it. NIL when nothing is asked, as when gpg-agent's pinentry asks."
   (when (and (gpg-minibuffer-p)
              (or (null encrypting) (getf encrypting :symmetric))
-             (or (null path) (openpgp-symmetric-p path)))
+             (or (null path) (openpgp-passphrase-opens-p (tuatara.io:file-head path))))
     (if encrypting
         (gpg-read-passphrase (format nil "Passphrase to encrypt ~a with: " what) :confirm t)
         (gpg-read-passphrase (format nil "Passphrase for ~a: " what)))))
@@ -382,8 +382,7 @@ to the debug log (*SECRET-AT-HAND*). It runs with an environment of its own
                                              (sb-sys:make-fd-stream (shiftf (first status) nil)
                                                                     :input t :external-format :latin-1 :buffering :full)
                                              4096 10000
-                                             (lambda (line)
-                                               (and (uiop:string-prefix-p "[GNUPG:] " line) (subseq line 9)))))
+                                             #'gpg-status-line))
                     (listener (gpg-line-reader "tuatara gpg messages" (sb-ext:process-error process) 1024 200
                                                #'identity))
                     (cancelled nil))
@@ -415,6 +414,71 @@ to the debug log (*SECRET-AT-HAND*). It runs with an environment of its own
 (defun gpg-status-p (statuses name)
   "True when STATUSES, gpg's status lines, have one called NAME."
   (find-if (lambda (s) (or (string= s name) (uiop:string-prefix-p (concatenate 'string name " ") s))) statuses))
+
+(defun gpg-status-line (line)
+  "The status line in LINE, a line gpg wrote where it was told to write its
+status (\"[GNUPG:] GOODSIG ...\"), without that mark (\"GOODSIG ...\"); NIL
+for a line without the mark at its start."
+  (and (uiop:string-prefix-p "[GNUPG:] " line) (subseq line 9)))
+
+(defun gpg-status-lines (text)
+  "The status lines in TEXT, all that gpg wrote, as GPG-STATUS-LINE reads
+each line; the lines without the mark are left out."
+  (loop for line in (uiop:split-string text :separator '(#\Newline))
+        for status = (gpg-status-line line)
+        when status collect status))
+
+(defun gpg-signatures (statuses)
+  "Every signature gpg's STATUSES of a verification speak of, in the order
+gpg checked them, each a plist. :STATUS is :GOOD, :BAD (the signed text was
+changed, or the signature is not for it), :EXPIRED (the signature has
+expired), :EXPIRED-KEY (made by a key that has), :REVOKED (made by a revoked
+key), :MISSING (made by a key your keyring lacks) or :ERROR (gpg could not
+check it). :KEY-ID is the ID gpg gives, :NAME the signer's name as the key
+has it, :FINGERPRINT that of the key that made the signature, :PRIMARY that
+of its primary key, :MADE when it was made (a universal time), :TRUST how far
+the key is trusted (:ULTIMATE, :FULLY, :MARGINAL, :NEVER, or NIL for not at
+all) and :ISSUER, for one that could not be checked, the fingerprint of the
+key that made it when the signature names it. A signature gpg began on but
+said nothing more of is :ERROR."
+  (let ((signatures '())
+        (current nil))
+    (flet ((begin ()
+             (when current (push current signatures))
+             (setf current (list :status nil))))
+      (dolist (line statuses)
+        (let* ((space (position #\Space line))
+               (name (subseq line 0 space))
+               (rest (if space (subseq line (1+ space)) ""))
+               (words (tuatara.text:split-words rest '(#\Space)))
+               (status (cdr (assoc name '(("GOODSIG" . :good) ("BADSIG" . :bad) ("EXPSIG" . :expired)
+                                          ("EXPKEYSIG" . :expired-key) ("REVKEYSIG" . :revoked) ("ERRSIG" . :error))
+                                   :test #'string=))))
+          (cond ((string= name "NEWSIG") (begin))
+                (status
+                 (when (or (null current) (getf current :status)) (begin))
+                 (setf (getf current :key-id) (first words))
+                 (if (eq status :error)
+                     ;; ERRSIG's sixth field, 9, is a key not in the keyring; the seventh names the issuer
+                     (setf (getf current :status) (if (equal (sixth words) "9") :missing :error)
+                           (getf current :issuer) (seventh words))
+                     (setf (getf current :status) status
+                           (getf current :name) (let ((after (position #\Space rest)))
+                                                  (and after (subseq rest (1+ after)))))))
+                ((null current))
+                ((string= name "VALIDSIG")
+                 (let ((seconds (whole-number (third words))))
+                   (setf (getf current :fingerprint) (first words)
+                         (getf current :primary) (or (tenth words) (first words))
+                         (getf current :made) (and seconds (+ seconds +unix-epoch+)))))
+                ((uiop:string-prefix-p "TRUST_" name)
+                 (setf (getf current :trust)
+                       (cdr (assoc name '(("TRUST_ULTIMATE" . :ultimate) ("TRUST_FULLY" . :fully)
+                                          ("TRUST_MARGINAL" . :marginal) ("TRUST_NEVER" . :never))
+                                   :test #'string=)))))))
+      (when current (push current signatures)))
+    (loop for signature in (nreverse signatures)
+          collect (if (getf signature :status) signature (list* :status :error (cddr signature))))))
 
 (defun gpg-recipient-words (status)
   "Why gpg would not encrypt to a key, as words, from STATUS, its INV_RECP
@@ -483,11 +547,11 @@ up once it is decrypted."
                        (list* :key-words (encryption-key-words (getf info :keys)) info)
                        info)))))
 
-(defun openpgp-symmetric-p (path)
-  "True when the encrypted file at PATH begins with a passphrase's packet (a
-symmetric-key encrypted session key), as gpg --symmetric writes them; only
-its first octets are read."
-  (eql 3 (tuatara.io:openpgp-packet-header (tuatara.io:file-head path 16) 0)))
+(defun openpgp-passphrase-opens-p (octets)
+  "True when a passphrase opens the OpenPGP message in OCTETS, armoured or not:
+a passphrase's packet (a symmetric-key encrypted session key, as gpg
+--symmetric writes) is among those before its data (OPENPGP-PACKETS)."
+  (and octets (getf (openpgp-packets octets) :passphrases) t))
 
 ;;; Keeping the text from the disk
 
@@ -498,7 +562,7 @@ its first octets are read."
   "True when BUFFER holds the decrypted text of an encrypted file."
   (and buffer (tuatara.buffer:buffer-local buffer :encrypted) t))
 
-(tuatara.io:define-c-function ("prctl" %prctl) :int
+(tuatara.runtime:define-c-function ("prctl" %prctl) :int
   (option :int) (value :ulong) (more :ulong) (still-more :ulong) (last :ulong))
 
 (defun set-dumpable (dumpable)
@@ -850,14 +914,14 @@ cons."
             (format nil "~a~@[, expires ~a~]~:[~;, yours~]" (getf entry :validity)
                     (let ((e (getf entry :expires))) (and e (format-time "%F" e))) (getf entry :secret)))))
 
-(defun read-encryption (what keys &optional encryption)
+(defun read-encryption (what keys &optional encryption details)
   "Ask in the minibuffer how WHAT (words, a file's name) is encrypted, to KEYS
 \(GPG-KEYS), with a passphrase, or both, several at once with commas between
 them (READ-SEVERAL), those of ENCRYPTION (a plist of :KEYS and :SYMMETRIC)
 there already. Returns the encryption chosen, a plist as ENCRYPTION is with
 :KEY-WORDS (each key's owner, else its ID) and :YOURS (true when you can open
 it again: a passphrase, or a key of yours) besides, or NIL when nothing is
-chosen."
+chosen. DETAILS, when given, are shown beside the question."
   (let* ((entries (cons :passphrase keys))
          (choices (mapcar (lambda (entry) (cons (car (encryption-choice entry)) entry)) entries))
          (initial (loop for entry in entries
@@ -867,10 +931,12 @@ chosen."
                                        (cons (getf entry :id) (getf entry :subkeys))))
                           collect (car (encryption-choice entry))))
          (chosen (loop for text in (read-several
-                                    (format nil "Encrypt ~a to (keys, a passphrase; commas between): " what)
+                                    (format nil "Encrypt ~a to: " what)
                                     (lambda () (mapcar #'encryption-choice entries))
                                     :initial (format nil "~{~a, ~}" initial)
-                                    :none "nothing: no encryption" :more "these, no more" :require-match t)
+                                    :none "nothing: no encryption" :more "these, no more" :require-match t
+                                    :details (format nil "~@[~a~%~%~]Keys, a passphrase, or both; commas between."
+                                                    details))
                        for entry = (cdr (assoc text choices :test #'string=))
                        when entry collect entry)))
     (and chosen
@@ -886,12 +952,13 @@ keys listed, or the question waiting to be asked."
   (let ((job (tuatara.buffer:buffer-local buffer 'encryption-asking)))
     (and job (or (tuatara.runtime:job-running-p job) (eq (tuatara.runtime:job-status job) :done)))))
 
-(defun choose-encryption (what encryption then &key (none "Nothing chosen: nothing done") buffer)
+(defun choose-encryption (what encryption then &key (none "Nothing chosen: nothing done") buffer details)
   "Ask how WHAT is encrypted (READ-ENCRYPTION), those of ENCRYPTION offered,
 once gpg has listed the keys in the background, and call THEN with the
 encryption chosen; with nothing chosen, say NONE and do nothing. For BUFFER,
 when given, it is asked once at a time (CHOOSING-ENCRYPTION-P), said so when
-asked again meanwhile, and nothing is asked or done once BUFFER is killed."
+asked again meanwhile, and nothing is asked or done once BUFFER is killed.
+DETAILS, when given, are shown beside the question."
   (if (and buffer (choosing-encryption-p buffer))
       (message "Already asking how to encrypt ~a" what)
       (let ((job (gpg-in-background "listing keys" (lambda (cancel) (gpg-keys :cancel cancel))
@@ -899,7 +966,7 @@ asked again meanwhile, and nothing is asked or done once BUFFER is killed."
                                       (when buffer
                                         (setf (tuatara.buffer:buffer-local buffer 'encryption-asking) nil))
                                       (when (or (null buffer) (live-buffer-p buffer))
-                                        (let ((chosen (read-encryption what keys encryption)))
+                                        (let ((chosen (read-encryption what keys encryption details)))
                                           (if chosen
                                               (funcall then chosen)
                                               (message "~a" none)))))
@@ -944,8 +1011,11 @@ passphrase, in the minibuffer: from its next save it is encrypted so."
 (define-command gpg-copy-to-clipboard ()
   "Put the text copied last on the system clipboard, even text of an encrypted
 file, which is otherwise kept within Tuatara: other programs (clipboard
-managers among them) can then read it, and keep it."
-  (let ((kill (first (editor-kill-ring *editor*))))
+managers among them) can then read it, and keep it. A failure while text of
+an encrypted file is handed over says nothing of the text in the debug log."
+  (let* ((kill (first (editor-kill-ring *editor*)))
+         (tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand*
+                                               (and kill (gethash kill *plaintext-kills*) t))))
     (if (and (stringp kill) (tuatara.frontend:frontend-set-clipboard (editor-frontend *editor*) kill))
         (progn (setf *clipboard-sent* kill) (message "On the system clipboard"))
         (message "Nothing to put on the system clipboard"))))

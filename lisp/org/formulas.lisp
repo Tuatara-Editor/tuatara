@@ -60,8 +60,8 @@ number too large to work out.")
   "Signal that the field being worked out shows #ERROR (ORG-FORMULA-FIELD-ERROR)."
   (error 'org-formula-field-error :text "#ERROR"))
 
-(defparameter *org-formula-lisp-refused* "Formulas in Emacs Lisp are not run: Tuatara runs nothing from a file"
-  "What a table says of a formula written in Emacs Lisp, which is never run.")
+(defparameter *org-formula-lisp-refused* "Formulas written in Lisp are not run: Tuatara runs nothing from a file"
+  "What a table says of a formula written in Lisp, which is never run.")
 
 (defun org-calc-bounded (n)
   "N, an integer a formula gives a count of digits or an exponent with, when
@@ -314,8 +314,8 @@ strings beginning @ or $), names, operators and brackets."
 
 (define-setting *org-formula-depth-limit* 200
   "The most a formula's parts may be nested.
-Parts nest within brackets, signs and powers; a formula nested deeper is
-refused."
+Parts nest within brackets, signs and powers, and each operator of a chain
+such as 1+2+3 nests the parts before it; a formula nested deeper is refused."
   :values (integer 1 *))
 
 (defun org-formula-parse (text)
@@ -328,11 +328,18 @@ refused."
              (operator-p (op) (and (eq (first (peek)) :operator) (string= (second (peek)) op)))
              (take () (pop tokens))
              (expect (op) (if (operator-p op) (take) (org-formula-fail "~a expected in ~a" op text)))
+             (deeper ()
+               (when (> (incf depth) *org-formula-depth-limit*)
+                 (org-formula-fail "~a is nested too deeply" text)))
              (binary (next ops)
-               (let ((left (funcall next)))
+               ;; each operator of a chain nests the parts before it one deeper
+               (let ((left (funcall next)) (chained 0))
                  (loop while (and (eq (first (peek)) :operator) (member (second (peek)) ops :test #'string=))
                        do (let ((op (second (take))))
+                            (deeper)
+                            (incf chained)
                             (setf left (list :op (intern (if (string= op "=") "==" op) :keyword) left (funcall next)))))
+                 (decf depth chained)
                  left))
              (or-level () (binary #'and-level '("||")))
              (and-level () (binary #'compare-level '("&&")))
@@ -342,8 +349,7 @@ refused."
              (div-level () (binary #'mul-level '("/" "\\")))
              (mul-level () (binary #'unary '("*")))
              (unary ()
-               (when (> (incf depth) *org-formula-depth-limit*)
-                 (org-formula-fail "~a is nested too deeply" text))
+               (deeper)
                (prog1 (cond ((operator-p "-") (take) (list :neg (unary)))
                             ((operator-p "+") (take) (unary))
                             ((operator-p "!") (take) (list :not (unary)))
@@ -788,8 +794,8 @@ which could not be worked out, and why."
   "Work out the formulas of the Org table point is in, its #+TBLFM: line
 \(\\`C-c *'): column formulas ($3=$1+$2) below the first rule (in every row when
 it has none), field formulas (@4$2=vsum(@2..@3)) and range formulas
-\(@2$2..@3$3=$1*10), worked out with the table arithmetic. Formulas in Emacs
-Lisp are left out: nothing in a file is run."
+\(@2$2..@3$3=$1*10), worked out with the table arithmetic. Formulas written
+in Lisp are left out: nothing in a file is run."
   (let ((done (with-org-table (parse model)
                 (let ((texts (org-table-formulas-of parse)))
                   (cond ((null texts) (message "This table has no formulas (#+TBLFM:)") :not-done)
@@ -905,7 +911,7 @@ it gives.")
     ("f2" "show decimal numbers with 2 places after the point")
     ("s3, e3" "show decimal numbers in scientific form, to 3 digits")
     ("%.2f" "write the result as C's printf does: %d, %f, %e, %E, %g, %G, %s, with a width and flags (%5.1f%%)")
-    ("L, T, t, U" "not worked out: Emacs Lisp is never run, and times and durations are not yet; the field says so"))
+    ("L, T, t, U" "not worked out: Lisp is never run, and times and durations are not yet; the field says so"))
   "The flags written after ; in a table formula, each as it is written and what
 it does.")
 
@@ -917,11 +923,12 @@ with small examples. The lines are filled to *HELP-COLUMN*."
    (with-output-to-string (s)
      (write-help-section s "Formulas under a table"
                          :intro "\\<org-mode>A #+TBLFM: line right under a table holds its formulas, apart by ::.
-                         \\[org-table-recalculate] works them all out, as does \\[org-ctrl-c-ctrl-c] on the line.
-                         =$1*2 typed in a field, then TAB, RET or \\[org-ctrl-c-ctrl-c], makes the formula of the
+                         \\[org-table-recalculate] works them all out, as does \\[org-act-here] on the line.
+                         =$1*2 typed in a field, then TAB, RET or \\[org-act-here], makes the formula of the
                          column and works it out; := makes one for the field alone.
-                         \\[org-table-eval-formula] asks for one. The sums are Calc's: integers exact, decimal
-                         numbers to 12 digits shown to 8, * before /, and nothing in Emacs Lisp is run."
+                         \\[org-table-eval-formula] asks for one. The sums are the table arithmetic's: integers
+                         exact, decimal numbers to 12 digits shown to 8, * before /, and nothing written in Lisp
+                         is run."
                          :example "| 2 | 3 |   |
 | 4 | 5 |   |
 #+TBLFM: $3=$1+$2

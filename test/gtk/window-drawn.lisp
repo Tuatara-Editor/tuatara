@@ -20,9 +20,9 @@
 (defmacro c (name result &rest arguments)
   "Call the C function NAME, which returns RESULT, with ARGUMENTS, alternately
 a type and a value, of the types TUATARA.IO:C-TYPE knows."
-  `(sb-alien:alien-funcall (sb-alien:extern-alien ,name (function ,(tuatara.io:c-type result)
+  `(sb-alien:alien-funcall (sb-alien:extern-alien ,name (function ,(tuatara.runtime:c-type result)
                                                                 ,@(loop for type in arguments by #'cddr
-                                                                        collect (tuatara.io:c-type type))))
+                                                                        collect (tuatara.runtime:c-type type))))
                            ,@(loop for value in (rest arguments) by #'cddr collect value)))
 
 (defun window-picture (window)
@@ -36,20 +36,20 @@ pixels; NIL while it has drawn nothing yet."
     (c "gdk_paintable_snapshot" :void :pointer paintable :pointer snapshot
        :double (float width 1d0) :double (float height 1d0))
     (let* ((node (let ((node (c "gtk_snapshot_free_to_node" :pointer :pointer snapshot)))
-                   (if (tuatara.io:null-pointer-p node) (return-from window-picture nil) node)))
+                   (if (tuatara.runtime:null-pointer-p node) (return-from window-picture nil) node)))
            (renderer (c "gsk_cairo_renderer_new" :pointer))
            (textures (let ((bytes (c "gsk_render_node_serialize" :pointer :pointer node)))
                        (sb-alien:with-alien ((size sb-alien:unsigned-long 0))
                          (let* ((data (c "g_bytes_get_data" :pointer :pointer bytes
                                          :pointer (sb-alien:alien-sap (sb-alien:addr size))))
-                                (text (tuatara.io:sap-string data size)))
+                                (text (tuatara.runtime:sap-string data size)))
                            (loop with start = 0
                                  for at = (search "texture {" text :start2 start)
                                  while at count t do (setf start (1+ at))))))))
-      (c "gsk_renderer_realize" :boolean :pointer renderer :pointer (tuatara.io:null-pointer)
-         :pointer (tuatara.io:null-pointer))
+      (c "gsk_renderer_realize" :boolean :pointer renderer :pointer (tuatara.runtime:null-pointer)
+         :pointer (tuatara.runtime:null-pointer))
       (let* ((texture (c "gsk_renderer_render_texture" :pointer :pointer renderer :pointer node
-                         :pointer (tuatara.io:null-pointer)))
+                         :pointer (tuatara.runtime:null-pointer)))
              (pixels (make-array (* 4 width height) :element-type '(unsigned-byte 8))))
         (tuatara.io:with-octets-sap (data pixels)
           (c "gdk_texture_download" :void :pointer texture :pointer data :size (* 4 width)))
@@ -124,7 +124,7 @@ drawn nothing yet."
   "Run STEP, a callback defined by DEFINE-STEP, in GTK's own thread, and wait
 up to 30 seconds for it to finish; what it signalled is an error here."
   (let ((before *steps-done*))
-    (tuatara.frontend.gtk::g-idle-add step (tuatara.io:null-pointer))
+    (tuatara.frontend.gtk::g-idle-add step (tuatara.runtime:null-pointer))
     (unless (wait-until (lambda () (> *steps-done* before)) 30)
       (error "GTK did not run ~a within 30 seconds" step))
     (let ((failed (getf *seen* :error)))

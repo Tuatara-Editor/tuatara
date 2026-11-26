@@ -504,9 +504,9 @@
 
 ;;; A menu opened with values, its option asked again, a summary under it, a switch that comes with a value.
 
-(defun menu-test-read-again (prompt &optional current)
-  "Read the test menu's option again, CURRENT offered."
-  (tuatara.command:read-string prompt :initial (or current "")))
+(defun menu-test-read-again (prompt &key initial)
+  "Read the test menu's option again, INITIAL offered."
+  (tuatara.command:read-string prompt :initial (or initial "")))
 
 (defun menu-test-summary (arguments)
   "The test menu's summary of its ARGUMENTS."

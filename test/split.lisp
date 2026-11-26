@@ -102,16 +102,21 @@ whether the buffer has changes not saved; the frontend fourth."
 
 (define-modal-test (split split-read-again)
   ;; the file read again while typing at a split: the split ends first, what was
-  ;; typed one step for undo and the reading again one of its own
-  (let ((text (format nil "foo bar foo baz~%"))
-        (keys "f f o o RET a X M-x r e v e r t - b u f f e r RET y RET Y"))
+  ;; typed one step for undo and the reading again one of its own; Y typed once it is read
+  (let* ((text (format nil "foo bar foo baz~%"))
+         (read (lambda ()
+                 (wait-until (lambda ()
+                               (tuatara.defaults::files-tick tuatara.command:*editor*)
+                               (notany #'tuatara.defaults::reload-job-p tuatara.runtime:*jobs*))
+                             5)))
+         (keys (list "f f o o RET a X M-x r e v e r t - b u f f e r RET y RET" read "Y")))
     (multiple-value-bind (now file modified f) (split-file-session keys text)
       (declare (ignore file modified))
       (is = 1 (count #\Y now))
       (false (find #\X now))
       (true (tuatara.frontend.fake:fake-frame-showing f "Read split.txt again; the split typed at ended first")))
-    (is string= (format nil "fooX bar fooX baz~%") (split-file-session (format nil "~a C-g u u" keys) text))
-    (is string= text (split-file-session (format nil "~a C-g u u u" keys) text))))
+    (is string= (format nil "fooX bar fooX baz~%") (split-file-session (append keys (list "C-g u u")) text))
+    (is string= text (split-file-session (append keys (list "C-g u u u")) text))))
 
 (define-modal-test (split split-saved-whole)
   ;; not saved while typing at a split, nor while it writes in the background

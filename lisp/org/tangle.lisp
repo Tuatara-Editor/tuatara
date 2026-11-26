@@ -334,6 +334,14 @@ the editor's next command; say why when it did not end well."
            (let ((files (code-files-look-files job)) (org-file (code-files-look-org-file job)))
              (defer-action (lambda () (offer-code-files buffer files org-file (code-files-look-at job)))))))))
 
+(defun code-files-origin-words (org-file)
+  "Words saying that the Org file ORG-FILE (native, or NIL), whose blocks the
+code files are written from, came from outside and why (UNTRUSTED-REASON);
+NIL when it did not."
+  (let ((why (and org-file (untrusted-reason org-file))))
+    (and why (format nil "~a came from outside, and its blocks with it: ~a."
+                     (tuatara.io:native-file-name org-file) why))))
+
 (defun offer-code-files (buffer files org-file &optional single)
   "List FILES (CODE-FILE objects, as CHECK-CODE-FILE found them), those of the
 source blocks of the Org BUFFER whose file is ORG-FILE (native, or NIL), and
@@ -367,7 +375,8 @@ true when FILES is the one file of the block at point (tangle-this-code-block)."
                                                                   (remove-if (lambda (f)
                                                                                (code-file-inside-p f home))
                                                                              to-write))))
-                                               (and outside (length outside)))))
+                                               (and outside (length outside))))
+                                     :details (code-files-origin-words org-file))
                        (let ((written '()) (failed '()))
                          (dolist (file to-write)
                            (let ((why (tangle-write-code-file file)))

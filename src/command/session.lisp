@@ -36,7 +36,10 @@ the buffer of the client who works in the frame too (JOIN-CLIENT)."
   "Functions of the editor for work going on in the background. Each is called
 before every redisplay of the command loop and returns when it wants to be
 called again. NIL means not until the next key. T means work of its own runs
-in the background, to be called soon (*TICK-INTERVAL*). A number of seconds
+in the background, to be called soon (*TICK-INTERVAL*), as work that shows
+its progress wants. :WAITING means work of its own runs in a thread that wakes
+the editor when it has news (WAKE-EDITOR): not called again before, nothing
+drawn meanwhile; a thread that wakes the editor needs no T. A number of seconds
 means nothing is running, to look again then: keys typed meanwhile do not
 call it again before, only the editor woken (as a job ending wakes it). The
 loop waits no longer than the soonest for a key. This is how a replacement or
@@ -96,16 +99,22 @@ more than a day is kept as a day: the function is asked again then."
 (defun run-tick-functions (editor &key (woken t))
   "Call *TICK-FUNCTIONS* with EDITOR (CALL-TICK-FUNCTION), then
 *AFTER-TICK-FUNCTIONS*; the seconds until the soonest tick function wants
-another call, or NIL when none does. Sets *BACKGROUND-WORK*. Unless the
+another call, or NIL when none does. Sets *BACKGROUND-WORK*, true too while
+the core's own work runs in the background (TUATARA.RUNTIME:PENDING-WORK-P),
+looked at again every *TICK-INTERVAL* then. Unless the
 editor was WOKEN, after a key, a function that asked for a number of seconds
 not gone yet is not called (TICK-WANTED)."
   (let ((soonest nil) (working nil) (now (get-internal-real-time)))
     (dolist (f *tick-functions*)
       (let ((wanted (tick-wanted f editor now woken)))
         (when wanted
-          (when (eq wanted t) (setf working t))
-          (let ((seconds (if (realp wanted) wanted *tick-interval*)))
-            (setf soonest (if soonest (min soonest seconds) seconds))))))
+          (when (member wanted '(t :waiting)) (setf working t))
+          (unless (eq wanted :waiting)
+            (let ((seconds (if (realp wanted) wanted *tick-interval*)))
+              (setf soonest (if soonest (min soonest seconds) seconds)))))))
+    ;; work of the core's own in the background, as a tick function's
+    (when (tuatara.runtime:pending-work-p)
+      (setf working t soonest (if soonest (min soonest *tick-interval*) *tick-interval*)))
     (tuatara.runtime:run-hook *after-tick-functions* editor)
     (setf *background-work* working)
     soonest))
@@ -246,7 +255,7 @@ show may have changed (PAINT-OTHER-FRAMES). Each event is handled guarded
                  ;; work handed on from the background, about to run: what any frame shows may change
                  (when (functionp event)
                    (incf *display-generation*))
-                 (when (and event (not (functionp event)))
+                 (when (tuatara.frontend:input-event-p event)
                    (setf *last-input-time* (get-internal-real-time)))
                  ;; after a key, the tick functions that asked for a while are left until it has gone
                  (setf woken (not (tuatara.frontend:input-event-p event)))
@@ -581,7 +590,6 @@ Returns the editor."
       (when (and *running-editor* (eq (car *running-editor*) editor))
         (setf *running-editor* nil))
       (take-in-thread-messages editor)
-      ;; once each: frames taking turns on one display share its frontend
-      (dolist (frontend (remove-duplicates (mapcar #'frame-frontend (editor-frames editor))))
+      (dolist (frontend (editor-frontends editor))
         (tuatara.frontend:frontend-stop frontend)))
     editor))

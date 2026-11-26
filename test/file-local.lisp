@@ -50,7 +50,8 @@ tab width, whether tabs indent, fill column, and what the echo area said."
       ;; a list of Tuatara's own is no mode for a file
       (is string/= "buffers-mode" (first (opened-settings dir "d.txt" (format nil "-*- mode: buffers -*-~%"))))
       ;; nor a mode that runs what is typed: the Lisp prompt, *scratch*'s Lisp
-      (is string= "text-mode" (first (opened-settings dir "g.txt" (format nil ";; -*- mode: ielm -*-~%X> (+ 1 2)~%"))))
+      (is string= "text-mode"
+          (first (opened-settings dir "g.txt" (format nil ";; -*- mode: lisp-repl -*-~%X> (+ 1 2)~%"))))
       (is string= "text-mode"
           (first (opened-settings dir "h.txt" (format nil ";; -*- mode: lisp-interaction -*-~%(+ 1 2)~%"))))
       ;; a mode some files are opened in is taken, fundamental-mode too

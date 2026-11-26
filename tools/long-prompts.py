@@ -21,7 +21,8 @@ the file defines by the form that function returns. A variable in the prompt
 that a LET-style binding gives a call of such a function that returns a
 FORMAT counts that format control's text as well. A prompt is listed when its
 text is more than LIMIT columns, or whatever its length when it formats a path
-(path), a list (list) or more than keys after its question mark (after ?).
+(path), a list (list; so is a call of LIST-QUESTION inside a format), more than keys after its question mark
+(after ?) or a clause ending in a semicolon before it (before ?).
 Such a question should keep the prompt to the thing asked and its keys, the
 rest given as :details. Prints one line per question as
 REPOSITORY/FILE:LINE: NAME COLUMNS and what else it does, with where the
@@ -46,6 +47,8 @@ PATH = re.compile(r"(^|-)(path|file|directory|filename|namestring)s?$")
 # after the last question mark keys are written in words of three letters at most: a longer word, or an argument
 # (CONTROL_TEXT's x), says more
 AFTER_QUESTION = re.compile(r"\?[^?]*[A-Za-z]{4}[^?]*$")
+# a clause ending in a semicolon before the question mark is an explanation: it belongs in the details
+BEFORE_QUESTION = re.compile(r";[^?;]*\?")
 
 
 BRANCHES = {"if": 2, "or": 1, "cond": 1, "case": 2, "ecase": 2, "typecase": 2, "etypecase": 2}
@@ -85,13 +88,21 @@ def path_like(item):
     return isinstance(item, Form) and "namestring" in head_of(item)
 
 
+def text_reasons(text):
+    """The reasons, among after ? and before ?, that the TEXT of a prompt says more than what is asked."""
+    return ({"after ?"} if AFTER_QUESTION.search(text) else set()) | (
+        {"before ?"} if BEFORE_QUESTION.search(text) else set())
+
+
 def measure(item):
     """The (columns, reasons) of the prompt ITEM. COLUMNS is the length of each string in it, a format control's as
     CONTROL_TEXT gives it; of the branches of an IF, OR, COND or CASE, and of the clauses of a format choice, only
     the longest counts, as only one of them is the prompt; of an AND only the last. REASONS is the set of what
-    lists it whatever its length: path, list, after ?."""
+    lists it whatever its length: path, list, after ?, before ?."""
     if isinstance(item, Form):
         head = head_of(item)
+        if head == "list-question":
+            return 0, {"list"}
         if head == "and":
             return measure(item.items[-1]) if len(item.items) > 1 else (0, set())
         if head in BRANCHES:
@@ -103,15 +114,15 @@ def measure(item):
             reasons = {"list"} if "~{" in control else set()
             if any(path_like(argument) for argument in item.items[3:]):
                 reasons.add("path")
-            if AFTER_QUESTION.search(text):
-                reasons.add("after ?")
+            reasons |= text_reasons(text)
+            reasons.update(*(measure(argument)[1] for argument in item.items[3:] if isinstance(argument, Form)))
             return len(text), reasons
         parts = [measure(inner) for inner in item.items]
         return sum(columns for columns, _ in parts), set().union(set(), *(reasons for _, reasons in parts))
     if isinstance(item, Atom) or not isinstance(item, str):
         return 0, set()
     text = longest_choices(re.sub(r"~\n\s*", "", item))
-    return len(text), {"after ?"} if AFTER_QUESTION.search(text) else set()
+    return len(text), text_reasons(text)
 
 
 def binding_before(forms, symbol, position):

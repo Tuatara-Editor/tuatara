@@ -203,6 +203,14 @@ them (=HOME=, the XDG directories, =GNUPGHOME=). Each keyring a test makes has
 its gpg-agent stopped and its socket directory under =/run/user/= taken away
 when its directory goes.
 
+=tools/inside.sh= is how the build and test scripts reach the toolbox. It
+refuses to start toolbox when =HOME=, =XDG_DATA_HOME=, =XDG_CONFIG_HOME= or a
+=CONTAINERS_= variable is not the account's own, or when =XDG_RUNTIME_DIR= is
+unset, and says why. Podman would otherwise start a new pause process, and
+every container started before could not be entered until it was restarted.
+Put a fenced =HOME= or XDG directory inside the container instead:
+=toolbox run --container NAME env HOME=... COMMAND=.
+
 Full compiler warnings fail the suite. Build once with an empty cache too
 (=XDG_CACHE_HOME= pointing at a new directory): a setting used before the file
 that defines it is loaded warns only then. A test that changes a file works on
@@ -353,13 +361,8 @@ section, for a reviewer to judge; core should have none.
 
 * Working in a running editor
 
-=tools/lisp-server.sh= starts SBCL with Tuatara loaded from this tree, never
-another checkout ASDF knows of (=tools/this-tree.lisp=), and a Swank (SLIME) or
-Slynk (Sly) server on localhost:4005, the one of your Emacs package so that
-their protocols match: =SWANK_LOADER= names its =swank-loader.lisp= or
-=slynk-loader.lisp= when it is not found where Emacs keeps its packages. In
-the editor itself, =M-:= evaluates
-Lisp, =M-x ielm= is a REPL, and =M-.= goes to the source of anything.
+In the editor itself, =M-:= evaluates Lisp, =M-x lisp-repl= is a REPL, and =M-.=
+goes to the source of anything.
 
 * How the code is laid out
 

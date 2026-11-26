@@ -232,7 +232,7 @@ step to undo, point staying on its character."
     (org-replace-chars parse from to (apply #'concatenate 'string (nreverse pieces))
                        :point (max from (+ position shift)))))
 
-(defun org-promote (subtree by)
+(defun org-change-headline-level (subtree by)
   "Change the level of the headline point is in by BY (-1 promotes, 1
 demotes), with SUBTREE all the headlines under it too."
   (with-org-structure (parse buffer tree text position)
@@ -241,29 +241,11 @@ demotes), with SUBTREE all the headlines under it too."
             ((and (minusp by) (= 1 (org-property headline :level))) (message "Cannot promote to level 0"))
             (t (org-change-levels parse (if subtree (org-headlines headline) (list headline)) by))))))
 
-(define-command org-do-promote ()
-  "Promote the headline point is in a level, its subtree's other headlines as
-they are."
-  (org-promote nil -1))
-
-(define-command org-do-demote ()
-  "Demote the headline point is in a level, its subtree's other headlines as
-they are."
-  (org-promote nil 1))
-
-(define-command org-promote-subtree ()
-  "Promote the headline point is in a level, and every headline under it."
-  (org-promote t -1))
-
-(define-command org-demote-subtree ()
-  "Demote the headline point is in a level, and every headline under it."
-  (org-promote t 1))
-
 ;;; TODO states
 
 (define-setting *org-todo-keywords-not-cycled* '("CANCELLED" "CANCELED")
   "The TODO keywords passed over as a task's keyword goes round to the next.
-The keyword goes round by \\<org-mode>\\[org-todo], \\[org-shiftright] and \\[org-shiftleft], by RET on a task's
+The keyword goes round by \\<org-mode>\\[org-todo], \\[org-next-state] and \\[org-previous-state], by RET on a task's
 headline and by the agenda's \\<org-agenda-mode>\\[org-agenda-todo]. With the standard
 keywords a task goes TODO, WAIT, DONE and none, never CANCELLED, which
 \\<org-mode>\\[org-cancel-task] sets. The keywords of a file's own #+TODO: line are
@@ -719,12 +701,12 @@ what is open. True when it handled the line."
                     (org-todo-changed buffer))))
             t))))))
 
-(define-command org-shiftright ()
+(define-command org-next-state ()
   "On a headline, its next TODO keyword, as \\[org-todo] does."
   (org-set-todo 1)
   (org-todo-changed (current-buffer)))
 
-(define-command org-shiftleft ()
+(define-command org-previous-state ()
   "On a headline, its TODO keyword before, none before the first."
   (org-set-todo -1)
   (org-todo-changed (current-buffer)))
@@ -1175,7 +1157,7 @@ or on a headline, a headline of the section's level after its subtree."
   "Bind Org's keys for TODO states and new headlines (M-h M-j M-k M-l, shared
 with tables, are bound by INSTALL-ORG-TABLES)."
   (let ((keymap (mode-keymap 'org-mode)))
-    (define-keys keymap '(("C-c C-t" org-todo) ("S-<right>" org-shiftright) ("S-<left>" org-shiftleft)
+    (define-keys keymap '(("C-c C-t" org-todo) ("S-<right>" org-next-state) ("S-<left>" org-previous-state)
                           ("C-c X" org-cancel-task)
                           ("C-c C-q" org-set-tags-command) ("C-c C-z" org-add-note) ("C-c C-w" org-refile)
                           ("M-RET" org-meta-return) ("M-S-RET" org-insert-todo-heading)

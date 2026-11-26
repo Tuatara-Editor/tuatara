@@ -327,11 +327,17 @@ buffer was opened safely."
           t))))
 
 (defun org-follow-denote (identifier &optional safe)
-  "Visit the note whose name begins with IDENTIFIER, among your notes, looked
-for in the background (ORG-SEARCH-NOTES), with SAFE safely."
-  (org-search-notes (format nil "denote:~a" identifier)
-                    (lambda (path) (uiop:string-prefix-p identifier (tuatara.io:native-file-name path)))
-                    (lambda (path) (show-buffer (visit-path path :safe safe))))
+  "Visit the note whose identifier, the start of its name, is IDENTIFIER
+\(20260102T090000), among your notes, looked for in the background
+\(ORG-SEARCH-NOTES), with SAFE safely. An IDENTIFIER that is not a whole one,
+empty or cut short, matches no note."
+  (if (and (= (length identifier) 15) (identifier-at-start-p identifier))
+      (org-search-notes (format nil "denote:~a" identifier)
+                        (lambda (path)
+                          (let ((name (tuatara.io:native-file-name path)))
+                            (and (identifier-at-start-p name) (string= identifier name :end2 15))))
+                        (lambda (path) (show-buffer (visit-path path :safe safe))))
+      (message "No match for denote:~a" identifier))
   t)
 
 (defparameter *formatted-files-link-type* "formatted-match"

@@ -58,7 +58,7 @@
            (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope numbers)
                                                   :budget (tuatara.syntax:parse-memory-limit (length numbers)))))
              (true tree)
-             (when tree (tuatara.syntax:delete-tree tree)))
+             (when tree (tuatara.syntax:free-tree tree)))
         (tuatara.syntax:delete-parser parser)))
     (let* ((buffer (tuatara.buffer:make-buffer "*runaway*" :text numbers))
            (said nil)
@@ -89,7 +89,7 @@
                                                          :limit 5 :budget (* 64 1024 1024))))
                     (true tree "~a" grammar)
                     (true (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second)) "~a" grammar)
-                    (when tree (tuatara.syntax:delete-tree tree)))
+                    (when tree (tuatara.syntax:free-tree tree)))
                (tuatara.syntax:delete-parser parser)))))
 
 ;; a grammar slow on a large text is not run again after every key
@@ -539,7 +539,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
   ;; each language's comments as its mode's definition gives them, or the definition of the mode it is made from
   (loop for (mode line block)
           in '((tuatara.defaults::lisp-mode (";" ";;") (nil)) (tuatara.defaults::lisp-interaction-mode (";" ";;") (nil))
-               (tuatara.defaults::ielm-mode (";" ";;") (nil)) (tuatara.defaults::emacs-lisp-mode (";" ";;") (nil))
+               (tuatara.defaults::lisp-repl-mode (";" ";;") (nil)) (tuatara.defaults::emacs-lisp-mode (";" ";;") (nil))
                (tuatara.defaults::scheme-mode (";" ";;") (nil)) (tuatara.defaults::wat-mode (";;" ";;") (nil))
                (tuatara.defaults::rust-mode ("//" "//") (nil)) (tuatara.defaults::c-mode ("//" "//") (nil))
                (tuatara.defaults::js-mode ("//" "//") (nil)) (tuatara.defaults::bash-mode ("#" "#") (nil))

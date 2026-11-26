@@ -3,9 +3,8 @@
 
 (defpackage #:tuatara.syntax
   (:use #:cl #:alexandria)
-  (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-octets #:with-foreign-memory #:poll-fd #:socket-pair
-                #:send-with-descriptors)
-  (:import-from #:tuatara.runtime #:define-record #:define-setting)
+  (:import-from #:tuatara.io #:sap-octets #:with-foreign-memory #:poll-fd #:socket-pair #:send-with-descriptors)
+  (:import-from #:tuatara.runtime #:define-record #:define-setting #:null-pointer #:null-pointer-p)
   (:import-from #:tuatara.text #:*fold-table* #:needle-at-p #:scan-chunk #:scan-chunk-backward #:+near-octets+)
   (:import-from #:tuatara-user #:*syntax-helper-unconfined*)
   (:documentation "The search and regex interface, the tree-sitter binding, parsing in the
@@ -29,7 +28,7 @@ background, colouring and moving by syntax.")
            #:*grammar-directories* #:grammar-directories #:user-grammar-directory #:user-grammar-store
            #:store-refused-why #:user-grammar-file #:user-grammar-p #:grammar-name-p
            #:host-user-grammar-allowed-p
-           #:make-parser #:delete-parser #:parse-rope #:delete-tree #:edit-tree
+           #:make-parser #:delete-parser #:parse-rope #:free-tree #:edit-tree
            #:compile-query #:query #:query-p #:query-grammar #:query-captures #:query-properties
            #:query-not-answered #:query-error #:query-error-kind #:query-error-line #:query-error-text
            #:query-error-grammar

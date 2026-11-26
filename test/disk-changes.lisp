@@ -586,3 +586,38 @@ whose state changed, and those whose file changed again."
                      (is string= (format nil "mine l0~%l1~%l2~%") (session-text editor)))
                 (sb-int:unencapsulate 'tuatara.io:open-file-text 'held)
                 (tuatara.buffer:kill-buffer b)))))))))
+
+(define-test (files-changed-on-disk revert-reads-away-from-the-editor)
+  ;; \[revert-buffer] returns with the file being read on a thread of its own; the text comes in at take-in
+  (with-slow-polling
+    (with-test-directory (dir)
+      (let* ((path (put-file (merge-pathnames "lines.txt" dir) (format nil "l1~%l2~%")))
+             (release (sb-thread:make-semaphore))
+             (me sb-thread:*current-thread*)
+             (on-editor nil) (running nil) (text-then nil))
+        (sb-int:encapsulate 'tuatara.io:open-file-text 'held
+                            (lambda (function &rest arguments)
+                              (if (eq sb-thread:*current-thread* me)
+                                  (setf on-editor t)
+                                  (sb-thread:wait-on-semaphore release :timeout 10))
+                              (apply function arguments)))
+        (unwind-protect
+             (multiple-value-bind (f editor)
+                 (run-keys (list (lambda ()
+                                   (setf on-editor nil)
+                                   (replace-by-rename path (format nil "l0~%l1~%l2~%")))
+                                 "M-x r e v e r t - b u f f e r RET"
+                                 (lambda ()
+                                   (setf running (and (find-if #'tuatara.defaults::reload-job-p
+                                                               tuatara.runtime:*jobs*)
+                                                      t)
+                                         text-then (session-text tuatara.command:*editor*))
+                                   (sb-thread:signal-semaphore release)))
+                           :file path :width 100)
+               (declare (ignore f))
+               (false on-editor "not read on the editor's thread")
+               (true running "a reload job runs when the command returns")
+               (is string= (format nil "l1~%l2~%") text-then "not read yet")
+               (is string= (format nil "l0~%l1~%l2~%") (session-text editor) "taken in once read")
+               (tuatara.buffer:kill-buffer (session-buffer editor)))
+          (sb-int:unencapsulate 'tuatara.io:open-file-text 'held))))))

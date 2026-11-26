@@ -540,3 +540,62 @@ shown, by an ordinary change of the buffer."
              (nth-value 1 (tuatara.defaults::line-write-edit buffer nil "new" 0 3)))
       (sb-int:unencapsulate 'tuatara.buffer:buffer-string 'broken)
       (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (search-results link-to-a-file-outside-not-searched)
+  ;; a link in the tree to a file outside it is neither searched nor kept in an index: lines of the
+  ;; examiner's own files are never shown as found in the tree
+  (with-test-directory (outside)
+    (with-test-directory (dir)
+      (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%")))
+            (secret (put-file (merge-pathnames "secret.txt" outside) (format nil "kiwi from outside~%"))))
+        (sb-posix:symlink (tuatara.io:native secret) (tuatara.io:native (merge-pathnames "notes.txt" dir)))
+        (let ((f (run-keys `(,(format nil "C-x C-f ~a RET M-s g" (key-string (tuatara.io:native a))) :wait "k i w i")
+                           :width 200 :height 12)))
+          (true (tuatara.frontend.fake:fake-frame-showing f "a.txt:1: alpha kiwi"))
+          (false (tuatara.frontend.fake:fake-frame-showing f "from outside")))
+        (let* ((index (tuatara.defaults::make-directory-index (tuatara.io:native dir)))
+               (corpora (second (tuatara.defaults::read-directory-index index :all (* 1024 1024) 64))))
+          (is equal '("a.txt") (loop for corpus across corpora
+                                     append (coerce (tuatara.defaults::file-corpus-paths corpus) 'list))))
+        (false (tuatara.defaults::read-text-file (tuatara.io:native (merge-pathnames "notes.txt" dir))))))))
+
+(define-test (search-results files-not-searched-counted)
+  ;; files a search of files cannot read as text are counted on the question and on the list, those
+  ;; searched from disk past the most files too
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%")))
+          (most tuatara-user:*indexed-files-most*))
+      (alexandria:write-byte-vector-into-file
+       (coerce (list 107 0 105 0 119 0 105 0 10 0) '(vector (unsigned-byte 8))) (merge-pathnames "b.log" dir))
+      (alexandria:write-byte-vector-into-file
+       (coerce (list 0 1 2 107 105 119 105) '(vector (unsigned-byte 8))) (merge-pathnames "c.bin" dir))
+      (dolist (files-most (list most 1))
+        (setf tuatara-user:*indexed-files-most* files-most)
+        (unwind-protect
+             (multiple-value-bind (f editor)
+                 (run-keys (list (format nil "C-x C-f ~a RET M-s g" (key-string (tuatara.io:native a)))
+                                 :wait "k i w i" :wait "C-c C-l")
+                           :width 200 :height 12)
+               (true (tuatara.frontend.fake:fake-frame-showing f "[2 files not searched]") "most ~d" files-most)
+               (true (search "2 files not searched: no text" (session-text editor)) "~s" (session-text editor))
+               (true (search "a.txt:1: alpha kiwi" (session-text editor))))
+          (setf tuatara-user:*indexed-files-most* most))))))
+
+(define-test (search-results lines-limit-said-while-asking)
+  ;; the question says when the lines listed are the first *search-files-lines-limit* only, and so does
+  ;; going through them afterwards
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%kiwi two~%kiwi three~%"))))
+      (let ((tuatara.defaults::*search-files-lines-limit* 2))
+        (let ((f (run-keys `(,(format nil "C-x C-f ~a RET M-s g" (key-string (tuatara.io:native a))) :wait "k i w i" :wait)
+                           :width 200 :height 12)))
+          (true (tuatara.frontend.fake:fake-frame-showing f "[first 2 lines only]")))
+        (let ((f (run-keys `(,(format nil "C-x C-f ~a RET M-s g" (key-string (tuatara.io:native a))) :wait "k i w i" :wait
+                             "RET M-g n")
+                           :width 200 :height 12)))
+          (true (tuatara.frontend.fake:fake-frame-showing f "Line 2 of the first 2 found"))))
+      (let ((f (run-keys `(,(format nil "C-x C-f ~a RET M-s g" (key-string (tuatara.io:native a))) :wait "k i w i" :wait
+                           "RET M-g n")
+                         :width 200 :height 12)))
+        (false (tuatara.frontend.fake:fake-frame-showing f "lines only"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Line 2 of 3 found"))))))

@@ -1,19 +1,18 @@
-;;;; lisp/modes/lisp-debug.lisp --- Errors shown with the calls under way: toggle-debug-on-error, *Backtrace*.
+;;;; lisp/modes/lisp-debug.lisp --- Errors shown with the calls under way: toggle-backtrace-on-error, *Backtrace*.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's debug-on-error: while it is on, an error in a command or in
-;;;; Lisp evaluated in the editor shows, besides the message, the calls that
-;;;; were under way when it was signalled, innermost first, in *Backtrace*.
-;;;; The calls have ended by then (the editor has carried on), so there is no
-;;;; continuing them as Emacs's debugger can: *Backtrace* is a record to read,
-;;;; where RET (or M-.) goes to the definition of the function called on the
-;;;; line and q closes it.
+;;;; While *backtrace-on-error* is on, an error in a command or in Lisp evaluated
+;;;; in the editor shows, besides the message, the calls that were under way
+;;;; when it was signalled, innermost first, in *Backtrace*. The calls have
+;;;; ended by then (the editor has carried on), so there is no continuing
+;;;; them: *Backtrace* is a record to read, where RET (or M-.) goes to the
+;;;; definition of the function called on the line and q closes it.
 
 (in-package #:tuatara.defaults)
 
 (define-major-mode backtrace-mode special-mode
   "The calls under way when an error was met, innermost first, shown in
-*Backtrace* while debug-on-error is on: \\<backtrace-mode>\\[xref-find-definitions]
+*Backtrace* while *backtrace-on-error* is on: \\<backtrace-mode>\\[xref-find-definitions]
 (or \\<global>\\[xref-find-definitions]) goes to the definition of the function
 called on the line, \\[xref-go-back] comes back, \\<backtrace-mode>\\[quit-window]
 closes the list."
@@ -29,7 +28,7 @@ its window: the error as a heading, the calls' numbers dim."
   (let ((b (buffer-in-mode "*Backtrace*" 'backtrace-mode)))
     (setf (buffer-kind b) :backtrace)
     ;; on the innermost call
-    (render-pieces b (list* (cons (format nil "Debugger entered--Lisp error: ~a [~(~a~)]"
+    (render-pieces b (list* (cons (format nil "An error: ~a [~(~a~)]"
                                               (tuatara.runtime:failure-words condition :said t) (type-of condition))
                                   :heading)
                             (string #\Newline)
@@ -73,20 +72,20 @@ without a name (a lambda, a top-level form)."
   (declare (ignore buffer))
   (function-candidates))
 
-(define-command toggle-debug-on-error ()
-  "Switch debug-on-error on or off: while it is on, an error in a command, or
+(define-command toggle-backtrace-on-error ()
+  "Switch *backtrace-on-error* on or off: while it is on, an error in a command, or
 in Lisp evaluated in the editor
 (\\<lisp-mode>\\[eval-last-expression], \\[eval-top-level-form], \\[eval-expression],
 \\<lisp-interaction-mode>\\[eval-print-last-expression]), shows the calls under way
 when it was signalled in *Backtrace*, innermost first, besides the message.
 With a count, on when it is positive, off when it is zero or less."
-  (setf *debug-on-error* (switched-by-count *debug-on-error*))
-  (message "Debug on Error ~:[disabled~;enabled~] globally" *debug-on-error*))
+  (setf *backtrace-on-error* (switched-by-count *backtrace-on-error*))
+  (message "Backtraces on errors: ~:[off~;on~]" *backtrace-on-error*))
 
 (defmethod host-show-backtrace ((host defaults-host) condition calls)
   "Show CONDITION and CALLS in *Backtrace* (SHOW-BACKTRACE)."
   (show-backtrace condition calls))
 
 (defun install-backtrace ()
-  "Bind the keys of *Backtrace*, shown for errors while *DEBUG-ON-ERROR* is on."
+  "Bind the keys of *Backtrace*, shown for errors while *BACKTRACE-ON-ERROR* is on."
   (define-key *backtrace-keymap* "RET" 'xref-find-definitions))

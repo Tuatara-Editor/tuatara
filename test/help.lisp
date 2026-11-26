@@ -217,7 +217,7 @@
   ;; M-x credits and the README's Credits name the same projects, in the same order
   (is equal (readme-credit-names) (mapcar #'first tuatara.defaults::*credits*))
   ;; a name too long for its column has its lines below it, never run into them
-  (multiple-value-bind (f editor) (run-keys "M-x c r e d i t s RET" :text "x" :width 120 :height 40)
+  (multiple-value-bind (f editor) (run-keys "M-x d e s c r i b e - c r e d i t s RET" :text "x" :width 120 :height 40)
     (declare (ignore f))
     (let ((text (tuatara.buffer:buffer-string
                  (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
@@ -240,6 +240,10 @@
         (true (search "absolutely no warranty" text))
         (true (search "The tutor" text))
         (true (search "C-h C-c" text))
+        ;; every paragraph above the ways in broken evenly: no line past 80 columns
+        (is equal '() (remove-if (lambda (line) (<= (length line) 80))
+                                 (uiop:split-string (subseq text 0 (search "Ways in" text))
+                                                    :separator '(#\Newline))))
         ;; point on the first button, the license
         (is = (octets-to text "GNU General Public License") (tuatara.buffer:buffer-point buffer))
         (true (search "Its sources: https://github.com/Tuatara-Editor/tuatara; report a fault there." text))
@@ -372,7 +376,7 @@
 (define-test (help editor-variables-listed)
   ;; the variables of the editor's packages, your settings in TUATARA-USER too
   (let ((variables (tuatara.defaults::tuatara-variables)))
-    (true (member 'tuatara-user:*default-directory* variables))
+    (true (member 'tuatara-user:*no-file-directory* variables))
     (true (member 'tuatara.defaults::*org-link-descriptive* variables))
     (false (member '*print-base* variables))
     (true (every (lambda (s) (let ((p (symbol-package s)))
@@ -498,12 +502,12 @@ second when that row does not go on from it."
 (define-test (help credits-hang-under-their-text)
   ;; a credit's wrapped rows continue under its own text, at 60, 80 and 120 columns
   (dolist (width '(60 80 120))
-    (let ((f (run-keys "M-x c r e d i t s RET" :width width :height 70)))
+    (let ((f (run-keys "M-x d e s c r i b e - c r e d i t s RET" :width width :height 70)))
       (multiple-value-bind (text-column next) (hanging-offsets f 70 "the state of a git")
         (is = 26 text-column)
         (is eql text-column next))))
   ;; a window too narrow for the hang keeps half its row for the text
-  (let* ((f (run-keys "M-x c r e d i t s RET" :width 30 :height 60))
+  (let* ((f (run-keys "M-x d e s c r i b e - c r e d i t s RET" :width 30 :height 60))
          (rows (loop for row below 60
                      for line = (tuatara.frontend.fake:fake-screen-line f row)
                      when (uiop:string-prefix-p "↪" line) collect line)))

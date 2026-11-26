@@ -179,7 +179,7 @@ buffers of its files killed after."
     (is equal '(:calendar-journal :calendar-marked)
         (tuatara.defaults::calendar-day-faces '(:calendar-marked :calendar-journal)))
     ;; n on a day: its entry made, the calendar gone
-    (multiple-value-bind (f editor) (calendar-keys "C-b n")
+    (multiple-value-bind (f editor) (calendar-keys "<left> n")
       (declare (ignore f))
       (is string= "20261002T120000--friday-2-october-2026__journal.org" (current-file-name editor))
       (is = 1 (length (tuatara.command:editor-windows editor))))
@@ -201,16 +201,16 @@ buffers of its files killed after."
         (flet ((on-day (keys)
                  (calendar-keys (list #'wait-for-calendar-marks :tick keys))))
           ;; RET on a day with agenda entries alone: the agenda, on that day
-          (on-day "C-b RET")
+          (on-day "<left> RET")
           (let ((agenda (tuatara.buffer:find-buffer "*Org Agenda*")))
             (true agenda)
             (when agenda
               (is = (calendar-day 2026 10 2) (tuatara.defaults::org-agenda-day-at-point agenda))))
           ;; on a day with both: asked which, each by its own key, the keys named on the question; n the journal
           ;; entry
-          (let ((f (on-day "C-b C-b RET")))
+          (let ((f (on-day "<left> <left> RET")))
             (true (tuatara.frontend.fake:fake-frame-showing f "Open on" "(a or n)")))
-          (multiple-value-bind (f editor) (on-day "C-b C-b RET n")
+          (multiple-value-bind (f editor) (on-day "<left> <left> RET n")
             (declare (ignore f))
             (is string= "20261001T120000--thursday-1-october-2026__journal.org" (current-file-name editor)))
           (forget-file-buffers)

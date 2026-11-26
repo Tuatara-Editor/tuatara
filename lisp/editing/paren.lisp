@@ -1,8 +1,8 @@
-;;;; lisp/editing/paren.lisp --- The bracket that pairs with the one at point, shown: show-paren-mode.
+;;;; lisp/editing/paren.lisp --- The bracket that pairs with the one at point, shown.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's show-paren-mode, on as standard: when the character before
-;;;; point closes a bracket, or else the one after it opens one, that bracket
+;;;; On as standard (*show-matching-bracket*): when the character before point
+;;;; closes a bracket, or else the one after it opens one, that bracket
 ;;;; and its partner are shown in :paren-match; a partner of another kind, or
 ;;;; none before the text ends, in :paren-mismatch. Where the language has a
 ;;;; grammar, brackets in strings, comments and character literals count for
@@ -10,15 +10,14 @@
 ;;;; brackets begin and end a node of it, else the brackets are counted within
 ;;;; that node. Without a grammar they are counted within *show-paren-reach*
 ;;;; octets either side. What was found is kept until point or the text
-;;;; changes. Not in the lists and help buffers, as Emacs leaves out
-;;;; special-mode's.
+;;;; changes. Not in the lists and help buffers (special-mode's).
 
 (in-package #:tuatara.defaults)
 
-(define-setting *show-paren-mode* t
+(define-setting *show-matching-bracket* t
   "Whether the bracket that pairs with the one at point is shown: the one before
-point when it closes, else the one after it when it opens. \\[show-paren-mode]
-switches it.
+point when it closes, else the one after it when it opens.
+\\[show-matching-bracket-mode] switches it.
 - t: show it (the standard).
 - nil: show none."
   :values boolean)
@@ -140,7 +139,7 @@ when the reach did."
 
 (defun paren-ranges (buffer point)
   "The ranges (START END FACE) that show the bracket at POINT of BUFFER and
-its partner (see *SHOW-PAREN-MODE*): the bracket before POINT when it closes,
+its partner (see *SHOW-MATCHING-BRACKET*): the bracket before POINT when it closes,
 else the one after it when it opens; NIL when neither is a bracket, when it is
 in a string or comment, or when its partner cannot be found near enough. Where
 BUFFER's language has a grammar the tree says where the partner is
@@ -182,12 +181,12 @@ redisplay while an evaluation runs writes no table the evaluation may write.")
 
 (defun paren-highlights (editor window rows)
   "Highlight function: in the selected window, the bracket at point and its
-partner (PAREN-RANGES), while *SHOW-PAREN-MODE* is on; not in the hex view or
+partner (PAREN-RANGES), while *SHOW-MATCHING-BRACKET* is on; not in the hex view or
 a special-mode buffer (lists, help). What was found is kept (*PAREN-SHOWN*)
 until point or the text changes."
   (declare (ignore rows))
   (let ((buffer (tuatara.display:window-buffer window)))
-    (when (and *show-paren-mode*
+    (when (and *show-matching-bracket*
                (eq window (editor-window editor))
                (not (tuatara.display:hex-view-p buffer))
                (not (typep (buffer-major-mode buffer) 'special-mode)))
@@ -200,16 +199,16 @@ until point or the text changes."
               (setf *paren-shown* (list buffer version point ranges))
               ranges))))))
 
-(define-command show-paren-mode ()
+(define-command show-matching-bracket-mode ()
   "Switch on or off showing the bracket that pairs with the one at point, in
 every buffer: when on, the bracket before point when it closes, else the one
 after it when it opens, is shown with its partner in :paren-match, or in
 :paren-mismatch when the partner is of another kind or there is none. With a
 count, on when it is positive, off when it is zero or less."
-  (setf *show-paren-mode* (switched-by-count *show-paren-mode*))
-  (message "Show-Paren mode ~:[disabled~;enabled~]" *show-paren-mode*))
+  (setf *show-matching-bracket* (switched-by-count *show-matching-bracket*))
+  (message "Matching brackets ~:[not shown~;shown~]" *show-matching-bracket*))
 
-(define-setting *blink-matching-paren* t
+(define-setting *say-matching-bracket* t
   "Whether typing a closing bracket says what its partner is when it is out of
 sight (\"Matches (defun foo ()\"), or that it has none.
 - t: say it (the standard).
@@ -245,7 +244,7 @@ alone."
 say what its partner is if that is out of sight above the window, or that it
 has none or one of another kind."
   (let ((point (tuatara.buffer:buffer-point buffer)))
-    (when (and *blink-matching-paren* (find char tuatara.text:*closers*) (plusp point)
+    (when (and *say-matching-bracket* (find char tuatara.text:*closers*) (plusp point)
                (eql (tuatara.buffer:buffer-char-at buffer (1- point)) char)
                (not (tuatara.text:rope-escaped-p (tuatara.buffer:buffer-text buffer) (1- point)))
                (not (tuatara.display:hex-view-p buffer)))
@@ -260,7 +259,7 @@ has none or one of another kind."
                 ((eq same :end) (echo "No matching parenthesis found"))))))))
 
 (defun install-show-paren ()
-  "Show the bracket that pairs with the one at point (*SHOW-PAREN-MODE*), and
-say what a closing bracket typed pairs with (*BLINK-MATCHING-PAREN*)."
+  "Show the bracket that pairs with the one at point (*SHOW-MATCHING-BRACKET*),
+and say what a closing bracket typed pairs with (*SAY-MATCHING-BRACKET*)."
   (pushnew 'paren-highlights *highlight-functions*)
   (pushnew 'blink-matching-open *post-self-insert-functions*))

@@ -36,17 +36,13 @@ there is none."
     (flet ((listed (flag text) (search (format nil "\\fB~a\\fR" (tuatara.terminal::roff-text flag)) text)))
       (dolist (entry tuatara.terminal:*option-help*)
         (dolist (flag (getf entry :flags))
-          (if (tuatara.terminal::option-listed-p entry)
-              (true (listed (first flag) page) "~a is in tuatara(1)" (first flag))
-              (false (listed (first flag) page) "~a is not in tuatara(1)" (first flag)))))
-      ;; the legacy AppImage's launcher's own, on that build's page alone
-      (true (listed "--dark" (let ((tuatara.io:*appimage* "legacy")) (tuatara.terminal::options-roff)))))
+          (true (listed (first flag) page) "~a is in tuatara(1)" (first flag)))))
     (dolist (option tuatara.terminal:*options*)
       (true (search (tuatara.terminal::roff-text option) page) "~a is in tuatara(1)" option))
     (dolist (form tuatara.terminal:*usage-forms*)
       (true (search (tuatara.terminal::roff-synopsis-form form) page) "~a is in the synopsis" form))
     ;; --help and the page read the one table
-    (let ((usage (let ((tuatara.io:*appimage* "legacy")) (tuatara.terminal::usage-text))))
+    (let ((usage (tuatara.terminal::usage-text)))
       (dolist (entry tuatara.terminal:*option-help*)
         (true (search (tuatara.terminal::option-label (getf entry :flags)) usage)))))))
 
@@ -101,7 +97,7 @@ there is none."
   "The first flag of each option of *OPTION-HELP* that has nothing to choose: it stays a line.")
 
 (defparameter *settings-with-a-choice*
-  '(tuatara-user:*auto-save-idle* tuatara-user:*kill-ring-max* tuatara-user:*lsp-wait* tuatara-user:*remote-seconds*
+  '(tuatara-user:*auto-save-idle* tuatara-user:*kill-ring-length* tuatara-user:*lsp-wait* tuatara-user:*remote-seconds*
     tuatara-user:*split-limit* tuatara-user:*tui-colours*)
   "Settings whose documentation says why to change them and what follows.")
 
@@ -119,7 +115,7 @@ there is none."
         (if (member flag *options-without-a-choice* :test #'string=)
             (false (getf entry :why) "~a has nothing to choose" flag)
             (true (getf entry :why) "~a says why to take it" flag))
-        (when (and (getf entry :why) (tuatara.terminal::option-listed-p entry))
+        (when (getf entry :why)
           (let ((why (getf entry :why)))
             (true (search (tuatara.terminal::roff-text (format nil "~{~a~^ ~}" (subseq why 0 (position "" why :test #'string=))))
                           page)
@@ -176,14 +172,13 @@ completed: a list of strings."
     (remove "" (tuatara.text:split-words out (list #\Newline)) :test #'string=)))
 
 (define-test (man-pages bash-completion-has-every-option)
-  ;; every option of the table is in the script, but the legacy AppImage's own, and the script is valid bash
+  ;; every option of the table is in the script, and the script is valid bash
   (with-test-directory (directory)
     (let* ((script (tuatara.terminal:write-bash-completion directory))
            (text (alexandria:read-file-into-string script :external-format :utf-8)))
       (dolist (option tuatara.terminal:*options*)
         (true (search option text) "~a is in the completion" option))
-      (false (search "--dark" text))
-      (dolist (entry (remove-if-not #'tuatara.terminal::option-listed-p tuatara.terminal:*option-help*))
+      (dolist (entry tuatara.terminal:*option-help*)
         (dolist (flag (getf entry :flags))
           (unless (char= (char (first flag) 0) #\+)
             (true (search (tuatara.terminal::bare-flag (first flag)) text) "~a is in the completion" (first flag)))))

@@ -341,22 +341,22 @@ safely).")
         (t "[-]")))
 
 (defvar *shown-default-directory* nil
-  "The directory *DEFAULT-DIRECTORY* named when the mode line last looked, as
+  "The directory *NO-FILE-DIRECTORY* named when the mode line last looked, as
 \(SETTING TIME NAME): the setting then, the internal real time, and the name as
 the mode line shows it.")
 
 (defun shown-default-directory ()
-  "The directory *DEFAULT-DIRECTORY* names, as the mode line shows it
+  "The directory *NO-FILE-DIRECTORY* names, as the mode line shows it
 \(ABBREVIATED-PATH): looked up again when the setting changes, else at most
 once a second (so a change of the home directory shows within a second), so
 that drawing makes no call to the file system."
   (let ((kept *shown-default-directory*)
         (now (get-internal-real-time)))
-    (if (and kept (eq (first kept) tuatara-user:*default-directory*)
+    (if (and kept (eq (first kept) tuatara-user:*no-file-directory*)
              (< (- now (second kept)) internal-time-units-per-second))
         (third kept)
         (third (setf *shown-default-directory*
-                     (list tuatara-user:*default-directory* now
+                     (list tuatara-user:*no-file-directory* now
                            (abbreviated-path (tuatara.io:native (tuatara.io:default-directory)))))))))
 
 (defun buffer-directory-name (buffer)
@@ -662,9 +662,9 @@ point in its own way (*POINT-MARKED-FUNCTIONS*)."
 the window, over the text's backgrounds but under *FACES-OVER-RULERS*: each a
 list of (COLUMN FACE),
 COLUMN counted from 0 at the line's start (the fill column's in
-:display-fill-column, point's in :cursor-column), or NIL for none.")
+:display-fill-column, point's in :current-column), or NIL for none.")
 
-(defparameter *faces-over-rulers* '(:hl-line :soft-wrap-row :split-cursor :split-cursor-insert)
+(defparameter *faces-over-rulers* '(:current-line :soft-wrap-row :split-cursor :split-cursor-insert)
   "The faces a line down the window (*RULER-FUNCTIONS*) is painted under: the
 line point is on, and the other cursors. Every other face of a character, a
 source block's background or the selection's, is painted under the line.")
@@ -1039,7 +1039,8 @@ out."
 vector of the pieces of each screen row (PUT-SCREEN-ROW). It adds its buffer's
 header line when it has one, in :header-line, its text rows with their gutter,
 the divider beside a window to its right, and its mode line, in :mode-line
-when it is SELECTED, else in :mode-line-inactive. Point is kept visible in the
+when it is SELECTED, else in :mode-line-inactive, in :mode-line-alarm while
+the mode lines are alight (MODE-LINE-ALARM-START). Point is kept visible in the
 rows the window has under a panel of one row, so that a taller panel, while it
 lasts, only hides rows. Pictures in place of its text or among its rows are
 noted where the frontend shows pictures (NOTE-WINDOW-PICTURES), and rows
@@ -1087,7 +1088,8 @@ drawn large take as many screen rows where the frontend draws all rows alike
         (put-window-rows window rows cells cursor-ends rulers screen)
         (multiple-value-bind (line spans)
             (funcall (or (editor-mode-line-function editor) #'default-mode-line) editor window)
-          (push (list left (tuatara.display:area-width window) line spans (if selected :mode-line :mode-line-inactive))
+          (push (list left (tuatara.display:area-width window) line spans
+                      (cond ((mode-line-alarm-lit-p) :mode-line-alarm) (selected :mode-line) (t :mode-line-inactive)))
                 (aref screen (+ top height))))))))
 
 (defun cursor-column-past-line (window column &optional (scale 1))

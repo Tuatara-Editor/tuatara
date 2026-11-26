@@ -327,7 +327,7 @@ answer in: given to the library's functions as a pointer."
 (defun out-pointer (function &rest arguments)
   "Call FUNCTION with ARGUMENTS and a place for a pointer, which it fills;
 return the pointer, or signal an error when it returns other than success."
-  (sb-alien:with-alien ((place sb-sys:system-area-pointer (tuatara.io:null-pointer)))
+  (sb-alien:with-alien ((place sb-sys:system-area-pointer (tuatara.runtime:null-pointer)))
     (let ((result (apply function (append arguments (list (alien-address place))))))
       (unless (eql result (vt :success)) (refuse "The terminal library refused (~d)" result)))
     place))
@@ -336,7 +336,7 @@ return the pointer, or signal an error when it returns other than success."
   "Make one of the terminal library's objects with CONSTRUCTOR, its function
 taking the library's own allocator, a place for the object, then ARGUMENTS;
 return the object, or signal an error when the library refuses."
-  (out-pointer (lambda (place) (apply constructor (tuatara.io:null-pointer) place arguments))))
+  (out-pointer (lambda (place) (apply constructor (tuatara.runtime:null-pointer) place arguments))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *library-objects*
@@ -693,7 +693,7 @@ means something to a terminal."
                                                                (and (characterp base) (upper-case-p base)))))
           (%ghostty-key-event-set-unshifted-codepoint event (if (characterp base) (char-code (char-downcase base)) 0))
           (sb-sys:with-pinned-objects (utf8)
-            (%tuatara-terminal-key-text event (if utf8 (sb-sys:vector-sap utf8) (tuatara.io:null-pointer))
+            (%tuatara-terminal-key-text event (if utf8 (sb-sys:vector-sap utf8) (tuatara.runtime:null-pointer))
                                         (if utf8 (1- (length utf8)) 0))
             (send-encoded emulator 128
                           (lambda (out length)
@@ -770,7 +770,7 @@ editor never waiting for it."
                     (flet ((link (out size)
                              (%tuatara-terminal-link (emulator-terminal emulator) (if history 1 0) column row out size
                                                      (alien-address length))))
-                      (let ((result (link (tuatara.io:null-pointer) 0)))
+                      (let ((result (link (tuatara.runtime:null-pointer) 0)))
                         (when (and (member result (list (vt :success) (vt :out-of-space))) (plusp length))
                           (let ((octets (make-array length :element-type '(unsigned-byte 8))))
                             (when (eql (vt :success) (tuatara.io:with-octets-sap (sap octets)
@@ -1063,7 +1063,7 @@ cursor is on. Holds the library while it is made, the reader stepping aside,
 so to be called away from the editor's thread for a long scrollback."
   (with-emulator-turn (emulator)
     (let ((terminal (emulator-terminal emulator)))
-      (sb-alien:with-alien ((out sb-sys:system-area-pointer (tuatara.io:null-pointer))
+      (sb-alien:with-alien ((out sb-sys:system-area-pointer (tuatara.runtime:null-pointer))
                             (length (sb-alien:unsigned 64) 0))
         (unless (eql (vt :success)
                      (%tuatara-terminal-text terminal (if styled 1 0) (alien-address out) (alien-address length)))
@@ -1171,7 +1171,7 @@ a second. True when it was drawn."
                (length (* width height 4))
                (buffer (%ghostty-alloc allocator length)))
           (declare (type fixnum width height channels) (type tuatara.text:octets pixels))
-          (unless (tuatara.io:null-pointer-p buffer)
+          (unless (tuatara.runtime:null-pointer-p buffer)
             (dotimes (i (* width height))
               (declare (type fixnum i))
               (dotimes (c 3) (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) c)) (aref pixels (+ (* channels i) c))))
@@ -1197,7 +1197,7 @@ cannot make the terminal read other files."
     (sb-alien:with-alien ((off (sb-alien:unsigned 8) 0))
       (dolist (option (list (vt :opt-kitty-medium-file) (vt :opt-kitty-medium-shared-mem)))
         (%ghostty-terminal-set terminal option (alien-address off))))
-    (%ghostty-terminal-set terminal (vt :opt-kitty-medium-temp-file) (tuatara.io:null-pointer))
+    (%ghostty-terminal-set terminal (vt :opt-kitty-medium-temp-file) (tuatara.runtime:null-pointer))
     (when (plusp (emulator-picture-memory emulator))
       (setf (emulator-placements emulator) (vt-new #'%ghostty-kitty-graphics-placement-iterator-new)))))
 
@@ -1213,7 +1213,7 @@ changed since they were last counted: the library's room for pictures is
 made none, which deletes them and their places, then what it was, and the
 debug log says so the first time. To be called holding the library,
 pictures on."
-  (sb-alien:with-alien ((graphics sb-sys:system-area-pointer (tuatara.io:null-pointer))
+  (sb-alien:with-alien ((graphics sb-sys:system-area-pointer (tuatara.runtime:null-pointer))
                         (generation (sb-alien:unsigned 64) 0)
                         (iterator sb-sys:system-area-pointer (emulator-placements emulator)))
     (let ((terminal (emulator-terminal emulator)))
@@ -1222,7 +1222,7 @@ pictures on."
                     (%ghostty-kitty-graphics-get graphics what place))))
         (when (and (eql (vt :success)
                         (%ghostty-terminal-get terminal (vt :data-kitty-graphics) (alien-address graphics)))
-                   (not (tuatara.io:null-pointer-p graphics))
+                   (not (tuatara.runtime:null-pointer-p graphics))
                    (graphics-get (vt :graphics-generation) (alien-address generation))
                    (/= generation (emulator-graphics-generation emulator)))
           (setf (emulator-graphics-generation emulator) generation)
@@ -1267,7 +1267,7 @@ library."
         (pointer (let ((address (image-value image-handle (vt :image-data-pointer) 64)))
                    (and address (sb-sys:int-sap address)))))
     (values (when (and pointer width height (plusp width) (plusp height)
-                       (not (tuatara.io:null-pointer-p pointer))
+                       (not (tuatara.runtime:null-pointer-p pointer))
                        (<= (* width height) (terminal-picture-most-pixels)))
               (let* ((in (cond ((= format (vt :image-format-rgb)) 3) ((= format (vt :image-format-rgba)) 4)
                                ((= format (vt :image-format-gray-alpha)) 2) (t 1)))
@@ -1415,13 +1415,13 @@ alone. Pictures are made once for each picture the program sends and kept
         (used (setf (emulator-pictures-shown emulator) (emptied-table (emulator-pictures-shown emulator))))
         (shown '()) (virtual nil)
         (iterator (emulator-placements emulator)))
-    (sb-alien:with-alien ((graphics sb-sys:system-area-pointer (tuatara.io:null-pointer))
+    (sb-alien:with-alien ((graphics sb-sys:system-area-pointer (tuatara.runtime:null-pointer))
                           (id (sb-alien:unsigned 32) 0))
       (tuatara.io:with-foreign-memory (info (vt :render-info-size))
         (when (and (eql (vt :success)
                         (%ghostty-terminal-get (emulator-terminal emulator) (vt :data-kitty-graphics)
                                                (alien-address graphics)))
-                   (not (tuatara.io:null-pointer-p graphics))
+                   (not (tuatara.runtime:null-pointer-p graphics))
                    (progn (setf (sb-sys:sap-ref-sap info 0) iterator)
                           (eql (vt :success)
                                (%ghostty-kitty-graphics-get graphics (vt :graphics-placement-iterator) info))))
@@ -1429,7 +1429,7 @@ alone. Pictures are made once for each picture the program sends and kept
                 do (setf id 0)
                 (%ghostty-kitty-graphics-placement-get iterator (vt :placement-image-id) (alien-address id))
                 (let ((handle (%ghostty-kitty-graphics-image graphics id)))
-                  (unless (tuatara.io:null-pointer-p handle)
+                  (unless (tuatara.runtime:null-pointer-p handle)
                     ;; a placement for pictures in text (kitty's Unicode placeholders): its cells, for them
                     (when (/= 0 (logand #xff (placement-value iterator info (vt :placement-virtual))))
                       (setf (gethash id (or virtual (setf virtual (make-hash-table))))
@@ -1621,7 +1621,8 @@ until one prints, never waking for nothing."
           (soonest nil)
           (now (get-internal-real-time)))
       (when after
-        (dolist (emulator (loop for e being the hash-values of *emulators* collect e))
+        (dolist (emulator (sb-ext:with-locked-hash-table (*emulators*)
+                            (loop for e being the hash-values of *emulators* collect e)))
           (when (and (emulator-to-compress emulator) (not (emulator-closed emulator)))
             (let ((left (- (* after internal-time-units-per-second) (- now (emulator-last-output emulator)))))
               (if (plusp left)
@@ -1662,31 +1663,14 @@ found: the program's group does not change while it runs."
           (setf (emulator-group emulator) group))
         group)))
 
-(defun group-alive-p (group)
-  "True while a process of the process group GROUP is there."
-  (handler-case (progn (sb-posix:kill (- group) 0) t)
-    (sb-posix:syscall-error () nil)))
-
 (defun stop-emulator (emulator &key background)
-  "End EMULATOR: the processes of its program's group told the terminal is gone
-\(SIGHUP), killed when they have not ended two seconds later, its threads
-ended, and the library's state let go of. With BACKGROUND, only the telling
-is done at once, the waiting and the rest on a thread of its own."
-  (let* ((process (emulator-process emulator))
-         (group (and process (sb-ext:process-alive-p process) (program-group process))))
-    (when group
-      (handler-case (sb-posix:kill (- group) sb-posix:sighup) (sb-posix:syscall-error () nil)))
+  "End EMULATOR: its program and every program of its session told the
+terminal is gone (SIGHUP), killed when they have not ended in time, as a
+program no longer wanted is ended (TUATARA.IO:END-UNWANTED-PROGRAM), its
+threads ended, and the library's state let go of. With BACKGROUND, only the
+telling is done at once, the waiting and the rest on a thread of its own."
+  (let ((process (emulator-process emulator)))
     (flet ((finish ()
-             (when group
-               (loop repeat 100 while (group-alive-p group) do (sleep 0.02))
-               (when (group-alive-p group)
-                 (handler-case (sb-posix:kill (- group) sb-posix:sigkill) (sb-posix:syscall-error () nil))
-                 (loop repeat 50 while (group-alive-p group) do (sleep 0.02)))
-               ;; setsid, waiting for its program, ends with it
-               (loop repeat 50 while (sb-ext:process-alive-p process) do (sleep 0.02))
-               (when (sb-ext:process-alive-p process)
-                 (ignoring-errors-reported ("ending the terminal's program")
-                   (sb-ext:process-kill process sb-posix:sigkill))))
              ;; the reader and the writer end before the pseudo-terminal is closed under them
              (sb-thread:with-mutex ((emulator-lock emulator))
                (setf (emulator-closed emulator) t))
@@ -1702,7 +1686,8 @@ is done at once, the waiting and the rest on a thread of its own."
                (sb-thread:with-mutex ((emulator-input-lock emulator))
                  (free-library-objects emulator)))
              (remhash (emulator-id emulator) *emulators*)))
-      (if background
-          (tuatara.runtime:make-guarded-thread #'finish :name "tuatara terminal end")
-          (finish))
+      (cond ((not (and process (sb-ext:process-alive-p process))) (finish))
+            (background (tuatara.io:end-unwanted-program process :close nil :signal sb-posix:sighup :then #'finish))
+            (t (tuatara.io:end-unwanted-program process :close nil :signal sb-posix:sighup :wait t)
+               (finish)))
       nil)))

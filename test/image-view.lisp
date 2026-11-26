@@ -469,7 +469,7 @@ and a JP2 file with alpha at half."
             (car (first notes)))))))
 
 (define-test (image-view imagemagick-6-driven)
-  ;; where ImageMagick 6 is all there is (convert-im6.q16, as Ubuntu 24.04 has it): driven as magick
+  ;; where ImageMagick 6 is all there is (convert-im6.q16, as Debian and older Ubuntu have it): driven as magick
   ;; is, with the same arguments and the same policy of its own
   (let ((seven (find "magick"
                      tuatara.defaults::*image-decoders*
@@ -707,6 +707,26 @@ else ~a; fi" pixel)
                (is = 1 reads)))
         (sb-int:unencapsulate 'tuatara.defaults::inner-pictures 'counting)
         (image-forget)))))
+
+(define-test (image-view pictures-inside-not-read-from-a-safe-list)
+  ;; a picture shown from a list opened safely has its pictures inside left until asked for, as an Office
+  ;; document's text is not read there; from a list opened as usual they are read with the first
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "photo.png" dir))
+          (list (tuatara.buffer:make-buffer "*safe list*" :text "")))
+      (alexandria:write-byte-vector-into-file *tiny-png* file)
+      (unwind-protect
+           (flet ((pictures ()
+                    (image-forget)
+                    (let ((buffer (let ((tuatara.command::*current-buffer* list))
+                                    (tuatara.defaults::image-view-visit (namestring file) #'identity))))
+                      (true buffer)
+                      (and buffer (tuatara.defaults::image-view-pictures (tuatara.defaults::image-view-of buffer))))))
+             (isnt eq :unasked (pictures))
+             (setf (tuatara.io:safe-visit-p list) t)
+             (is eq :unasked (pictures)))
+        (image-forget)
+        (tuatara.buffer:kill-buffer list)))))
 
 (define-test (image-view old-drawing-stopped)
   ;; a picture asked for while another is drawn stops the other's job, its program ended with it
@@ -1000,3 +1020,21 @@ data taken: the first frame is the file's picture data, or with HIDDEN,
       (let ((note (metadata-of file)))
         (note-has note "- Picture 1 :: the picture itself, which programs showing the animation leave out, 32 × 24")
         (true (cl-ppcre:scan "- Picture 2 :: frame 1 of 1, 16 × 12; at 8, 6 on the picture; shown 0.10 s; replacing what is under it; then left as it is.*differs from the part of the picture shown under it in 100% of it" note) "~a" note)))))
+
+(define-test (image-view apng-many-chunks-joined)
+  ;; a picture made of as many chunks as a PNG is read to is joined into one, the stack never filled by them
+  (let* ((count 99990)
+         (header (tuatara.defaults::png-chunk-octets "IHDR" (coerce #(0 0 0 1 0 0 0 1 8 2 0 0 0)
+                                                                    '(simple-array (unsigned-byte 8) (*)))))
+         (chunk (tuatara.defaults::png-chunk-octets "IDAT" (coerce #(120) '(simple-array (unsigned-byte 8) (*)))))
+         (end (tuatara.defaults::png-chunk-octets "IEND" #()))
+         (octets (make-array (+ 8 (length header) (* count (length chunk)) (length end))
+                             :element-type '(unsigned-byte 8))))
+    (replace octets #(137 80 78 71 13 10 26 10))
+    (replace octets header :start1 8)
+    (dotimes (i count)
+      (replace octets chunk :start1 (+ 8 (length header) (* i (length chunk)))))
+    (replace octets end :start1 (- (length octets) (length end)))
+    (let ((made (tuatara.defaults::apng-frame-octets octets :picture)))
+      (is = (length octets) (length made))
+      (is equalp octets made))))

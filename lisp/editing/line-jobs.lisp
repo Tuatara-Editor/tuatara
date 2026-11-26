@@ -259,7 +259,7 @@ when search filters hide any of those lines (CHECK-HIDDEN-LINES)."
       (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
       (cond ((tuatara.io:buffer-scratch-directory buffer)
              ;; TO is on the last line: END is that line's end, or the next one's start
-             (let ((job (start-line-job buffer start (1- end) per-line
+             (let ((job (start-line-job buffer start (1- end) (constantly per-line)
                                         :prepare (and prepare
                                                       (lambda (job)
                                                         (declare (notinline rewrite-rope rewrite-low rewrite-high

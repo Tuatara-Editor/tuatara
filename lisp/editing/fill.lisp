@@ -48,8 +48,12 @@ and \\[fill-region], wrapped at by \\[soft-wrap-mode] and marked by
 the buffer's offered, which \\<minibuffer>\\[minibuffer-finish] alone keeps."
   (let ((b (current-buffer)))
     (unless (take-fill-column-argument b)
-      (keep-fill-column b (read-whole-number "Set fill column (now ~d): " (buffer-fill-column b)
-                                             :refusal "Not a column.")))))
+      (keep-fill-column b (read-fill-column b)))))
+
+(defun read-fill-column (buffer)
+  "Ask for a column to fill BUFFER's text to, its fill column offered, which
+an empty answer gives. Asks again while what is typed is no column."
+  (read-whole-number "Fill column (default ~d): " (buffer-fill-column buffer) :refusal "Not a column."))
 
 (defun fill-prefix-of (text characters)
   "The run at the start of TEXT made of CHARACTERS: a line's fill prefix."
@@ -446,9 +450,14 @@ from then on, while the editor runs. A count given first
 *FILL-ASK-COLUMN* says: its fill column offered, a number typed made its fill
 column. Asks again while what is typed is no column."
   (when (and (not (take-fill-column-argument buffer)) *fill-ask-column*)
-    (let* ((column (buffer-fill-column buffer))
-           (n (read-whole-number "Fill column (default ~d): " column :refusal "Not a column.")))
-      (unless (= n column) (keep-fill-column buffer n)))))
+    (let ((n (read-fill-column buffer)))
+      (unless (= n (buffer-fill-column buffer)) (keep-fill-column buffer n)))))
+
+(defun comments-only-words (mode)
+  "Words saying that MODE, a programming mode, fills only its comments, and
+its strings when it fills those (MODE-FILLS-STRINGS-P)."
+  (format nil "~a mode fills only comments~:[~; and strings~]"
+          (tuatara.modes:mode-lighter (type-of mode)) (mode-fills-strings-p mode)))
 
 (defun nothing-to-fill (buffer)
   "Say that nothing is filled at point in BUFFER, and why when a programming
@@ -456,8 +465,7 @@ mode fills only its comments (and strings) there."
   (let* ((mode (buffer-major-mode buffer))
          (line (tuatara.buffer:buffer-line-start buffer (point))))
     (if (and (typep mode 'prog-mode) (not (blank-text-p (tuatara.buffer:buffer-line-text buffer line))))
-        (message "Nothing to fill here: ~a mode fills only comments~:[~; and strings~]"
-                 (tuatara.modes:mode-lighter (type-of mode)) (mode-fills-strings-p mode))
+        (message "Nothing to fill here: ~a" (comments-only-words mode))
         (message "Nothing to fill here"))))
 
 (define-command fill-paragraph ()
@@ -480,7 +488,7 @@ the editor runs."
   "Fill the lines the selection touches, each paragraph in them as
 fill-paragraph fills one, the lines before and after the selection left as
 they are: the column asked for first, or given by a count, and kept as the
-buffer's. A selection of more than 32 MB is refused."
+buffer's. A selection of more than *REWRITE-THRESHOLD* octets is refused."
   (let ((b (current-buffer)))
     (multiple-value-bind (start end) (selected-region-or-say b 'fill-region)
       (when (and start (not (too-large-here-p start end "Filling")))
@@ -512,7 +520,5 @@ buffer's. A selection of more than 32 MB is refused."
                            (setf p next)))))
           (setf (tuatara.buffer:buffer-mark-active-p b) nil)
           (if (and (zerop count) (typep (buffer-major-mode b) 'prog-mode))
-              (message "Nothing filled: ~a mode fills only comments~:[~; and strings~]"
-                       (tuatara.modes:mode-lighter (type-of (buffer-major-mode b)))
-                       (mode-fills-strings-p (buffer-major-mode b)))
+              (message "Nothing filled: ~a" (comments-only-words (buffer-major-mode b)))
               (message "Filled ~d paragraph~:p to column ~d" count (buffer-fill-column b))))))))

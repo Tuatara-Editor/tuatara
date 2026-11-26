@@ -346,11 +346,11 @@ left in the trash (TRASH-RESTORE-REFUSAL)."
   (let ((directories (remove-duplicates (mapcar (lambda (thing)
                                               (abbreviated-path (tuatara.io:parent-path (trashed-path thing)))) things)
                                     :test #'string= :from-end t)))
-    (y-or-n-p* (format nil "~a?"
-                       (list-question "Put back" "thing" things
-                                      :name-of (lambda (thing) (abbreviated-path (trashed-path thing)))))
-               :details (format nil "Put back to:~%~{  ~a~%~}~@[~%Left in the trash:~%~{  ~a~%~}~]"
-                                directories (and refused (trash-refused-words refused))))))
+    (ask-list-question (y-or-n-p*)
+      (list-question "Put back" "thing" things
+                     :name-of (lambda (thing) (abbreviated-path (trashed-path thing)))
+                     :details (format nil "Put back to:~%~{  ~a~%~}~@[~%Left in the trash:~%~{  ~a~%~}~]"
+                                      directories (and refused (trash-refused-words refused)))))))
 
 (defun trash-refused-words (refused)
   "Each of REFUSED, (THING . WHY), as its name and why, or NIL for none."
@@ -401,11 +401,11 @@ background (TRASH-DELETE-THINGS); they cannot be put back."
   (let ((things (trash-things-of list keys)))
     (cond ((/= (length things) (length (trash-sound-things things)))
            (message "Not deleted: the trash on that drive has links in it or is not yours"))
-          ((yes-or-no-p* (format nil "~a for good? It cannot be put back."
-                                 (list-question "Delete" "thing" things
-                                                :name-of (lambda (thing)
-                                                           (escape-controls
-                                                            (tuatara.io:native-file-name (trashed-path thing)))))))
+          ((ask-list-question (yes-or-no-p* :end " for good?")
+             (list-question "Delete" "thing" things
+                            :name-of (lambda (thing)
+                                       (escape-controls (tuatara.io:native-file-name (trashed-path thing))))
+                            :details +cannot-be-put-back+))
            (trash-delete-things things list)))))
 
 (define-command rimu-trash-restore ()
@@ -444,7 +444,7 @@ after asking twice, in the background."
     (cond ((null (tuatara.buffer:buffer-local list 'trash-read-at)) (message "The trash is still being read"))
           ((null things) (message "The trash is empty"))
           ((and (yes-or-no-p* (format nil "Empty the trash, ~d thing~:p, for good?" (length things)))
-                (yes-or-no-p* "Really? Nothing in it can be put back after."))
+                (yes-or-no-p* "Really empty the trash for good?" :details +cannot-be-put-back+))
            (trash-delete-things things list)))))
 
 (defun install-rimu-trash ()

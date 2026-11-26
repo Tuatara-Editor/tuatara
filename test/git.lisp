@@ -1762,15 +1762,15 @@ beside it."
   (with-test-directory (dir)
     (scratch-repository dir)
     (let ((file (native-in dir ".gitignore")))
-      (tuatara.git::git-add-ignore-pattern file "/a\\[1\\].txt" (tuatara.io:native dir))
-      (tuatara.git::git-add-ignore-pattern file "/a\\[1\\].txt" (tuatara.io:native dir))
+      (tuatara.git::git-write-ignore-pattern file "/a\\[1\\].txt")
+      (tuatara.git::git-write-ignore-pattern file "/a\\[1\\].txt")
       (is equal (format nil "/a\\[1\\].txt~%") (alexandria:read-file-into-string file))
       (put-file (sb-ext:parse-native-namestring (native-in dir "a[1].txt")) "x")
       (put-file (merge-pathnames "a1.txt" dir) "x")
       (is equal (format nil "?? .gitignore~%?? a1.txt~%") (git-output dir "status" "--short"))
       ;; git's own exclude file, its directory not there yet: both made
       (uiop:delete-directory-tree (merge-pathnames ".git/info/" dir) :validate t :if-does-not-exist :ignore)
-      (tuatara.git::git-add-ignore-pattern (native-in dir ".git/info/exclude") "/x" (tuatara.io:native dir))
+      (tuatara.git::git-write-ignore-pattern (native-in dir ".git/info/exclude") "/x")
       (is equal (format nil "/x~%") (alexandria:read-file-into-string (merge-pathnames ".git/info/exclude" dir)))
       ;; a name holding \\ and * offered from its directory as written, not as a Lisp pathname reads it
       (sb-int:encapsulate 'tuatara.git::git-file-here 'ignore-test (lambda (f top)
@@ -2332,6 +2332,94 @@ beside it."
              (is equal 1 (count "status" runs :test #'string=))
              (true (<= (length runs) 3) "git ran ~d times: ~{~a~^, ~}" (length runs) (reverse runs)))
         (sb-int:unencapsulate 'tuatara.git:run-git-program 'count-runs)))))
+
+(define-test (git ignored-walked-only-when-open)
+  ;; while the files ignored are folded, a status read again walks no directory ignored and keeps them from the
+  ;; reading before; once open, they are read again
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (put-file (merge-pathnames ".gitignore" dir) (format nil "*.log~%"))
+    (put-file (merge-pathnames "debug.log" dir) "x")
+    (let ((statuses '()) (top (namestring dir)) (git (concatenate 'string (namestring dir) ".git/")))
+      (sb-int:encapsulate 'tuatara.git:run-git-program 'statuses
+                          (lambda (function program directory arguments &rest keys)
+                            (when (member "status" arguments :test #'equal) (push arguments statuses))
+                            (apply function program directory arguments keys)))
+      (flet ((read-state (&rest keys)
+               (catch 'tuatara.git::git-failed
+                 (apply #'tuatara.git::git-read-state (tuatara.defaults::%make-hash-job :what "git") top git keys)))
+             (walked () (and (member "--ignored=traditional" (first statuses) :test #'equal) t)))
+        (unwind-protect
+             (let ((first (read-state)))
+               (true (walked))
+               (put-file (merge-pathnames "more.log" dir) "x")
+               (let ((again (read-state :previous first :ignored nil)))
+                 (false (walked))
+                 (is equal '("debug.log") (mapcar #'first (tuatara.git::git-state-ignored again)))
+                 (false (tuatara.git::git-state-ignored-read again))
+                 (let ((open (read-state :previous again :ignored t)))
+                   (true (walked))
+                   (is equal '("debug.log" "more.log") (mapcar #'first (tuatara.git::git-state-ignored open))))))
+          (sb-int:unencapsulate 'tuatara.git:run-git-program 'statuses))))))
+
+(define-test (git stage-hunk-without-a-file-says-so)
+  ;; staging the hunk at point in a buffer of no file says so, not nothing
+  (multiple-value-bind (f editor) (run-keys "M-x g i t - s t a g e - h u n k RET")
+    (declare (ignore f))
+    (is equal "No file here" (tuatara.command:editor-message editor))))
+
+(define-test (git ignore-and-patch-written-in-the-background)
+  ;; a pattern ignored and the changes saved as a patch are written by a job, never on the editor's thread
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (put-file (merge-pathnames "a.txt" dir) (format nil "changed~%"))
+    (let* ((threads '()) (editor-thread nil)
+           (patch (native-in dir "changes.patch")) (ignore (native-in dir ".gitignore"))
+           (names '(tuatara.io:replace-file tuatara.io:write-new-file)))
+      (dolist (name names)
+        (sb-int:encapsulate name 'thread (lambda (function path &rest more)
+                                           (when (member path (list patch ignore) :test #'equal)
+                                             (push sb-thread:*current-thread* threads))
+                                           (apply function path more))))
+      (unwind-protect
+           (git-session dir "a.txt"
+                        (list (lambda ()
+                                (setf editor-thread sb-thread:*current-thread*)
+                                (tuatara.git::git-add-ignore-pattern ignore "/x" (tuatara.io:native dir)))
+                              (list :until (lambda () (probe-file ignore)))
+                              (format nil "M-x g i t - s a v e - p a t c h RET C-a C-k ~a RET" (rimu-typed patch))
+                              (list :until (lambda () (probe-file patch)))))
+        (dolist (name names) (sb-int:unencapsulate name 'thread)))
+      (is = 2 (length threads))
+      (false (member editor-thread threads)))))
+
+(define-test (git bisect-and-subtree-questions-short)
+  ;; the command a bisection runs and a subtree's repository are asked for in a few words, what they mean beside
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (let ((f (git-session dir "a.txt" (list "M-x g i t - b i s e c t - r u n RET" (list :wait 0.2)) :width 160)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Test command:"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "exits with 125")))
+    (let ((f (git-session dir "a.txt" (list "M-x g i t - s u b t r e e - a d d RET l i b RET" (list :wait 0.2))
+                          :width 160)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Repository to add:"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "the subtree lib")))))
+
+(define-test (git rebase-list-comments-as-git-is-set)
+  ;; a rebase's list is read with the comment git is set to use, and auto taken from git's own help lines
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (let ((top (namestring dir))
+          (todo (format nil "pick 1a2b3c One~%~%; Commands:~%; p, pick <commit> = use commit~%")))
+      (flet ((comment ()
+               (catch 'tuatara.git::git-failed
+                 (tuatara.git::git-rebase-comment (tuatara.defaults::%make-hash-job :what "git") top todo))))
+        (is equal "#" (comment))
+        (git-output dir "config" "core.commentChar" ";")
+        (is equal ";" (comment))
+        (is equal '("pick 1a2b3c One") (tuatara.git::git-rebase-todo-lines todo (comment)))
+        (git-output dir "config" "core.commentChar" "auto")
+        (is equal ";" (comment))))))
 
 (define-test (git log-filtered-by-a-column)
   ;; the log is a table as the other lists are: a filter tries its pattern on one column

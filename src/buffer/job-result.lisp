@@ -115,45 +115,6 @@ pieces after them, not the batches carried before."
 without the buffer ever holding it (BUFFER-TAKE-IN-JOB-RESULT): counted down
 from 0, so that it is never a version's number nor a file's saved content.")
 
-(defun rope-leaf-lengths (rope)
-  "ROPE's leaves and file spans in order, each as (NODE . OCTETS IN IT)."
-  (let ((pieces '()))
-    (tuatara.text:map-leaf-pieces (lambda (node start end) (push (cons node (- end start)) pieces)) rope)
-    (nreverse pieces)))
-
-(defun ropes-same-octets-p (a b)
-  "True when the ropes A and B hold the same octets. A leaf or file span both
-share, at the same place, is passed over unread, so that two versions of a
-large text made from one are told apart by reading only what was changed in
-either; the reading stops at the first octet that differs. NIL too when what
-would have to be read has not arrived from its file yet."
-  (and (= (tuatara.text:rope-octet-length a) (tuatara.text:rope-octet-length b))
-       (let ((left (rope-leaf-lengths a)) (right (rope-leaf-lengths b))
-             (left-at 0) (right-at 0) (at 0)
-             (one (make-array 4096 :element-type '(unsigned-byte 8)))
-             (other (make-array 4096 :element-type '(unsigned-byte 8))))
-         (declare (type fixnum left-at right-at at) (dynamic-extent one other))
-         (handler-case
-             (loop
-               (loop while (and left (= left-at (cdar left))) do (setf left (cdr left) left-at 0))
-               (loop while (and right (= right-at (cdar right))) do (setf right (cdr right) right-at 0))
-               (when (or (null left) (null right))
-                 (return (and (null left) (null right))))
-               (let* ((shared (and (eq (caar left) (caar right)) (= left-at right-at)))
-                      (n (min (- (cdar left) left-at) (- (cdar right) right-at) (if shared most-positive-fixnum 4096))))
-                 (declare (type fixnum n))
-                 (unless shared
-                   (tuatara.text:rope-check-arrived a at (+ at n))
-                   (tuatara.text:rope-check-arrived b at (+ at n))
-                   (tuatara.text:piece-copy (caar left) left-at (+ left-at n) one 0)
-                   (tuatara.text:piece-copy (caar right) right-at (+ right-at n) other 0)
-                   (when (mismatch one other :end1 n :end2 n)
-                     (return nil)))
-                 (incf left-at n)
-                 (incf right-at n)
-                 (incf at n)))
-           (tuatara.text:not-arrived () nil)))))
-
 (defun lay-out-where-begun (buffer since begun final final-forward final-backward join)
   "Make FINAL BUFFER's text as one swap (FINAL-FORWARD and FINAL-BACKWARD map
 the text now to it and back), the undo history laid out as if BEGUN, a swap of
@@ -187,7 +148,7 @@ whole text, or the changes carried over do not lead to FINAL; true otherwise."
                   (when (plusp (length edits)) (carry-pieces-past pieces forward edits))
                   (push made batches))))
             (push batches groups)))
-        (when (ropes-same-octets-p text final)
+        (when (tuatara.text:ropes-same-octets-p text final)
           (let* ((table (buffer-batch-contents buffer))
                  (began (let ((oldest (and later (car (last (car (last later)))))))
                           (and oldest (car (gethash oldest table)))))

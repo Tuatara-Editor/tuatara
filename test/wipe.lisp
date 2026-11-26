@@ -125,8 +125,8 @@ opens what was made; gpg-lock makes gpg-agent forget its passphrases.")
               (let ((f (encrypting plain
                                    (list "C-n RET RET" "p w RET p w RET" (list :until (lambda () (not (wiping-p))))
                                          "y RET" "p w RET"))))
-                (true (tuatara.frontend.fake:fake-frame-showing f
-                                                                "The passphrase again, to check it opens pass.txt.gpg"))
+                (true (tuatara.frontend.fake:fake-frame-showing
+                       f "The passphrase again, to check it opens what is made"))
                 (true (tuatara.frontend.fake:fake-frame-showing f "Wiped: pass.txt")))
               (false (probe-file plain)))
             ;; the list of keys gone once used, nothing left waiting in it
@@ -135,6 +135,9 @@ opens what was made; gpg-lock makes gpg-agent forget its passphrases.")
 (define-test (wipe gpg-lock)
   (if (null (tuatara.defaults::gpgconf-path))
       (skip "gpgconf is not installed here" (true nil))
-      (multiple-value-bind (f editor) (auto-save-session (list "M-x g p g - l o c k RET"))
+      (multiple-value-bind (f editor)
+          (auto-save-session (list "M-x g p g - l o c k RET"
+                                   (list :until (lambda () (notany #'tuatara.defaults::gpg-job-p
+                                                                   tuatara.runtime:*jobs*)))))
         (declare (ignore editor))
         (true (tuatara.frontend.fake:fake-frame-showing f "gpg-agent has forgotten the passphrases it kept")))))

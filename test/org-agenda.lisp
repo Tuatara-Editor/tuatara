@@ -712,6 +712,29 @@ help left out."
                                                           "org-deadline works on an entry of the agenda or an Org file"))
           (fresh))))))
 
+(define-modal-test (org agenda-repeat-menu-writes-the-entry)
+  ;; C-c C-s C-r from the agenda: the repeat menu writes the entry on the agenda's line, in its file, which
+  ;; is saved when it is one of *org-agenda-autosave-files*, and the agenda shows it
+  (with-test-directory (dir)
+    (let* ((source (asdf:system-relative-pathname :tuatara "test/org/agenda/"))
+           (tasks (merge-pathnames "tasks.org" dir)))
+      (uiop:copy-file (merge-pathnames "tasks.org" source) tasks)
+      (let ((tuatara.defaults::*org-agenda-files* (list (namestring tasks)))
+            (tuatara.defaults::*org-now* (encode-universal-time 0 0 18 1 10 2026))
+            (tuatara.defaults::*org-agenda-log-mode* nil)
+            (tuatara-user:*org-agenda-autosave-files* t))
+        (unwind-protect
+             (multiple-value-bind (f editor)
+                 (run-keys (format nil "SPC a a t C-c C-s C-r r ~a RET RET" (typed-keys "Weekly"))
+                           :width 100 :height 60)
+               (declare (ignore editor))
+               (true (search (format nil "* TODO Plain scheduled~%SCHEDULED: <2026-09-30 Wed +1w>")
+                             (alexandria:read-file-into-string tasks)))
+               (false (tuatara.frontend.fake:fake-frame-showing f "Not under a headline")))
+          (dolist (name '("tasks.org" "*Org Agenda*"))
+            (let ((buffer (tuatara.buffer:find-buffer name)))
+              (when buffer (tuatara.buffer:buffer-mark-saved buffer) (tuatara.buffer:kill-buffer buffer)))))))))
+
 (define-modal-test (org agenda-views-worked-out-in-the-background)
   ;; with large agenda files (here: any), every view and span is worked out in the background: opening the
   ;; agenda, l and h, g h, L, g l, r, C-u N r; never on the editor's thread, point put where each asks
@@ -1957,6 +1980,78 @@ help left out."
           (large (seconds-per-entry 4000)))
       (true (< large (* 3 small)) "~,3e against ~,3e s per entry" large small))))
 
+(define-test (org notify-alarms)
+  ;; the alarms an agenda entry told brings, each only when asked for: every mode line alight in
+  ;; :mode-line-alarm, flashing, then lit until a key; the bell of every screen; a sound played apart
+  (with-test-directory (dir)
+    (let ((played (merge-pathnames "played" dir))
+          (player (merge-pathnames "player" dir))
+          (sound (merge-pathnames "chime.oga" dir)))
+      (alexandria:write-string-into-file (format nil "#!/bin/sh~%printf '%s' \"$1\" > '~a'~%" (namestring played))
+                                         player)
+      (sb-posix:chmod (namestring player) #o755)
+      (alexandria:write-string-into-file "" sound)
+      (flet ((alarm-row (f editor)
+               (aref (tuatara.frontend.fake:fake-row-faces f) (- (tuatara.command:editor-height editor) 2)))
+             (alarm () (tuatara.defaults::org-notify-alarm)))
+        ;; none asked for: nothing
+        (multiple-value-bind (f editor) (run-keys (list #'alarm :tick) :text "abc")
+          (is eq :mode-line (alarm-row f editor))
+          (is = 0 (tuatara.frontend.fake:fake-bells f)))
+        ;; all three
+        (let ((tuatara-user:*org-notify-alarms* (list :flash :bell (namestring sound)))
+              (tuatara.defaults::*org-notify-sound-players* (list (namestring player)))
+              (lit nil))
+          (multiple-value-bind (f editor)
+              (run-keys (list #'alarm :tick
+                              (lambda ()
+                                (let ((editor tuatara.command:*editor*))
+                                  (setf lit (alarm-row (tuatara.command::frame-frontend
+                                                        (tuatara.command:editor-frame editor))
+                                                       editor))))
+                              "C-f" :tick)
+                        :text "abc")
+            (is eq :mode-line-alarm lit)
+            (is eq :mode-line (alarm-row f editor) "a key puts the mode lines out")
+            (is = 1 (tuatara.frontend.fake:fake-bells f)))
+          (true (loop repeat 500 thereis (probe-file played) do (sleep 0.01)))
+          (is string= (namestring sound) (alexandria:read-file-into-string played)))
+        ;; each kind alone
+        (let ((tuatara-user:*org-notify-alarms* (list :bell)))
+          (multiple-value-bind (f editor) (run-keys (list #'alarm :tick) :text "abc")
+            (is eq :mode-line (alarm-row f editor))
+            (is = 1 (tuatara.frontend.fake:fake-bells f))))
+        (let ((tuatara-user:*org-notify-alarms* (list :flash)))
+          (multiple-value-bind (f editor) (run-keys (list #'alarm :tick) :text "abc")
+            (is eq :mode-line-alarm (alarm-row f editor))
+            (is = 0 (tuatara.frontend.fake:fake-bells f))))
+        ;; a quarter of a second lit and one dark, twice, then lit until a key; 0 lit at once
+        (let* ((second internal-time-units-per-second)
+               (now (get-internal-real-time))
+               (tuatara.command:*last-input-time* (- now (* 1000 second))))
+          (flet ((lit-after (seconds &optional (flashes 2))
+                   (let ((tuatara.command::*mode-line-alarm-since* (- now (round (* seconds second))))
+                         (tuatara.command::*mode-line-alarm-flashing* flashes))
+                     (tuatara.command::mode-line-alarm-lit-p))))
+            (true (lit-after 0.1))
+            (false (lit-after 0.35))
+            (true (lit-after 0.6))
+            (false (lit-after 0.85))
+            (true (lit-after 1.1))
+            (true (lit-after 600))
+            (true (lit-after 0.35 0))
+            (let ((tuatara.command:*last-input-time* now))
+              (false (lit-after 3)))))
+        ;; a player not installed is said once, the mode lines and the bell as asked
+        (setf tuatara.defaults::**org-notify-sound-said** nil)
+        (let ((tuatara-user:*org-notify-alarms* (list (namestring sound)))
+              (tuatara.defaults::*org-notify-sound-players* (list "no-such-player")))
+          (true (tuatara.frontend.fake:fake-frame-showing (run-keys (list #'alarm :tick) :text "abc")
+                                                          "None of no-such-player is installed"))
+          (false (tuatara.frontend.fake:fake-frame-showing (run-keys (list #'alarm :tick) :text "abc")
+                                                           "None of no-such-player is installed")))
+        (setf tuatara.defaults::**org-notify-sound-said** nil)))))
+
 (define-test (org notify-tagged-entries)
   ;; entries tagged :notify: told on the desktop: before their time and at it, a date alone
   ;; in the morning, each once, a task done never; by the program, given -- before the title
@@ -2035,6 +2130,69 @@ help left out."
                                                    (encode-universal-time 0 0 16 23 10 2026))
                 (true (search "-rf /" (tuatara.buffer:buffer-string (tuatara.defaults::notifications-buffer)))))))
           (clrhash tuatara.defaults::**org-notify-sent**))))))
+
+(define-test (org schedule-starts-from-its-date)
+  ;; the date question of C-c C-s and C-c C-d starts from the date the task has: nothing typed keeps it,
+  ;; a day typed alone keeps its time, and C-r with nothing typed opens the repeat menu on its day and time
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 8 25 11 2026))
+        (task (format nil "* TODO Ring Ngaio~%SCHEDULED: <2026-11-29 Sun 18:00> DEADLINE: <2026-12-04 Fri 12:00>~%")))
+    (flet ((written (keys) (org-text-after keys task)))
+      (is string= task (written "C-c C-s RET"))
+      (is string= task (written "C-c C-d RET"))
+      (is string= (format nil "* TODO Ring Ngaio~%SCHEDULED: <2026-11-27 Fri 18:00> DEADLINE: <2026-12-04 Fri 12:00>~%")
+          (written "C-c C-s f r i RET"))
+      (is string= (format nil "* TODO Ring Ngaio~%SCHEDULED: <2026-11-29 Sun 18:00 +1w> ~
+                               DEADLINE: <2026-12-04 Fri 12:00>~%")
+          (written (format nil "C-c C-s C-r r ~a RET RET" (typed-keys "Weekly")))))))
+
+(define-test (org schedule-a-time-from-now)
+  ;; a time from now at the date question, 50m or 1h3m, is written as the timestamp it comes to
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 30 37 22 25 11 2026)))
+    (is string= (format nil "* Ring Ngaio :reminder:notify:~%SCHEDULED: <2026-11-25 Wed 23:28>~%")
+        (org-text-after "C-c C-s 5 0 m RET" (format nil "* Ring Ngaio :reminder:notify:~%")))
+    (is string= (format nil "* TODO Tea~%SCHEDULED: <2026-11-25 Wed 23:41>~%")
+        (org-text-after "C-c C-s 1 h 3 m RET" (format nil "* TODO Tea~%")))))
+
+(define-test (org reminder-schedule-takes-its-time)
+  ;; a reminder has one time: scheduling it starts from the time in its text, which goes into SCHEDULED:
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 8 25 11 2026))
+        (reminder (format nil "* Call the plumber :reminder:notify:~%<2026-11-25 Wed 18:00>~%Before the week starts.~%")))
+    (flet ((written (keys) (org-text-after keys reminder)))
+      (is string= (format nil "* Call the plumber :reminder:notify:~%SCHEDULED: <2026-11-29 Sun 18:00>~%~
+                               Before the week starts.~%")
+          (written "C-c C-s s u n RET"))
+      (is string= (format nil "* Call the plumber :reminder:notify:~%SCHEDULED: <2026-11-29 Sun 18:00 +1w>~%~
+                               Before the week starts.~%")
+          (written (format nil "C-c C-s s u n C-r r ~a RET RET" (typed-keys "Weekly")))))
+    ;; a task keeps the time in its text: an event's time is not when it is planned
+    (is string= (format nil "* TODO Slides~%SCHEDULED: <2026-11-27 Fri>~%<2026-11-30 Mon 14:00>~%")
+        (org-text-after "C-c C-s f r i RET" (format nil "* TODO Slides~%<2026-11-30 Mon 14:00>~%")))))
+
+(define-test (org reminder-schedule-moves-one-stamp)
+  ;; scheduling a reminder takes out of its text only the timestamp that goes into SCHEDULED:, a range as one,
+  ;; and when it is scheduled already nothing in its text is taken out
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 8 25 11 2026)))
+    (is string= (format nil "* Multi :reminder:~%SCHEDULED: <2026-11-29 Sun 18:00>~%~
+                             and <2026-12-01 Tue 09:00> and <2026-11-25 Wed>--<2026-11-27 Fri>~%")
+        (org-text-after "C-c C-s s u n RET"
+                        (format nil "* Multi :reminder:~%<2026-11-25 Wed 18:00> and <2026-12-01 Tue 09:00> ~
+                                     and <2026-11-25 Wed>--<2026-11-27 Fri>~%")))
+    (is string= (format nil "* Stay :reminder:~%SCHEDULED: <2026-11-29 Sun 18:00>~%Away until then.~%")
+        (org-text-after "C-c C-s s u n RET"
+                        (format nil "* Stay :reminder:~%<2026-11-28 Sat 18:00>--<2026-11-30 Mon 18:00>~%~
+                                     Away until then.~%")))
+    (is string= (format nil "* Again :reminder:~%SCHEDULED: <2026-11-29 Sun 18:00>~%Ring after <2026-12-01 Tue>.~%")
+        (org-text-after "C-c C-s s u n RET"
+                        (format nil "* Again :reminder:~%SCHEDULED: <2026-11-26 Thu 18:00>~%~
+                                     Ring after <2026-12-01 Tue>.~%")))))
+
+(define-test (org event-not-scheduled)
+  ;; C-c C-s on an event, an entry with no TODO keyword whose text holds its time, says to change that time
+  (let* ((event (format nil "* Team meeting~%<2026-11-30 Mon 14:00>~%"))
+         (f (run-keys "M-x o r g - m o d e RET C-c C-s" :text event :width 120 :height 12)))
+    (true (tuatara.frontend.fake:fake-frame-showing f "An event, at <2026-11-30 Mon 14:00>: C-c . on that time")
+          "~{~a~%~}" (loop for row below 12 collect (tuatara.frontend.fake:fake-screen-line f row)))
+    (is string= event (org-text-after "C-c C-s" event))))
 
 (define-test (org repeat-menu)
   ;; C-r at the date prompt: the menu of a repeat, started from what was typed, RET writing
@@ -3003,6 +3161,28 @@ buffer of FILE killed first."
               (false (told "Water plants"))))
           (let ((tuatara.defaults::*org-reminder-tag* nil))
             (is equal "Event:" (first (third (faces "Ring Ngaio" early))))))))))
+
+(define-test (org agenda-timed-reminder-once)
+  ;; a reminder with a time of day is listed at its time alone, never again as one of the day's
+  ;; entries with no time; one with a date alone is listed once with no time
+  (with-test-directory (dir)
+    (let* ((file (merge-pathnames "reminders.org" dir))
+           (tuatara.defaults::*org-agenda-files* (list (namestring file)))
+           (day (tuatara.dates:day-number 2026 11 29))
+           (tuatara.defaults::*org-now* (encode-universal-time 0 0 8 29 11 2026)))
+      (alexandria:write-string-into-file
+       (format nil "* Feed the cat :reminder:notify:~%SCHEDULED: <2026-11-29 Sun 18:00 +1w>~%~
+                    * Water plants :reminder:~%SCHEDULED: <2026-11-29 Sun +1w>~%")
+       file)
+      (loop for (span start) in (list (list :day day) (list :week day) (list :week (+ day 7)) (list :day (+ day 7)))
+            do (let ((lines (mapcar (lambda (line) (tuatara.defaults::org-agenda-pieces-text (first line)))
+                             (tuatara.defaults::org-agenda-view-lines
+                              (list :kind :agenda :span span :start start) 80))))
+          (flet ((listed (title) (remove-if-not (lambda (line) (search title line)) lines)))
+            (let ((title "Feed the cat"))
+              (is = 1 (length (listed title)) "~a ~a: ~s" span title lines)
+              (true (search "18:00" (first (listed title))) "~a ~a: ~s" span title (listed title)))
+            (is = 1 (length (listed "Water plants")) "~a: ~s" span (listed "Water plants"))))))))
 
 (define-test (org make-reminder)
   ;; org-make-reminder adds :reminder: and :notify:, and asks for a date when there is none

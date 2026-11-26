@@ -236,7 +236,7 @@ second half of its warning, distant before."
     (declare (ignore repeats))
     (if (null deadline)
         :org-upcoming-distant-deadline
-        (let* ((diff (if (= deadline (org-item-day item)) 0 (- deadline (org-item-day item))))
+        (let* ((diff (- deadline (org-item-day item)))
                (fraction (- 1 (/ diff (max 1 (or own-warning *org-deadline-warning-days*))))))
           (cond ((>= fraction 1) :org-imminent-deadline)
                 ((>= fraction 1/2) :org-upcoming-deadline)
@@ -527,7 +527,7 @@ and hidden with none left, the time grid's lines going with their date."
                                               (set-search-filtering buffer
                                                                     :heading #'org-agenda-date-line-p
                                                                     :empty-headings nil
-                                                                           :decoration #'org-agenda-grid-line-p))))
+                                                                    :decoration #'org-agenda-grid-line-p))))
 
 (defun org-agenda-view (buffer)
   "What BUFFER's agenda shows, a plist: :KIND :agenda with :SPAN, :START
@@ -1178,13 +1178,15 @@ said when its line is a list item's checkbox, ~a its title.")
 entry: in the whole buffer, the entry being perhaps outside the part shown,
 the change remembered for undo from the agenda (\\<org-agenda-mode>\\[org-agenda-undo])."
   (let ((before (first (tuatara.buffer:buffer-undo-stack buffer))))
-    (let ((*current-buffer* buffer))
-      (tuatara.buffer:with-narrowing-lifted (buffer)
-        (setf (tuatara.buffer:buffer-point buffer) start)
-        (funcall command)))
-    (let ((group (first (tuatara.buffer:buffer-undo-stack buffer))))
-      (when (and group (not (eq group before)))
-        (push (cons buffer group) (tuatara.buffer:buffer-local agenda 'org-agenda-changes))))))
+    (org-call-where buffer start command)
+    (org-agenda-note-change agenda buffer before)))
+
+(defun org-agenda-note-change (agenda buffer before)
+  "Remember for undo from the agenda AGENDA (\\<org-agenda-mode>\\[org-agenda-undo]) the change
+made in BUFFER since its undo stack began with BEFORE, when one was."
+  (let ((group (first (tuatara.buffer:buffer-undo-stack buffer))))
+    (when (and group (not (eq group before)))
+      (push (cons buffer group) (tuatara.buffer:buffer-local agenda 'org-agenda-changes)))))
 
 (defun org-agenda-act-on (agenda item command)
   "Run COMMAND on the entry of the agenda line ITEM of AGENDA, in its file's
@@ -1200,7 +1202,15 @@ a checkbox the command is not for (*ORG-AGENDA-HEADLINE-ONLY*)."
           ((null start)
            (message "That entry is no longer in its file as it was: ~
                     \\<org-agenda-mode>\\[revert-buffer] draws the agenda again, nothing changed"))
-          (t (org-agenda-run-at agenda buffer start command)
+          (t (let ((*org-after-date-written*
+                     ;; a date the repeat menu writes later is noted, saved and drawn then
+                     (let ((before (first (tuatara.buffer:buffer-undo-stack buffer))))
+                       (lambda ()
+                         (when (live-buffer-p buffer)
+                           (org-agenda-note-change agenda buffer before)
+                           (org-agenda-autosave buffer))
+                         (when (live-buffer-p agenda) (org-agenda-redraw agenda))))))
+               (org-agenda-run-at agenda buffer start command))
              (org-agenda-autosave buffer)
              (org-agenda-redraw agenda)))))
 
@@ -1320,9 +1330,9 @@ running is clocked out first."
     (when (and clocked (org-agenda-here)) (org-agenda-autosave clocked))))
 
 (define-command org-agenda-save-all-buffers ()
-  "Save the buffers of the agenda files (*org-agenda-files*, and those added to them) with changes not
-saved, those the agenda changed among them; other Org buffers are left as they
-are (\\[org-save-all-org-buffers] saves them all)."
+  "Save the buffers of the agenda files (*ORG-AGENDA-FILES*, and those added to
+them) with changes not saved, those the agenda changed among them; other Org
+buffers are left as they are (\\[org-save-all-org-buffers] saves them all)."
   (let ((paths (org-agenda-file-paths)))
     (save-org-buffers-where (lambda (buffer)
                               (member (tuatara.io:native (tuatara.buffer:buffer-file buffer)) paths :test #'equal))

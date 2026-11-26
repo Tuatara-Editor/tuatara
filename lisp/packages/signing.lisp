@@ -137,15 +137,12 @@ was made by a key that has (grades X and Y), is :EXPIRED."
             ((and (string= grade "N") (not signed)) (list :status :none))
             (t (list :status :error))))))
 
-(defun gnupg-status (said name)
-  "The fields of gpg's status line NAME in SAID, what it wrote, each at the start of a line; NIL when there is none."
-  (let ((found (nth-value 1 (cl-ppcre:scan-to-strings (format nil "(?m)^\\[GNUPG:\\] ~a(?: ([^\\n]*))?$" name) said))))
-    (and found (or (tuatara.text:split-words (aref found 0)) (list "")))))
-
 (defun tag-signature (said object)
   "The signature of a tag, as PACKAGE-SIGNATURE gives it, from SAID, what git
 verify-tag --raw said of it, and OBJECT, the tag's object: :EXPIRED for one
-that holds but has expired (EXPSIG) or was made by a key that has (EXPKEYSIG)."
+that holds but has expired (EXPSIG) or was made by a key that has (EXPKEYSIG).
+A tag holds one signature: one with more is :BAD when any of them does not
+hold, else :ERROR."
   (if (ssh-signature-p object :tag)
       (let ((good (nth-value 1
                              (cl-ppcre:scan-to-strings "(?m)^Good \"git\" signature (?:for \\S+ )?with \\S+ key (SHA256:[A-Za-z0-9+/=]+)$"
@@ -153,26 +150,34 @@ that holds but has expired (EXPSIG) or was made by a key that has (EXPKEYSIG)."
         (if good
             (list :status :good :fingerprint (aref good 0) :key (ssh-signature-key object :tag))
             (list :status :bad)))
-      (let* ((valid (gnupg-status said "VALIDSIG"))
-             (expired (cond ((gnupg-status said "EXPSIG") :signature) ((gnupg-status said "EXPKEYSIG") :key)))
-             (good (or (gnupg-status said "GOODSIG") (gnupg-status said "EXPSIG") (gnupg-status said "EXPKEYSIG")))
-             (missing (or (gnupg-status said "ERRSIG") (gnupg-status said "NO_PUBKEY"))))
-        (cond ((or (gnupg-status said "BADSIG") (gnupg-status said "REVKEYSIG")) (list :status :bad))
-              ((and valid good)
-               (list :status (if expired :expired :good) :expired expired
-                     :fingerprint (signer-fingerprint (or (nth 9 valid) (first valid)))
-                     :subkey (signer-fingerprint (first valid))
-                     :name (plain-name (format nil "~{~a~^ ~}" (rest good)))))
-              ((and missing (missing-key said)) (list :status :unchecked :key-id (missing-key said)))
-              (t (list :status :error))))))
+      (let* ((signatures (gpg-signatures (gpg-status-lines said)))
+             (signature (and (null (rest signatures)) (first signatures))))
+        (case (getf signature :status)
+          ((:good :expired :expired-key)
+           (let ((expired (case (getf signature :status) (:expired :signature) (:expired-key :key))))
+             (if (getf signature :fingerprint)
+                 (list :status (if expired :expired :good) :expired expired
+                       :fingerprint (signer-fingerprint (getf signature :primary))
+                       :subkey (signer-fingerprint (getf signature :fingerprint))
+                       :name (plain-name (getf signature :name)))
+                 (list :status :error))))
+          ((:bad :revoked) (list :status :bad))
+          (:missing (let ((key (missing-key said)))
+                      (if key (list :status :unchecked :key-id key) (list :status :error))))
+          (t (if (find-if (lambda (one) (member (getf one :status) '(:bad :revoked))) signatures)
+                 (list :status :bad)
+                 (list :status :error)))))))
 
 (defun missing-key (said)
   "The fingerprint of the key that made a GNU Privacy Guard (GPG) signature your
-keyring lacks, from SAID, gpg's status lines. It is ERRSIG's seventh field, the
-issuer's fingerprint, 40 or 64 hexadecimal digits: the signing key itself, a
-subkey or the primary key. It is NIL when gpg did not give it, as for an old
-signature naming only a 64-bit ID, which is too short to hold to."
-  (let ((fingerprint (seventh (gnupg-status said "ERRSIG"))))
+keyring lacks, from SAID, all that gpg wrote, when it speaks of that signature
+alone. It is the issuer's fingerprint ERRSIG gives, 40 or 64 hexadecimal
+digits: the signing key itself, a subkey or the primary key. It is NIL when
+gpg did not give it, as for an old signature naming only a 64-bit ID, which is
+too short to hold to."
+  (let* ((signatures (gpg-signatures (gpg-status-lines said)))
+         (fingerprint (and (null (rest signatures)) (eq (getf (first signatures) :status) :missing)
+                           (getf (first signatures) :issuer))))
     (and fingerprint (cl-ppcre:scan "^(?:[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$" fingerprint)
          (signer-fingerprint fingerprint))))
 
@@ -259,7 +264,7 @@ one, the key seen to have made the signature."
                     (format nil "~a, but the signature has expired: it is signed anew, then you fetch it again"
                             signed)))
       (:unchecked (format nil "signed by the GPG key ~a, which your keyring lacks, so the signature cannot be checked: ~
-                               import that key (M-x gpg-import-keys), then fetch it again (M-x package-update)"
+                               import that key (M-x gpg-keys-import), then fetch it again (M-x package-update)"
                           (getf signature :key-id)))
       (:bad "signed, but its signature does not hold: it was changed after it was signed, or its key is revoked")
       (:error (format nil "signed, but who signed it could not be checked~@[ (~a)~]" (getf signature :why)))

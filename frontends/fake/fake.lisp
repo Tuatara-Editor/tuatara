@@ -10,7 +10,7 @@
            #:fake-row-faces #:fake-row-scales #:fake-face-history #:fake-frame-with #:fake-pending #:fake-clipboard
            #:fake-primary #:fake-titles
            #:fake-font-steps #:fake-fonts #:fake-font #:fake-toggles #:fake-font-faces #:fake-desktop-style
-           #:fake-queue-action #:fake-images #:fake-image-history #:fake-raised))
+           #:fake-queue-action #:fake-images #:fake-image-history #:fake-raised #:fake-bells))
 
 (in-package #:tuatara.frontend.fake)
 
@@ -79,6 +79,8 @@ OFFSET), in the order put.")
                   :documentation "The pictures of every frame painted, newest first, as FAKE-IMAGES has them.")
    (raised :initform 0 :accessor fake-raised
            :documentation "How many times the editor brought the fake window before the others.")
+   (bells :initform 0 :accessor fake-bells
+          :documentation "How many times the editor rang the fake screen's bell.")
    (toggles :initform '() :accessor fake-toggles
             :documentation "The window states the editor turned the fake window to or from, newest
 first; only for a fake window (FONT-STEPS set)."))
@@ -165,6 +167,9 @@ their events from one queue."
 
 (defmethod tuatara.frontend:frontend-raise ((f fake-frontend))
   (incf (fake-raised f)))
+
+(defmethod tuatara.frontend:frontend-bell ((f fake-frontend))
+  (incf (fake-bells f)))
 
 (defmethod tuatara.frontend:frontend-toggle-state ((f fake-frontend) state)
   (when (fake-font-steps f)

@@ -67,8 +67,9 @@ a list of its parts' numbers. An empty one is 0, and none is taken above
   "The colour the SGR PARAMETERS (a list, from just after 38 or 48) begin
 with, as three values: :PALETTE and an index of the 256-colour palette for
 5;N; :RGB and the number #xRRGGBB for 2;R;G;B; NIL and NIL, the default
-colour, for any other; then the parameters after it."
-  (flet ((part (p) (min 255 (or p 0))))
+colour, for any other; then the parameters after it. A part missing, or
+written in parts itself with colons, is taken as 0."
+  (flet ((part (p) (if (integerp p) (min 255 p) 0)))
     (case (first parameters)
       (5 (values :palette (part (second parameters)) (cddr parameters)))
       (2 (values :rgb

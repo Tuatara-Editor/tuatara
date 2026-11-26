@@ -57,27 +57,31 @@ fill the memory, and refused.")
 
 (defun zip-directory (tail size read)
   "Where the central directory of a zip archive of SIZE octets is, found in
-TAIL, its last octets: four values, the count of its entries, its start and
-its length in octets, and true for a zip64 archive, whose are read from the
+TAIL, its last octets: five values, the count of its entries, its start and
+its length in octets, true for a zip64 archive, whose are read from the
 record its locator points to by READ, a function of a position and a count
-giving those octets of the archive (or fewer). NIL when TAIL holds no end of
-a central directory."
+giving those octets of the archive (or fewer), and true for an archive in
+parts (split over several files, whose end names a part other than the
+first). NIL when TAIL holds no end of a central directory."
   (let* ((n (length tail))
          (end (loop for at downfrom (- n 22) to (max 0 (- n 22 65535))
                     when (and (>= at 0) (= (octets-integer tail at 4) #x06054b50)) return at)))
     (when end
       (let ((count (octets-integer tail (+ end 10) 2))
             (length (octets-integer tail (+ end 12) 4))
-            (start (octets-integer tail (+ end 16) 4)))
+            (start (octets-integer tail (+ end 16) 4))
+            ;; the number of this part, and of the one its directory begins in
+            (parts (or (/= 0 (octets-integer tail (+ end 4) 2)) (/= 0 (octets-integer tail (+ end 6) 2)))))
         (if (and (or (= count #xFFFF) (= length #xFFFFFFFF) (= start #xFFFFFFFF))
                  (>= end 20) (= (octets-integer tail (- end 20) 4) #x07064b50))
             ;; zip64: where the directory is, in the record the locator just before the end points to
             (let* ((at (octets-integer tail (- end 12) 8))
                    (record (and (<= (+ at 56) size) (funcall read at 56))))
               (if (and record (= (length record) 56) (= (octets-integer record 0 4) #x06064b50))
-                  (values (octets-integer record 32 8) (octets-integer record 48 8) (octets-integer record 40 8) t)
-                  (values count start length nil)))
-            (values count start length nil))))))
+                  (values (octets-integer record 32 8) (octets-integer record 48 8) (octets-integer record 40 8) t
+                          parts)
+                  (values count start length nil parts)))
+            (values count start length nil parts))))))
 
 (defun zip-entries (octets)
   "The entries of the zip archive OCTETS, from its central directory: each a
@@ -85,10 +89,11 @@ plist (:NAME :METHOD :CRC :PACKED :SIZE :DATA), DATA where its packed octets
 begin. Signals ZIP-ERROR for what is no zip archive, or one in parts, locked
 or zip64, which are not read."
   (let ((n (length octets)))
-    (multiple-value-bind (count at length zip64)
+    (multiple-value-bind (count at length zip64 parts)
         (zip-directory octets n (lambda (at count) (subseq octets at (min n (+ at count)))))
       (declare (ignore length))
       (unless count (zip-fail "no zip archive: its directory is not at its end"))
+      (when parts (zip-fail "an archive in parts, which is not read: its other parts are separate files"))
       (when zip64 (zip-fail "a zip64 archive, which is not read"))
       (let ((entries '()))
       (dotimes (i count (nreverse entries))

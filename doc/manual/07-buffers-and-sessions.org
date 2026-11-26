@@ -85,9 +85,8 @@ and ~h~ folds it. On any other line ~h~ does nothing, so a stray press does
 not close the list; ~q~ does that.
 
 A fold hides lines, never marks. A marked entry in a folded section stays
-marked, and a command on the marked entries acts on it too. Its question says
-how many of them a fold hides, as in =Kill the 3 buffers (1 in a folded
-section)?=.
+marked, and a command on the marked entries acts on it too. Its question, such
+as =Kill the 3 buffers?=, says beside it how many of them a fold hides.
 
 *** Marks
 
@@ -161,7 +160,13 @@ can skip this until chapter 18.
 Sometimes you want somewhere to type that is not a file: a number to add up,
 a phone number to keep in front of you for a minute, a few lines you may
 throw away. Tuatara has two buffers for this. They have no file, so they
-are never saved, and Tuatara has no file to ask about when you quit.
+are never saved, and Tuatara has no file to ask about when you quit. Their
+text is not kept: it goes when Tuatara quits, as the first lines of each say.
+To keep it, save it to a file with ~C-x C-s~, or set =*scratch-text-kept*= to
+=t=: their text is then written to the state directory with the auto-saves
+and as Tuatara quits, and put back when they are made at the next start. A
+text that has not changed from its first lines is not written, and one over
+32 MB is not kept: the echo area says it is too long to keep.
 
 =*lisp-scratch*= is a buffer for Lisp, the language Tuatara is written in.
 You can use it as plain text too. Type a Lisp expression, such as =(+ 2 3)=,
@@ -181,10 +186,10 @@ none, numbered when the name is taken (=*org-scratch*<2>=).
 
 #+table: commands lisp-scratch org-scratch
 
-#+table: settings *startup-buffer* *auto-scratch-buffers*
+#+table: settings *startup-buffer* *auto-scratch-buffers* *scratch-text-kept*
 
 A file name typed in a scratch buffer is taken from the directory in
-=*default-directory*=, which is your home directory unless you say otherwise.
+=*no-file-directory*=, which is your home directory unless you say otherwise.
 Saving a scratch buffer with ~C-x C-s~ asks where to put it, as for any new
 file.
 
@@ -203,9 +208,9 @@ you have finished the letters and want to start on something else. The same
 thing is done by pressing ~D~ on the heading of the project in the buffer
 list. In a daemon (chapter 18), where each client has buffers of its own,
 ~C-x p k~ kills only your client's buffers of the project. ~C-u C-x p k~ kills
-those of every client, after a question saying how many each has: =Kill 5
-buffers of letters: 3 of client 2, 2 of client 3?= Without a daemon ~C-u~
-changes nothing.
+those of every client, after the question =Kill 5 buffers of letters?=, which
+says beside it how many each client has. Without a daemon ~C-u~ changes
+nothing.
 
 In a daemon two clients can have the same buffer, when both opened the same
 file. ~C-x k~ in one of them does not kill it then. Your client lets it go and
@@ -217,8 +222,22 @@ kills it for every client.
 
 ~C-x s~ goes the other way. It saves every file buffer with unsaved changes,
 after asking once. It is handy after a rename that touched many files. Leaving
-Tuatara with ~C-x C-c~ asks first when any buffer visiting a file has changes
-that are not saved.
+Tuatara with ~C-x C-c~ asks once when buffers visiting files, or made by
+~C-x n e~, have changes that are not saved. The question reads =Save the
+changed buffer notes.org? (y or n, then RET)=, or =Save the 3 changed
+buffers?= with their names beside it:
+
+- ~y~ then ~RET~ saves them, waits for the saves, then leaves. When a save
+  is refused or fails, or a buffer has no file to save to, Tuatara stays and
+  says which buffers are not saved, their changes written to their
+  auto-saved copies. The last thing the echo area says is the outcome,
+  =Not exited: NAME not saved=.
+- ~n~ then ~RET~ leaves without saving. Every change is first written to its
+  auto-saved copy, so ~M-x recover-file~ takes it back the next time you visit
+  the file. A buffer no copy keeps is named beside the question as lost: a new
+  buffer with no file, an encrypted file, a file opened safely, or all of them
+  when =*auto-save*= is nil.
+- ~C-g~ stays.
 
 #+table: commands kill-buffer kill-project-buffers save-some-buffers save-buffers-kill-editor
 
@@ -394,7 +413,9 @@ section of their own; those older than their file, and those whose file is
 gone, follow in sections of theirs. Each line shows when the copy was written,
 how big it is and which file it belongs to, the newest first. It marks and
 acts as the buffer list does: ~RET~ or ~l~ recovers the copy on the line, after
-asking, ~h~ folds a section, and ~x~ and ~D~ delete copies.
+asking, ~h~ folds a section, and ~x~ and ~D~ delete copies. ~P~ shows the copy
+on the line in a window beside the list, read only, so that you can see what
+it holds before you take it back; ~P~ again closes it.
 
 Auto-save is on as standard, through =*auto-save*=. With =t= the changes of
 every buffer that visits a file are written now and then to a copy of their
@@ -414,8 +435,8 @@ you can point it at a directory on another drive. =*auto-save-idle*= and
 #+begin_try Try it, with a letter
 1. Open =~/letter.txt=. Press ~i~, type =P.S. Thank you for the plums.= and
    press ~C-g~. Do not save. Wait ten seconds.
-2. Press ~C-x C-c~. Tuatara asks about the unsaved file. Leave without
-   saving it.
+2. Press ~C-x C-c~. Tuatara asks about the unsaved file. Answer ~n~ and
+   press ~RET~.
 3. Start Tuatara again and open the letter. The echo area says it holds
    changes newer than the file.
 4. Press ~M-x~, type =recover-file= and press ~RET~. Answer yes. The postscript

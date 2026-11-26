@@ -26,13 +26,14 @@ back and C-M-, goes forward again.")
 
 (define-test (xref lisp-definitions)
   ;; a function of the editor: in the file it was built from, point at its definition
-  (let ((found (tuatara.defaults::lisp-definitions 'tuatara-user:insert)))
+  (let ((found (tuatara.defaults::lisp-definitions 'tuatara.buffer:buffer-insert)))
     (is = 1 (length found))
-    (true (search "user-lisp.lisp" (tuatara.defaults::definition-group (first found))))
+    (true (search "buffer.lisp" (tuatara.defaults::definition-group (first found))))
     (multiple-value-bind (b position) (funcall (tuatara.defaults::definition-locate (first found)))
       (true (typep b 'tuatara.buffer:buffer))
-      (true (eql 0 (search "(defun tuatara-user:insert" (tuatara.buffer:buffer-string b :start position
-                                                                                        :end (min (tuatara.buffer:buffer-size b) (+ position 40))))))))
+      (true (eql 0 (search "(defun buffer-insert "
+                           (tuatara.buffer:buffer-string
+                            b :start position :end (min (tuatara.buffer:buffer-size b) (+ position 40))))))))
   ;; a generic function: its defgeneric and each method, a method with what it is for
   (let* ((found (tuatara.defaults::lisp-definitions 'tuatara.defaults::mode-completion-at-point))
          (summaries (mapcar #'tuatara.defaults::definition-summary found)))
@@ -52,18 +53,19 @@ back and C-M-, goes forward again.")
 
 (define-test (xref going-and-coming-back)
   ;; M-. on a name goes to its definition, M-, comes back, C-M-, goes there again
-  (multiple-value-bind (f editor) (fresh-start (format nil "o ~a C-g M-." (key-string "(insert")) :width 120)
+  (multiple-value-bind (f editor) (fresh-start (format nil "o ~a C-g M-." (key-string "(buffer-insert")) :width 120)
     (declare (ignore f))
-    (is string= "user-lisp.lisp" (current-name editor))
+    (is string= "buffer.lisp" (current-name editor))
     (is eql
         (session-point-chars editor)
-        (search "(defun tuatara-user:insert" (session-text editor) :start2 (session-point-chars editor))))
-  (multiple-value-bind (f editor) (fresh-start (format nil "o ~a C-g M-. M-," (key-string "(insert")) :width 120)
+        (search "(defun buffer-insert " (session-text editor) :start2 (session-point-chars editor))))
+  (multiple-value-bind (f editor) (fresh-start (format nil "o ~a C-g M-. M-," (key-string "(buffer-insert")) :width 120)
     (declare (ignore f))
     (is string= "*lisp-scratch*" (current-name editor)))
-  (multiple-value-bind (f editor) (fresh-start (format nil "o ~a C-g M-. M-, C-M-," (key-string "(insert")) :width 120)
+  (multiple-value-bind (f editor) (fresh-start (format nil "o ~a C-g M-. M-, C-M-," (key-string "(buffer-insert"))
+                                               :width 120)
     (declare (ignore f))
-    (is string= "user-lisp.lisp" (current-name editor)))
+    (is string= "buffer.lisp" (current-name editor)))
   ;; the ends of the history, and a name defined nowhere
   (true (showing (fresh-start "M-," :width 120) "At start of xref history"))
   (true (showing (fresh-start "C-M-," :width 120) "At end of xref history"))
@@ -185,7 +187,8 @@ back and C-M-, goes forward again.")
   (let ((tuatara.defaults::*history-kept* 2)
         (tuatara.defaults::*xref-back* '())
         (tuatara.defaults::*xref-forward* '()))
-    (fresh-start (format nil "o ~a C-g M-. M-, M-. M-, M-. M-, C-M-, M-, C-M-," (key-string "(insert")) :width 120)
+    (fresh-start (format nil "o ~a C-g M-. M-, M-. M-, M-. M-, C-M-, M-, C-M-," (key-string "(buffer-insert"))
+                 :width 120)
     (true (<= (length tuatara.defaults::*xref-back*) 2))
     (true (<= (length tuatara.defaults::*xref-forward*) 2))))
 

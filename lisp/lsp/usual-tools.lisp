@@ -108,7 +108,7 @@
     ("markdown-oxide" ("markdown-oxide"))
     ("marksman" ("marksman" "server"))
     ("mesonlsp" ("mesonlsp" "--lsp"))
-    ("metals" ("metals") :options "{\"isHttpEnabled\":true,\"metals\":{\"inlayHints\":{\"typeParameters\":{\"enable\":true},\"hintsInPatternMatch\":{\"enable\":true}}}}")
+    ("metals" ("metals") :options "{\"metals\":{\"inlayHints\":{\"typeParameters\":{\"enable\":true},\"hintsInPatternMatch\":{\"enable\":true}}}}")
     ("mint" ("mint" "tool" "ls"))
     ("mojo-lsp-server" ("pixi" "run" "mojo-lsp-server"))
     ("neocmakelsp" ("neocmakelsp" "stdio"))

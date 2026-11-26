@@ -61,7 +61,7 @@
         (see :first-painted-while-typing paints))
       ;; the second window's close button: its frame closed, the editor going on
       (setf *to-close* second)
-      (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-close-pressed) (tuatara.io:null-pointer))
+      (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-close-pressed) (tuatara.runtime:null-pointer))
       (see :closed-one (and (wait-until (lambda () (= 1 (length (windows)))) 30) t))
       ;; what the closed window kept for painting let go of: its fonts, layouts, rows and pictures
       (see :closed-let-go
@@ -85,7 +85,7 @@
                                                (second (editor-frames)))) 30)
                                t))
       (setf *to-present* first)
-      (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-present) (tuatara.io:null-pointer))
+      (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-present) (tuatara.runtime:null-pointer))
       (see :focus-selects (and (wait-until (lambda ()
                                            (eq (tuatara.command::editor-frame (tuatara.command:running-editor))
                                                (first (editor-frames))))

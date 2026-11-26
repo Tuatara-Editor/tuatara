@@ -13,7 +13,8 @@
   "A scanner for QUERY as denote:query-filenames: links match names, ignoring case;
 QUERY that is no regular expression is matched as text. UNTRUSTED, for a
 QUERY from a note, matches as text one that could take for ever too
-\(TUATARA.SYNTAX:COMPILE-PATTERN)."
+\(TUATARA.SYNTAX:COMPILE-PATTERN). The scheme, denote:query-filenames:, is the one
+the notes' own links carry, so this name keeps it."
   (tuatara.syntax:compile-pattern query :case-fold t :or-text t :untrusted untrusted))
 
 (defun files-matching (scanner files)
@@ -99,7 +100,8 @@ one to visit, as a link match-formatted-files-link makes is followed."
 
 (defun follow-denote-files-link (query)
   "List your files with formatted names whose names QUERY matches, to choose
-one to visit, where a denote:query-filenames: link leads."
+one to visit, where a denote:query-filenames: link leads. The scheme is the
+one the notes' own links carry, so this name keeps it."
   (show-files-matching (denote-files-scanner query :untrusted t) query))
 
 (define-command match-formatted-files-link ()
@@ -126,7 +128,8 @@ denote: links follow too."
   "The denote: link to the files whose names QUERY matches, labelled LABEL, as
 written in a file ending in EXTENSION: [[denote:query-filenames:QUERY][LABEL]]
 in Org (and others), [LABEL](denote:query-filenames:QUERY) in Markdown,
-<denote:query-filenames:QUERY> in text, which has no label."
+<denote:query-filenames:QUERY> in text, which has no label. The scheme is the
+one the notes' own links carry, so this name keeps it."
   (cond ((string-equal extension ".md") (format nil "[~a](denote:query-filenames:~a)" label query))
         ((string-equal extension ".txt") (format nil "<denote:query-filenames:~a>" query))
         (t (org-link-text (format nil "denote:query-filenames:~a" query) label))))
@@ -141,7 +144,9 @@ written [[denote:query-filenames:TEXT][LABEL]]; in Markdown
 none, the label is asked for, TEXT offered. Following it (\\`RET' or
 \\[org-open-at-point] in Org) lists the files in *FORMATTED-FILE-DIRECTORY* and
 under it whose names match, ignoring case, to visit one. Brackets and
-parentheses in what is matched are refused, as these links cannot hold them."
+parentheses in what is matched are refused, as these links cannot hold them.
+The scheme, denote:query-filenames:, is the one the notes' own links carry, so
+this name keeps it."
   (let* ((buffer (current-buffer))
          (region (selected-region buffer))
          (query (read-formatted-files-query "match file names (Denote)" #'denote-files-matching))

@@ -1,7 +1,7 @@
 ;;;; lisp/export/pdf-sync.lisp --- A line of a LaTeX or Org file shown in its PDF, and a place of the PDF in the file.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A PDF made by export-latex-compile-pdf comes with a SyncTeX file among the
+;;;; A PDF made by latex-export-pdf comes with a SyncTeX file among the
 ;;;; working files (LATEX-SYNCTEX-FILE). In a LaTeX buffer C-c C-v
 ;;;; (show-line-in-pdf) shows the line at point in the PDF's view, beside;
 ;;;; in the view, C-c C-v (pdf-view-show-source) shows the line of the file
@@ -39,7 +39,8 @@ the job reading it, and THEN, the function last asked for what it says
 \(PDF-SYNC-DATA). An entry whose job ended other than done (stopped, failed,
 its view killed) no longer counts.")
 
-(define-record (org-pdf-source (:constructor make-org-pdf-source (source tex pdf text map origins enhanced))
+(define-record (org-pdf-source (:constructor make-org-pdf-source (source tex pdf text map origins enhanced
+                                                                 &optional rope))
                                (:copier nil))
   "What leads from an Org file to the LaTeX and the PDF an export made of it
 in this session, and back (NOTE-PDF-EXPORT)."
@@ -52,6 +53,9 @@ in this session, and back (NOTE-PDF-EXPORT)."
            :documentation "For a part exported alone, the line of the Org file each line of an ORG-PDF-SOURCE's
 text comes from, a vector; NIL for the whole file.")
   (enhanced nil :documentation "True when the PDF of an ORG-PDF-SOURCE was made by the enhanced export.")
+  (rope nil
+        :documentation "The text of the Org file's buffer an ORG-PDF-SOURCE's export was asked for, a rope, or
+NIL.")
   (line-starts nil
                :documentation "Where each line of an ORG-PDF-SOURCE's text begins (TEXT-LINE-STARTS), once
 asked."))
@@ -77,7 +81,8 @@ came from (ORG-SOURCE-LINE)."
   "What leads from the Org file JOB, an export that made a PDF of it, to the
 LaTeX and the PDF, and back, as an ORG-PDF-SOURCE."
   (make-org-pdf-source (pdf-export-source job) (pdf-export-tex job) (pdf-export-pdf job) (pdf-export-text job)
-                       (pdf-export-map job) (pdf-export-origins job) (pdf-export-enhanced job)))
+                       (pdf-export-map job) (pdf-export-origins job) (pdf-export-enhanced job)
+                       (let ((rope (pdf-export-rope job))) (and (tuatara.text:rope-p rope) rope))))
 
 (defun note-pdf-export (job)
   "Keep what an Org file's export JOB that made a PDF needs for its lines to
@@ -103,23 +108,44 @@ another way."
       (let ((path (tuatara.io:native (tuatara.io:expand-path file))))
         (setf *org-pdf-exports* (remove path *org-pdf-exports* :key #'org-pdf-source-source :test #'equal))))))
 
+(defun ropes-same-p (a b)
+  "True when the ropes A and B hold the same octets, read a window of each at a
+time. Complexity: O(their length)."
+  (let ((n (tuatara.text:rope-octet-length a)))
+    (and (= n (tuatara.text:rope-octet-length b))
+         (let ((one (make-array 4096 :element-type '(unsigned-byte 8)))
+               (two (make-array 4096 :element-type '(unsigned-byte 8))))
+           (declare (dynamic-extent one two))
+           (loop for from from 0 below n by 4096
+                 for to = (min n (+ from 4096))
+                 always (progn (tuatara.text:rope-copy-into a from to one)
+                               (tuatara.text:rope-copy-into b from to two)
+                               (not (mismatch one two :end1 (- to from) :end2 (- to from)))))))))
+
 (defun org-export-current-p (kept buffer)
   "True when BUFFER's text is still what KEPT, an Org file's export, was
 made of: the whole text, or for a part exported alone each of its lines
-where it came from."
-  (let ((text (org-pdf-source-text kept)) (origins (org-pdf-source-origins kept)))
-    (if (null origins)
-        (string= text (tuatara.text:rope-string (tuatara.buffer:buffer-text buffer)))
-        (let ((lines (uiop:split-string text :separator '(#\Newline)))
-              (count (1+ (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-size buffer)))))
-          (and (= (length lines) (length origins))
-               (loop for line in lines
-                     for origin across origins
-                     always (and (<= 1 origin count)
-                                 (let ((start (tuatara.buffer:buffer-goto-line buffer (1- origin))))
-                                   (string= line (tuatara.buffer:buffer-string
-                                                  buffer :start start
-                                                  :end (tuatara.buffer:buffer-line-end buffer start)))))))))))
+where it came from. The text as it was when the export was asked for is
+compared as it is kept, nothing copied, and at once while it is unchanged."
+  (let ((text (org-pdf-source-text kept))
+        (origins (org-pdf-source-origins kept))
+        (asked (org-pdf-source-rope kept))
+        (now (tuatara.buffer:buffer-text buffer)))
+    (or (eq asked now)
+        (if (null origins)
+            (if asked
+                (ropes-same-p asked now)
+                (string= text (tuatara.text:rope-string now)))
+            (let ((lines (uiop:split-string text :separator '(#\Newline)))
+                  (count (1+ (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-size buffer)))))
+              (and (= (length lines) (length origins))
+                   (loop for line in lines
+                         for origin across origins
+                         always (and (<= 1 origin count)
+                                     (let ((start (tuatara.buffer:buffer-goto-line buffer (1- origin))))
+                                       (string= line (tuatara.buffer:buffer-string
+                                                      buffer :start start
+                                                      :end (tuatara.buffer:buffer-line-end buffer start))))))))))))
 
 (defun pdf-sync-take-in (synctex stamp pdf pdf-stamp result then)
   "Take in RESULT, what reading the SyncTeX file SYNCTEX beside PDF gave (a
@@ -272,7 +298,7 @@ that makes the PDF again, named when there is no PDF or no SyncTeX file."
   "Show the line point is on in the PDF made of this LaTeX file: the PDF's
 view shown beside when it is not, turned to the page the line is on, the
 place scrolled into sight and marked for a moment. The PDF is made by
-\\[export-latex-compile-pdf-buffer] (or \\[export-latex-compile-pdf]),
+\\[latex-export-pdf-buffer] (or \\[latex-export-pdf]),
 which leaves where each line went beside its working files; when there is no
 such PDF, or the file has changed since, the file is saved and the PDF made
 again first, in the background, the line shown once it is. In an Org file,
@@ -293,7 +319,7 @@ are not shown, the PDF's text is turned to the page."
               (asked (format nil "~a line ~d" (tuatara.io:native-file-name file) line)))
          (flet ((show (&optional job)
                   (declare (ignore job))
-                  (show-line-in-pdf-at asked file line pdf 'export-latex-compile-pdf-buffer)))
+                  (show-line-in-pdf-at asked file line pdf 'latex-export-pdf-buffer)))
            (if (or (null pdf-stamp) (tuatara.buffer:buffer-modified-p buffer)
                    (and stamp (> (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-mtime pdf-stamp))))
                (start-latex-export :view :after #'show)
@@ -324,7 +350,7 @@ file beside the PDF, or the Org file it was exported from in this session."
          (pdf-name (tuatara.io:native-file-name pdf)))
     (if (null synctex)
         (message "~a has no SyncTeX file to say where its lines come from: ~a in its LaTeX file makes it with one"
-                 pdf-name (command-key-words 'export-latex-compile-pdf-buffer))
+                 pdf-name (command-key-words 'latex-export-pdf-buffer))
         (pdf-sync-data
          buffer synctex
          (lambda (read why)
@@ -349,7 +375,7 @@ only files in the directory of ~a are"
 the other window: the spot \\[show-line-in-pdf] marked or a double click
 chose when it is on the page in sight, else the middle of the window; in the
 PDF's text, the place of point. The PDF must have been made by
-\\[export-latex-compile-pdf-buffer], which leaves where each line went beside
+\\[latex-export-pdf-buffer], which leaves where each line went beside
 its working files; for a PDF exported from an Org file in this session, the
 line of the Org file."
   (let ((buffer (current-buffer)))

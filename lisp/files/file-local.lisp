@@ -157,11 +157,12 @@ a mode that runs what is typed (the Lisp prompt, *scratch*'s Lisp)."
 (defparameter *file-local-settings*
   '(("mode" :mode "the major mode, by name (org, markdown, fundamental): one that some files get by their names")
     ("tab-width" (:whole 1 64) "how many columns a tab fills: a whole number from 1 to 64")
-    ("indent-tabs-mode" :boolean "t indents with tabs, nil with spaces")
+    ("indent-tabs-mode" :boolean "t indents with tabs, nil with spaces" :indent-with-tabs)
     ("fill-column" (:whole 1 1000) "the column text is filled to: a whole number from 1 to 1000")
     ("sentence-end-double-space" :boolean "t for two spaces after a sentence, nil for one"))
   "The settings a file may give itself: each its name, the kind of value it
-takes (:MODE, :BOOLEAN or (:WHOLE LOW HIGH)) and what it sets.")
+takes (:MODE, :BOOLEAN or (:WHOLE LOW HIGH)), what it sets, and the key of
+the buffer's own value it sets when that is not its name.")
 
 (defun apply-file-local-setting (buffer name value)
   "Give BUFFER the setting NAME, with VALUE, that its file names for itself,
@@ -181,7 +182,8 @@ taken."
            (when (if (eq kind :boolean)
                      (member value '(t nil))
                      (and (integerp value) (<= (second kind) value (third kind))))
-             (setf (tuatara.buffer:buffer-local buffer (intern (string-upcase name) :keyword)) value)
+             (setf (tuatara.buffer:buffer-local buffer (or (fourth entry) (intern (string-upcase name) :keyword)))
+                   value)
              t)))))
 
 (defun file-declares (buffer name)

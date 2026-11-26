@@ -265,10 +265,6 @@ with a failure and nothing after it, the other writes sent on unanswered.")
   "The keys visiting NAME with C-x C-f, the path offered first taken away."
   (format nil "C-x C-f C-a C-k ~a RET" (typed-keys name)))
 
-(defun messages-since-step ()
-  "What *Messages* says since the step before began."
-  (subseq (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)) *session-messages-start*))
-
 (define-test (remote-files names-read)
   ;; /ssh:HOST:PATH, its path worked out by its words; a host ssh could take for an option refused
   (is string= "/etc/hosts" (tuatara.defaults::remote-path-normal "/etc//./x/../hosts"))
@@ -544,6 +540,111 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                    (false (tuatara.defaults::rimu-source-refusal 'tuatara.defaults::rimu-copy list))))
             (kill-remote-lists))))))
 
+(define-test (remote-files rimu-goes-to-a-path-there)
+  ;; g p in a list of a directory there takes a name typed alone from that directory, and a path there typed
+  ;; whole lists that directory, neither looked for on the disk here
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let ((there (namestring dir)))
+          (flet ((listed (directory)
+                   (lambda ()
+                     (find-if (lambda (buffer)
+                                (and (tuatara.defaults::rimu-list-p buffer)
+                                     (equal directory (tuatara.defaults::rimu-list-directory buffer))
+                                     (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-listing)))
+                              tuatara.buffer:*buffers*))))
+            (ensure-directories-exist (merge-pathnames "sub/" dir))
+            (ensure-directories-exist (merge-pathnames "other/" dir))
+            (unwind-protect
+                 (let ((sub (format nil "/ssh:box:~asub/" there))
+                       (other (format nil "/ssh:box:~aother/" there)))
+                   (remote-session (format nil "C-x C-f C-a C-k ~a C-j" (typed-keys (concatenate 'string "/ssh:box:"
+                                                                                                  there)))
+                                   (list :until #'remote-list-read)
+                                   "g p s u b C-j" (list :until (listed sub))
+                                   (format nil "g p ~a C-j" (typed-keys other)) (list :until (listed other)))
+                   (true (funcall (listed sub)))
+                   (true (funcall (listed other))))
+              (kill-remote-lists)))))))
+
+(defun remote-list-of (directory)
+  "A function true once a rimu list of DIRECTORY shows what was read."
+  (lambda ()
+    (find-if (lambda (buffer)
+               (and (tuatara.defaults::rimu-list-p buffer)
+                    (equal directory (tuatara.defaults::rimu-list-directory buffer))
+                    (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-listing)))
+             tuatara.buffer:*buffers*)))
+
+(define-test (remote-files sizes-column-there)
+  ;; S in a list of a directory there sums each directory below through the connection: a file of two names counted
+  ;; for each, a link not followed; the walk alone gives the same sum
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let ((there (namestring dir)))
+          (put-file (ensure-directories-exist (merge-pathnames "sub/deeper/b.txt" dir))
+                    (make-string 50 :initial-element #\b))
+          (put-file (merge-pathnames "sub/a.txt" dir) (make-string 100 :initial-element #\a))
+          (sb-posix:link (concatenate 'string there "sub/a.txt") (concatenate 'string there "sub/twin.txt"))
+          (sb-posix:symlink "../.." (concatenate 'string there "sub/up"))
+          (put-file (merge-pathnames "c.txt" dir) "seven..")
+          (is = 250 (tuatara.defaults::remote-tree-size "box" (concatenate 'string there "sub/")))
+          (false (tuatara.defaults::remote-tree-size "box" (concatenate 'string there "sub/") :wanted (constantly nil)))
+          (unwind-protect
+               (flet ((cells ()
+                        (let* ((list (remote-rimu-buffer))
+                               (listing (and list (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-listing))))
+                          (and listing (gethash :sizes (tuatara.defaults::rimu-listing-cells listing))))))
+                 (remote-session (format nil "C-x C-f C-a C-k ~a C-j"
+                                         (typed-keys (concatenate 'string "/ssh:box:" there)))
+                                 (list :until #'remote-list-read)
+                                 "S" (list :until (lambda () (vectorp (cells)))))
+                 (let* ((list (remote-rimu-buffer))
+                        (entries (tuatara.defaults::rimu-listing-entries
+                                  (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-listing))))
+                   (false (tuatara.defaults::rimu-source-refusal 'tuatara.defaults::rimu-toggle-sizes list))
+                   (true (tuatara.defaults::rimu-sizes-p list))
+                   (flet ((size-of (name)
+                            (car (aref (cells) (position name entries :key #'tuatara.io:listed-name :test #'string=)))))
+                     (is string= (tuatara.defaults::rimu-size-words 250) (size-of "sub"))
+                     (is string= (tuatara.defaults::rimu-size-words 7) (size-of "c.txt")))))
+            (kill-remote-lists))))))
+
+(define-test (remote-files home-and-last-directory-there)
+  ;; g h in a list of a directory there lists the home directory there, as the server names it; g l goes back and
+  ;; forth within the machine, and to a directory of another machine in a list of its own
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((there (namestring dir))
+               (top (format nil "/ssh:box:~a" there))
+               (sub (format nil "/ssh:box:~asub/" there))
+               (local (concatenate 'string there "sub/"))
+               (home (format nil "/ssh:box:~a" (tuatara.io:slash-ended (tuatara.defaults::remote-real-path "box" "")))))
+          (put-file (ensure-directories-exist (merge-pathnames "sub/x.txt" dir)) "x")
+          (unwind-protect
+               (progn
+                 ;; the only directory there is the first entry
+                 (remote-session (format nil "C-x C-f C-a C-k ~a C-j" (typed-keys top)) (list :until #'remote-list-read)
+                                 "RET" (list :until (remote-list-of sub))
+                                 "g l" (list :until (remote-list-of top))
+                                 "g l" (list :until (remote-list-of sub)))
+                 (let ((list (funcall (remote-list-of sub))))
+                   (is equal top (car (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-last-directory)))
+                   (remote-session (format nil "C-x b ~a RET" (typed-keys (tuatara.buffer:buffer-name list)))
+                                   "g h" (list :until (remote-list-of home)))
+                   (is string= home (tuatara.defaults::rimu-list-directory list))
+                   (is equal sub (car (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-last-directory)))
+                   ;; a directory of another machine, the disk here, listed in a list of its own
+                   (setf (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-last-directory) (list local))
+                   (remote-session (format nil "C-x b ~a RET" (typed-keys (tuatara.buffer:buffer-name list)))
+                                   "g l" (list :until (remote-list-of local)))
+                   (is string= home (tuatara.defaults::rimu-list-directory list))
+                   (tuatara.buffer:kill-buffer (funcall (remote-list-of local)))))
+            (kill-remote-lists))))))
+
 (define-test (remote-files marks-there-in-other-directories)
   ;; files marked in two other directories on the server are counted in the list's header and taken by C, never
   ;; looked for on the disk here
@@ -566,7 +667,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                                             "I" "C")))
                      (true (tuatara.frontend.fake:fake-frame-showing f "2 marked in other directories"))
                      (true (tuatara.frontend.fake:fake-frame-showing-across-rows
-                            f "Copy 2 files in 2 directories to:")))))
+                            f "Copy 2 files to:")))))
             (kill-remote-lists))))))
 
 (define-test (remote-files opened-by-what-they-are)
@@ -1349,6 +1450,38 @@ through SSH_ASKPASS, writes the answer in said, and goes no further without one.
                (false (remote-buffer-of name)))
           (kill-failed-visits))))))
 
+(define-test (remote-files ssh-question-read-whole)
+  ;; a question the script writes a line at a time, as the shell may, is put to you once and whole
+  (with-test-directory (dir)
+    (let ((asking (tuatara.defaults::open-ssh-asking "/bin/false" (namestring dir) "box" :jump nil))
+          (asked '())
+          (lines (uiop:split-string *key-question* :separator '(#\Newline))))
+      (sb-int:encapsulate 'tuatara.defaults::ask-ssh-person 'noted
+                          (lambda (function asking text)
+                            (declare (ignore function asking))
+                            (push text asked)
+                            nil))
+      (unwind-protect
+           (let ((writer (sb-thread:make-thread
+                          (lambda ()
+                            (with-open-file (out (merge-pathnames "question" dir) :direction :output
+                                                 :if-exists :append :element-type '(unsigned-byte 8))
+                              (loop for (line . more) on lines
+                                    do (write-sequence (sb-ext:string-to-octets
+                                                        (if more (format nil "~a~%" line) line))
+                                                       out)
+                                       (finish-output out)
+                                       (sleep 0.3))
+                              (write-byte 0 out)
+                              (finish-output out))))))
+             (tuatara.io:wait-for-fds (list (tuatara.defaults::ssh-asking-question asking)) 10)
+             (tuatara.defaults::answer-ssh-question asking)
+             (sb-thread:join-thread writer)
+             (is equal (list *key-question*) asked)
+             (is = 1 (tuatara.defaults::ssh-asking-asked asking)))
+        (sb-int:unencapsulate 'tuatara.defaults::ask-ssh-person 'noted)
+        (tuatara.defaults::close-ssh-asking asking)))))
+
 (define-test (remote-files ssh-question-cleaned)
   ;; what a server puts in a question loses its control characters before it is shown
   (is string= "Password[31m for box:" (tuatara.defaults::ssh-question-words
@@ -1951,6 +2084,37 @@ killed after."
                    (is string= "second text" (tuatara.buffer:buffer-string buffer) "changed there: read anew")
                    (is = (1+ said) (kept-said) "not said again")))
             (kill-remote-buffers))))))
+
+(define-test (remote-files kept-copy-not-for-evidence)
+  ;; a copy kept here never stands in for a file opened safely or held as evidence: the file is read afresh over
+  ;; SFTP, and no command is asked of the server to compare the copy with it
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((there (namestring dir))
+               (file (concatenate 'string there "seized.txt"))
+               (name (concatenate 'string "/ssh:box:" file))
+               (looked (list 0)))
+          (alexandria:write-string-into-file "as seized" file)
+          (flet ((visit (keys)
+                   (remote-session keys (list :until (lambda () (remote-buffer-of name))))
+                   (let ((buffer (remote-buffer-of name)))
+                     (prog1 (and buffer (tuatara.buffer:buffer-string buffer))
+                       (when buffer (tuatara.buffer:kill-buffer buffer))))))
+            (unwind-protect
+                 (progn
+                   (visit (visit-keys name))
+                   (dolist (name '(tuatara.defaults::remote-kept-copy tuatara.defaults::server-sum))
+                     (sb-int:encapsulate name 'looked (lambda (function &rest arguments)
+                                                        (sb-ext:atomic-incf (car looked))
+                                                        (apply function arguments))))
+                   (is string= "as seized" (visit (concatenate 'string "C-u " (visit-keys name))) "opened safely")
+                   (with-evidence-directories ((list (concatenate 'string "/ssh:box:" there)))
+                     (is string= "as seized" (visit (visit-keys name)) "evidence"))
+                   (is = 0 (car looked) "no kept copy looked at, no sum asked of the server"))
+              (dolist (name '(tuatara.defaults::remote-kept-copy tuatara.defaults::server-sum))
+                (sb-int:unencapsulate name 'looked))
+              (kill-remote-buffers)))))))
 
 (define-test (remote-files kept-copy-compare-failure-reads-afresh)
   ;; the server failing while the kept copy is compared with it: the copy is let go and the file read afresh

@@ -92,12 +92,11 @@ none is left out; such a search is slower.
   :values (integer 1 *))
 
 (defun files-under (root &key (limit *indexed-files-most*) gitignore each past cancel directories hidden)
-  "The entries that are no directories in the directory ROOT and its
-subdirectories, as a list of (PATH . RELATIVE), RELATIVE the path from ROOT, by
-name within each directory: files, and as they are, never followed or
-opened, links (to files or to directories) and the other kinds (named pipes,
-sockets, devices), so that a caller that reads them looks at each first.
-Hidden files and directories (names starting with a dot) and backups are left
+  "The regular files in the directory ROOT and its subdirectories, as a list
+of (PATH . RELATIVE), RELATIVE the path from ROOT, by name within each
+directory. Symbolic links, to files or to directories, are left out, never
+followed, and so are named pipes, sockets and devices: a file found is one
+of the tree's own. Hidden files and directories (names starting with a dot) and backups are left
 out, and with GITIGNORE what git leaves out, that is the .gitignore files there
 and, in a repository, those above ROOT, the repository's .git/info/exclude and
 your excludes file (OUTER-GITIGNORE-RULES). At most LIMIT of them,

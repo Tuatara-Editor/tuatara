@@ -7,7 +7,7 @@
   '(("C-x C-f" find-file) ("C-x C-s" save-buffer)
     ("C-x s" save-some-buffers)
     ("C-x C-w" write-file)
-    ("C-x C-c" save-buffers-kill-editor)
+    ("C-x C-c" save-buffers-kill-editor) ("C-x C-d" daemon-quit)
     ("C-x C-q" read-only-mode)
     ("C-x C-r" find-recent-file) ("C-x x b" switch-other-buffer)
     ("C-x x n" narrow-to-region) ("C-x x s" narrow-to-section) ("C-x x w" widen)
@@ -39,7 +39,7 @@
     ("C-x a y" org-agenda-year-view)
     ("C-x a c" org-capture) ("C-x a l" org-store-link) ("C-x a o" org-clock-out) ("C-x a j" org-clock-goto)
     ;; what the display shows
-    ("C-x T h" hl-line-mode) ("C-x T c" cursor-column-mode) ("C-x T l" soft-wrap-mode)
+    ("C-x T h" current-line-mode) ("C-x T c" current-column-mode) ("C-x T l" soft-wrap-mode)
     ("C-x T v" display-fill-column-mode)
     ("C-x T o" centred-text-mode)
     ("C-x T i" invisible-characters-mode)
@@ -298,7 +298,7 @@ into EDITOR."
   (install-show-paren)
   (install-xref)
   (install-backtrace)
-  (install-ielm)
+  (install-lisp-repl)
   (install-macroexpand)
   (install-csv)
   (install-latex)
@@ -345,8 +345,8 @@ tables, formulas and agenda."
 highlight, spelling, soft wrap, windows and frames, the calendar, fonts and the
 gutter."
   (install-display-toggles)
-  (install-hl-line)
-  (install-cursor-column)
+  (install-current-line)
+  (install-current-column)
   (install-spellcheck)
   (install-soft-wrap)
   (install-centred-text)
@@ -416,8 +416,6 @@ gutter."
     (after-init-step "Binding the wrap keys of *pair-delimiters*" #'tuatara-normal-claim-wrap-keys)
     ;; the leader's keys on the key the init file chose
     (after-init-step "Putting the leader's keys on *leader-key*" (lambda () (put-leader-on *leader-key*)))
-    ;; the input methods the init file put under the leader's i
-    (after-init-step "Binding *input-method-keys*" #'install-input-method-keys)
     ;; colours would not show: use the colourless theme whatever was chosen
     (after-init-step "Choosing the colourless theme"
                      (lambda ()

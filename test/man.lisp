@@ -199,6 +199,15 @@ faces, its references links; reading what man prints; asking for pages.")
     (is equal '((:foreground-rgb #x0000ff) (:background 3)) (changes "38:2::0:0:255;48:5:3"))
     (is equal '((:foreground nil) (:bold nil)) (changes "38;9;22"))))
 
+(define-test (man sgr-colour-part-written-with-colons)
+  ;; a colour's number written in parts with colons is taken as 0, never an error
+  (flet ((changes (text)
+           (let ((out '()))
+             (tuatara.text:sgr-changes (lambda (what value) (push (list what value) out)) text 0 (length text))
+             (nreverse out))))
+    (is equal '((:foreground 0)) (changes "38;5;4:3"))
+    (is equal '((:foreground-rgb #x000304)) (changes "38;2;1:2;3;4"))))
+
 (define-test (man underline-style-none-not-underlined)
   ;; an underline whose style is none (4:0) leaves the text plain
   (multiple-value-bind (text marks)

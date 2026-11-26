@@ -59,6 +59,39 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
   (true (tuatara.buffer:find-buffer "*lisp-scratch*"))
   (true (tuatara.buffer:find-buffer "*org-scratch*")))
 
+(define-test (scratch text-kept-when-asked)
+  ;; with *scratch-text-kept* on, what was typed in a scratch buffer is written as the editor stops and put back
+  ;; at the next start; off, the first text comes back
+  (with-fresh-state
+    (let ((tuatara-user:*scratch-text-kept* t))
+      (fresh-start "i x y z C-g")
+      (let ((kept (cdr (assoc "*lisp-scratch*" (tuatara.defaults::state-list-entries tuatara.defaults::*scratch-texts*)
+                              :test #'string=))))
+        (true (and kept (uiop:string-suffix-p kept "xyz")) "kept: ~s" kept))
+      (let ((editor (nth-value 1 (fresh-start ""))))
+        (true (uiop:string-suffix-p (session-text editor) "xyz"))
+        (false (tuatara.buffer:buffer-undo-stack (session-buffer editor)))))
+    (let ((editor (nth-value 1 (fresh-start ""))))
+      (false (search "xyz" (session-text editor)))
+      (true (uiop:string-prefix-p ";; Lisp to try out:" (session-text editor))))))
+
+(define-test (scratch text-kept-only-when-changed-and-short)
+  ;; the first text is not kept, so a new header reaches users of the setting; a text over the limit is left out
+  (with-fresh-state
+    (let ((tuatara-user:*scratch-text-kept* t))
+      (fresh-start "")
+      (tuatara.defaults::keep-scratch-texts)
+      (false (tuatara.defaults::state-list-entries tuatara.defaults::*scratch-texts*))
+      (fresh-start "i x C-g")
+      (tuatara.defaults::keep-scratch-texts)
+      (true (tuatara.defaults::state-list-entries tuatara.defaults::*scratch-texts*))))
+  (with-fresh-state
+    (let ((tuatara-user:*scratch-text-kept* t)
+          (tuatara.defaults::*rewrite-threshold* 10))
+      (fresh-start "i x y z C-g")
+      (tuatara.defaults::keep-scratch-texts)
+      (false (tuatara.defaults::state-list-entries tuatara.defaults::*scratch-texts*)))))
+
 (define-test (scratch shown-and-made-anew)
   ;; killed, M-x lisp-scratch makes a new one as at startup, and says so
   (multiple-value-bind (f editor) (fresh-start "C-x k M-x l i s p - s c r a t c h RET")
@@ -66,7 +99,7 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
       (is string= "*lisp-scratch*" (current-name editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "Made a new *lisp-scratch*"))
       (true (typep (tuatara.modes:buffer-major-mode b) 'tuatara.defaults::lisp-mode))
-      (is string= ";; This buffer holds unsaved text and serves as a space for Lisp evaluation."
+      (is string= ";; Lisp to try out: C-x C-e after an expression evaluates it."
           (subseq (tuatara.buffer:buffer-string b) 0 (position #\Newline (tuatara.buffer:buffer-string b))))
       (false (tuatara.buffer:buffer-undo-stack b))
       (false (tuatara.buffer:buffer-modified-p b))))
@@ -75,9 +108,9 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
     (true (tuatara.frontend.fake:fake-frame-showing f "Made a new *org-scratch*"))
     (true (typep (tuatara.modes:buffer-major-mode (tuatara.buffer:find-buffer "*org-scratch*"))
                  'tuatara.defaults::org-mode))
-    ;; the header comment, word for word, with the keys that save it bound now (C-x C-s)
-    (is string= (format nil "# This buffer is for scribbling in org-mode.~%# Start your scribble here and save to file with ~a for persistence.~%~%"
-                        (concatenate 'string (string (code-char #x2018)) "C-x C-s" (string (code-char #x2019))))
+    ;; the header comment, word for word, with the keys bound now: its text is not kept, and how to keep it
+    (is string= (format nil "# Notes in Org that are not kept: they go when Tuatara quits, unless~%~
+                             # *scratch-text-kept* is on. C-x C-s saves them to a file;~%# C-x C-f opens one.~%~%")
         (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*org-scratch*"))))
   ;; there already: shown as it is, what was typed in it kept, nothing said
   (multiple-value-bind (f editor)
@@ -138,36 +171,114 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
   ;; typing in a scratch buffer does not make quitting ask
   (multiple-value-bind (f editor) (fresh-start "i x C-g C-x C-c")
     (false (tuatara.command:editor-running editor))
-    (false (tuatara.frontend.fake:fake-frame-showing f "exit anyway")))
+    (false (tuatara.frontend.fake:fake-frame-showing f "Save the changed buffer")))
   ;; a modified file does
   (let ((path (merge-pathnames (format nil "tuatara-quit-~a.txt" (random 1000000)) (uiop:temporary-directory))))
     (with-open-file (o path :direction :output :if-exists :supersede) (write-string "a" o))
     (unwind-protect
          (multiple-value-bind (f editor) (run-keys "i x C-g C-x C-c" :file path)
-           (true (tuatara.frontend.fake:fake-frame-showing f "exit anyway"))
+           (true (tuatara.frontend.fake:fake-frame-showing f "Save the changed buffer"))
            (tuatara.buffer:kill-buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
       (ignore-errors (delete-file path)))))
 
 (define-test (scratch quitting-asks-for-a-typed-answer)
   ;; the question before leaving with changes not saved says its answer is typed and ended with RET:
-  ;; y alone waits for RET (C-g then leaves the question), y RET and yes RET leave, n RET and C-g stay, nothing saved
+  ;; y alone waits for RET (C-g then leaves the question); y RET and yes RET save and leave; n RET leaves
+  ;; without saving; C-g stays
   (with-test-directory (dir)
     (let ((path (namestring (merge-pathnames "quit.txt" dir))))
-      (alexandria:write-string-into-file "a" path)
       (flet ((quit-with (answer)
-               ;; the frontend, whether the editor still runs, and the text, once ANSWER is typed
+               ;; the frontend, whether the editor still runs, the text, and the file, once ANSWER is typed
+               (alexandria:write-string-into-file "a" path :if-exists :supersede)
                (multiple-value-bind (f editor) (run-keys (format nil "i x C-g C-x C-c ~a" answer) :file path :width 80)
-                 (multiple-value-prog1 (values f (tuatara.command:editor-running editor) (session-text editor))
+                 (multiple-value-prog1 (values f (tuatara.command:editor-running editor) (session-text editor)
+                                               (file-text path))
                    (forget-file-buffers)))))
-        (true (tuatara.frontend.fake:fake-frame-showing (quit-with "y") "exit anyway? (y or n, then RET)"))
+        (true (tuatara.frontend.fake:fake-frame-showing (quit-with "y")
+                                                        "Save the changed buffer quit.txt? (y or n, then RET)"))
         (let ((text (nth-value 2 (quit-with "y C-g i z"))))
           (true (search "z" text))
           (false (search "y" text)))
-        (false (nth-value 1 (quit-with "y RET")))
-        (false (nth-value 1 (quit-with "y e s RET")))
-        (true (search "z" (nth-value 2 (quit-with "n RET i z"))))
-        (true (search "z" (nth-value 2 (quit-with "C-g i z"))))
-        (is string= "a" (file-text path))))))
+        ;; left: what is typed after the answer reaches nothing
+        (multiple-value-bind (f running text file) (quit-with "y RET i z")
+          (declare (ignore f running))
+          (false (search "z" text))
+          (is string= "xa" file))
+        (is string= "xa" (nth-value 3 (quit-with "y e s RET")))
+        (multiple-value-bind (f running text file) (quit-with "n RET i z")
+          (declare (ignore f running))
+          (false (search "z" text))
+          (is string= "a" file))
+        (multiple-value-bind (f running text file) (quit-with "C-g i z")
+          (declare (ignore f running))
+          (true (search "z" text))
+          (is string= "a" file))))))
+
+(define-test (scratch quitting-without-saving-keeps-a-copy)
+  ;; n at the question before leaving writes every change to its auto-saved copy first, though the copy was
+  ;; not due yet, so that recover-file takes it back
+  (with-test-directory (dir)
+    (let ((path (namestring (merge-pathnames "kept.txt" dir)))
+          (tuatara-user:*auto-save* t)
+          (tuatara-user:*auto-save-directory* (namestring (merge-pathnames "auto-saves/" dir)))
+          (tuatara-user:*auto-save-idle* 3600))
+      (alexandria:write-string-into-file "a" path)
+      (unwind-protect
+           (let ((editor (nth-value 1 (run-keys "i x C-g C-x C-c n RET" :file path :width 80))))
+             (false (tuatara.command:editor-running editor))
+             (is string= "a" (file-text path))
+             (is string= "xa" (file-text (tuatara.defaults::auto-save-path path))))
+        (forget-file-buffers)))))
+
+(define-test (scratch quitting-with-a-save-refused-stays)
+  ;; y at the question before leaving, with a save that is refused or fails, leaves nothing behind: the
+  ;; editor stays, says which buffer is not saved, and the change is in its auto-saved copy
+  (with-test-directory (dir)
+    (let* ((shut (merge-pathnames "shut/" dir))
+           (path (namestring (merge-pathnames "kept.txt" shut)))
+           (tuatara-user:*auto-save* t)
+           (tuatara-user:*auto-save-directory* (namestring (merge-pathnames "auto-saves/" dir)))
+           (tuatara-user:*auto-save-idle* 3600))
+      (ensure-directories-exist shut)
+      (alexandria:write-string-into-file "a" path)
+      (unwind-protect
+           (dolist (anyway '("n" "y"))
+             (sb-posix:chmod (namestring shut) #o755)
+             (sb-posix:chmod path #o644)
+             (multiple-value-bind (f editor)
+                 ;; the file and its directory are shut once the change is made, before the save
+                 (run-keys (list "i x C-g"
+                                 (lambda ()
+                                   (sb-posix:chmod path #o444)
+                                   (sb-posix:chmod (namestring shut) #o555))
+                                 (format nil "C-x C-c y RET ~a RET i z" anyway))
+                           :file path :width 100)
+               ;; stayed: what is typed after it reaches the buffer
+               (true (search "z" (session-text editor)))
+               (true (tuatara.frontend.fake:fake-frame-showing f "Not exited" "kept.txt"))
+               (is string= "a" (file-text path))
+               (is string= "xa" (file-text (tuatara.defaults::auto-save-path path))))
+             (forget-file-buffers))
+        (sb-posix:chmod (namestring shut) #o755)
+        (sb-posix:chmod path #o644)))))
+
+;; the last message of a refused exit is its outcome, not the count of the files saved first
+(define-test (scratch quitting-with-one-save-declined-says-not-exited)
+  (with-test-directory (dir)
+    (let ((locked (put-file (merge-pathnames "b1.txt" dir) "one"))
+          (free (put-file (merge-pathnames "b2.txt" dir) "two")))
+      (sb-posix:chmod (namestring locked) #o444)
+      (unwind-protect
+           (multiple-value-bind (f editor)
+               (run-keys (format nil "C-x C-q i x C-g C-x C-f ~a RET i y C-g C-x C-c y RET n RET" (key-string (namestring free)))
+                         :file locked :width 120 :height 10)
+             (declare (ignore editor))
+             (is string= "ytwo" (file-text free))
+             (let ((rows (loop for row below 10 collect (tuatara.frontend.fake:fake-screen-line f row))))
+               (true (some (lambda (row) (search "Not exited: b1.txt not saved" row)) rows))
+               (false (some (lambda (row) (search "Saved 1 file" row)) rows)))
+             (forget-file-buffers))
+        (sb-posix:chmod (namestring locked) #o644)))))
 
 (define-test (scratch typed-answer-asked-again)
   ;; a typed answer other than y, yes, n or no, none at all too, says which it takes and asks again
@@ -183,11 +294,10 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
           (declare (ignore running))
           (true (search "z" text))
           (true (tuatara.frontend.fake:fake-frame-showing-across-rows
-                 f "Answer y or n. Modified buffers exist; exit anyway?")))
+                 f "Answer y or n. Save the changed buffer again.txt?")))
         (true (search "z" (nth-value 2 (quit-with "RET C-g i z"))))
-        (false (nth-value 1 (quit-with "y y RET y RET")))
-        (false (nth-value 1 (quit-with "RET Y E S RET")))
-        (true (search "z" (nth-value 2 (quit-with "y y RET n o RET i z"))))
+        (false (nth-value 1 (quit-with "y y RET n RET")))
+        (false (nth-value 1 (quit-with "RET N O RET")))
         (true (search "z" (nth-value 2 (quit-with "y y RET C-g i z"))))
         (is string= "a" (file-text path))))))
 
@@ -437,7 +547,7 @@ does not take: longer than the editor waits for an evaluation it stopped to end.
 
 (define-test (scratch unprintable-value)
   ;; a value whose printing fails is said to be so, in the echo area, inserted, after the
-  ;; expression, in *ielm* and beside a completion alike
+  ;; expression, in *Lisp REPL* and beside a completion alike
   (let ((call (key-string "(tuatara.tests::make-unprintable-sample)")))
     (multiple-value-bind (f editor) (fresh-start (format nil "i ~a C-g C-x C-e" call) :width 200)
       (declare (ignore editor))
@@ -449,11 +559,11 @@ does not take: longer than the editor waits for an evaluation it stopped to end.
       (with-output-to-string (out)
         (tuatara.defaults::write-output-and-values out (format nil "printed  ") (list 1 (make-unprintable-sample)))))
   (is string= (format nil "~a~%*** Eval error ***  x~%" "1")
-      (tuatara.defaults::ielm-results
+      (tuatara.defaults::lisp-repl-results
        (tuatara.defaults::make-evaluation :kind :error :condition (make-condition 'simple-error :format-control "x")
                                           :output "1" :package *package*)))
   (is string= (format nil "; No values~%")
-      (tuatara.defaults::ielm-results
+      (tuatara.defaults::lisp-repl-results
        (tuatara.defaults::make-evaluation :kind :values :count 1 :output "" :package *package*)))
   (is string= "#<a value that cannot be printed: no printing here>"
       (tuatara.defaults::value-preview (make-unprintable-sample)))

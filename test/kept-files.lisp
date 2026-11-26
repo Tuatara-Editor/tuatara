@@ -87,7 +87,9 @@ state, data or cache; PATH within it, a directory's ending in /; CLASS :KEPT,
     (tuatara.defaults::*saved-patterns*
      ("invoice" :regex "INV-[0-9]+" "an invoice number") ("draft" :literal "[draft]" ""))
     (tuatara.defaults::*user-grammar-sums*
-     ("mylang" . "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")))
+     ("mylang" . "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"))
+    (tuatara.defaults::*scratch-texts*
+     ("*lisp-scratch*" . ,(format nil ";; tried~%(+ 1 2)~%a\\b~cc" #\Tab)) ("*org-scratch*" . "")))
   "For each list kept between sessions (its variable), the entries its sample
 files hold, the latest first: the first using every field the list has, the
 others leaving out what may be left out.")

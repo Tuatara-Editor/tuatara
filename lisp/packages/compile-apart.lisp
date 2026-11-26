@@ -58,7 +58,7 @@ file, and TOKEN say (COMPILE-PACKAGE-CHILD): those of
 *PACKAGE-CHILD-ENVIRONMENT* the editor has, and, with REQUEST, what tells the
 process what to do."
   (append (loop for name in *package-child-environment*
-                for value = (tuatara.io:own-variable name)
+                for value = (tuatara.runtime:own-variable name)
                 when value collect (format nil "~a=~a" name value))
           (list "TUATARA_HEAP_DECIDED=1")
           (and request
@@ -76,7 +76,7 @@ asks (COMPILE-PACKAGE-CHILD), or, started by SANDBOX-CALL, run a package's
 function shut in (SANDBOX-CALL-CHILD); then exit with its code."
   (sb-ext:disable-debugger)
   (uiop:call-image-restore-hook)
-  (let ((code (if (tuatara.io:own-variable *sandbox-call-variable*)
+  (let ((code (if (tuatara.runtime:own-variable *sandbox-call-variable*)
                   (sandbox-call-child)
                   (compile-package-child))))
     (finish-output)
@@ -326,9 +326,9 @@ then the package, each file compiled that changed since, as a load in the
 editor would, into the same place (PACKAGE-FASL), nothing refused
 \(REFUSE-PACKAGE). Returns the exit code: 0 when it loaded, 1 when it
 failed, why printed, 2 when the request was not taken."
-  (let ((request (tuatara.io:own-variable "TUATARA_COMPILE_PACKAGE"))
-        (token (tuatara.io:own-variable "TUATARA_COMPILE_TOKEN"))
-        (cache (tuatara.io:own-variable "TUATARA_COMPILE_CACHE")))
+  (let ((request (tuatara.runtime:own-variable "TUATARA_COMPILE_PACKAGE"))
+        (token (tuatara.runtime:own-variable "TUATARA_COMPILE_TOKEN"))
+        (cache (tuatara.runtime:own-variable "TUATARA_COMPILE_CACHE")))
     (dolist (name '("TUATARA_COMPILE_PACKAGE" "TUATARA_COMPILE_TOKEN" "TUATARA_COMPILE_CACHE"))
       (sb-posix:unsetenv name))
     (unless (package-request-allowed-p request token cache)

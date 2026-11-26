@@ -253,18 +253,18 @@ every boundary, characters, conversions and the string both ways."
   ;; text given to a C library: UTF-8, a raw byte as the octet it was, any other
   ;; lone surrogate as U+FFFD rather than an error; read back as it was given
   (let ((text (format nil "a~c~cb~c" (code-char #xDCFF) (code-char #xE9) (code-char #xD800))))
-    (tuatara.io:with-c-string (sap text :length length)
+    (tuatara.runtime:with-c-string (sap text :length length)
       (is = 8 length)
       (is equalp #(97 255 195 169 98 239 191 189 0) (tuatara.io:sap-octets sap 9))
       (is string= (format nil "a~c~cb~c" (code-char #xDCFF) (code-char #xE9) (code-char #xFFFD))
-          (tuatara.io:sap-string sap)))
-    (tuatara.io:with-c-string (sap text :start 2 :end 4 :length length)
+          (tuatara.runtime:sap-string sap)))
+    (tuatara.runtime:with-c-string (sap text :start 2 :end 4 :length length)
       (is = 3 length)
       (is equalp #(195 169 98 0) (tuatara.io:sap-octets sap 4)))
     ;; nothing made for each string given, short or as long as a clipboard's
     (flet ((consed (string)
              (let ((before (tuatara.bench::bytes-consed)))
-               (dotimes (i 100) (tuatara.io:with-c-string (sap string) (sb-sys:sap-ref-8 sap 0)))
+               (dotimes (i 100) (tuatara.runtime:with-c-string (sap string) (sb-sys:sap-ref-8 sap 0)))
                (/ (- (tuatara.bench::bytes-consed) before) 100))))
       (consed text)
       (true (< (consed text) 1) "~,1f octets of garbage for each short string" (consed text))
@@ -272,7 +272,7 @@ every boundary, characters, conversions and the string both ways."
         (consed long)
         (true (< (consed long) 64) "~,1f octets of garbage for each long string" (consed long))))))
 
-(tuatara.io:define-c-function ("strchr" text-from-character) :string
+(tuatara.runtime:define-c-function ("strchr" text-from-character) :string
   "The text of TEXT from the first CHARACTER in it (a code), or NIL when there is none."
   (text :string) (character :int))
 

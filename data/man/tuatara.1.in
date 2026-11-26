@@ -38,6 +38,9 @@ or
 stops it, asking about the changes not saved; sent SIGTERM, as at logout, it
 asks nothing, keeps the changes it may as auto-saved copies (never an
 encrypted file's text, nor a file opened safely), and ends.
+.B tuatara \-\-daemons
+lists the daemons running, each with its clients and the buffers holding
+changes not saved.
 A daemon on another machine is shown the same way,
 .BR "tuatara \-\-client=HOST:" ,
 its socket brought here by the system's ssh; the files, programs and

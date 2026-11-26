@@ -801,7 +801,8 @@ web address, then ready, and reading what is typed."
                               "C-V" (list :until #'question-asked) "y RET"
                               (list :until (buffer-holding "second-pasted")))
                         :program '("sh" "-c" "stty -echo; printf 'ready\\n'; exec cat"))
-    (true (tuatara.frontend.fake:fake-frame-showing f "Paste 2 lines; the program runs each as it comes; go on?"))
+    (true (tuatara.frontend.fake:fake-frame-showing f "Paste 2 lines?"))
+    (false (tuatara.frontend.fake:fake-frame-showing f "go on?") "the reason in the details, not the prompt")
     (true (search (format nil "first-pasted~%second-pasted") (tuatara.buffer:buffer-string (session-buffer editor))))))
 
 (define-test (terminal search-cancelled-is-forgotten)
@@ -1166,8 +1167,9 @@ be shown 4 columns by 2 rows, then prints ready and waits."
                                                           (get-internal-real-time) nil)))
     (let ((calls (nth-value 1 (counting-calls (tuatara.terminal-emulator::decode-picture :stub nil)
                                 (dotimes (i 200)
-                                  (tuatara.terminal-emulator::decode-terminal-png (tuatara.io:null-pointer) (tuatara.io:null-pointer)
-                                                                                  0 (tuatara.io:null-pointer)))))))
+                                  (tuatara.terminal-emulator::decode-terminal-png
+                                   (tuatara.runtime:null-pointer) (tuatara.runtime:null-pointer)
+                                   0 (tuatara.runtime:null-pointer)))))))
       (true (<= 1 calls (+ 2 tuatara.terminal-emulator::*terminal-png-decodes-per-second*))
             "~d pictures were drawn of 200 sent" calls))))
 

@@ -161,8 +161,8 @@ on yes, remove each (REMOVE-PACKAGE), forget that one of a directory of yours
 was let load, and delete the directories one by one in the background, each
 looked at again first (SWEEP-NEXT)."
   (let ((total (reduce #'+ directories :key #'third)))
-    (if (yes-or-no-p* (format nil "~a, ~a?" (list-question "Unload, remove and delete" "package" names)
-                              (tuatara.text:octets-words total)))
+    (if (ask-list-question (yes-or-no-p* :end (format nil ", ~a?" (tuatara.text:octets-words total)))
+          (list-question "Unload, remove and delete" "package" names))
         (let ((names (packages-not-busy names)))
           (dolist (name names)
             (remove-package name)

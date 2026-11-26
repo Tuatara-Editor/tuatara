@@ -240,7 +240,9 @@ buffer killed meanwhile is dropped."
                                                       files (length sections))
                                               (format nil "~[No files~;1 file~:;~:*~d files~], ~
                                                            ~[no projects~;1 project~:;~:*~d projects~]"
-                                                      files (count :none sections :key #'car :test-not #'eq))))))
+                                                      files
+                                                      (count-if-not (lambda (section) (eq (car section) :none))
+                                                                    sections))))))
      :point point :first-line *buffers-title-lines*
      :refill (lambda (list-buffer) (buffers-render list-buffer :keep)))))
 
@@ -335,9 +337,10 @@ list staying in its own; one killed meanwhile is said so, the list made again."
         (other (pop-to-buffer b :other t))
         (t (show-buffer b))))
 
-(defun kill-buffers-asked (targets question &key modified-only every-client)
+(defun kill-buffers-asked (targets question &key details modified-only every-client)
   "Kill the buffers TARGETS after QUESTION, a string, says what, asked with
-yes or no (modified ones said), or with MODIFIED-ONLY only when one of them
+yes or no, its details DETAILS, then how many are modified and the names of
+the first 20 (NAMES-SHOWN), or with MODIFIED-ONLY only when one of them
 is modified; each lets go only when a question of its own lets it
 \(KILL-BUFFER-ALLOWED-P). In a daemon, one another running client has too
 is left by the client whose group holds it (BUFFER-LIST-GROUP), as
@@ -350,7 +353,11 @@ again; how many were killed or left is said."
                                               (or every-client (not (shares-buffer-p (funcall leaver b) b)))))
                              targets)))
     (when (or (and modified-only (zerop modified))
-              (yes-or-no-p* (format nil "~a~[~;, 1 modified~:;, ~:*~d modified~]?" question modified)))
+              (yes-or-no-p* (format nil "~a?" question)
+                            :details (format nil "~@[~a~%~%~]~[~;1 is modified.~%~:;~:*~d are modified.~%~]~@[~a~]"
+                                             details modified
+                                             (and (rest targets)
+                                                  (names-shown targets :name-of #'tuatara.buffer:buffer-name)))))
       (let ((killed (count-if (lambda (b) (kill-buffer-asking b :ask nil :client (funcall leaver b)
                                                                 :every-client every-client))
                               targets)))
@@ -360,8 +367,8 @@ again; how many were killed or left is said."
 (defun kill-listed-buffers (targets &key modified-only)
   "Kill the buffers TARGETS of the buffer list after asking, as
 KILL-BUFFERS-ASKED does, with MODIFIED-ONLY."
-  (kill-buffers-asked targets (list-question "Kill" "buffer" targets :name-of #'tuatara.buffer:buffer-name)
-                      :modified-only modified-only))
+  (multiple-value-bind (question details) (list-question "Kill" "buffer" targets :name-of #'tuatara.buffer:buffer-name)
+    (kill-buffers-asked targets question :details details :modified-only modified-only)))
 
 (defmethod visit-section ((mode buffers-mode) list section other)
   "On the heading of the group of a client that ended, take its buffers up
@@ -377,11 +384,14 @@ the section."
   "On the heading of the group of a client that ended, marking for deletion
 \(D) marks every buffer of the group; the cursor moves down as it does
 anywhere."
-  (let ((section (list-section-at list)))
-    (when (and (eq mark :deletion) (ended-group-p section) (eq (first (list-entry-at list)) :section))
+  (let* ((section (list-section-at list))
+         (group (and (eq mark :deletion) (ended-group-p section) (eq (first (list-entry-at list)) :section))))
+    (when group
       (dolist (b (section-members (buffer-sections (buffers-in-order list)) section))
         (set-entry-mark list b :deletion)))
-    (call-next-method)))
+    (call-next-method)
+    ;; the rows of the whole group changed, not the heading's alone
+    (when group (redraw-list list))))
 
 (defmethod delete-entries ((mode buffers-mode) list targets mark)
   "Kill the buffers TARGETS: those marked for deletion (D) asking first only
@@ -443,32 +453,33 @@ killed together: *Messages* and the scratch buffers are among them."
                                           (project-buffers root))))))
     (cond (none (message "The buffers in no project are not killed together: mark them (m), then D"))
           ((null targets) (message "No buffer on this line"))
-          (t (kill-buffers-asked
-              targets (list-question "Kill" "buffer" targets
-                                     :name-of #'tuatara.buffer:buffer-name
-                                     :after (format nil "of ~a~@[ in client ~d~]"
-                                                    (buffer-section-title root sections)
-                                                    (and (consp root) (client-p (car root))
-                                                         (client-number (car root))))))))))
+          (t (multiple-value-bind (question details)
+                 (list-question "Kill" "buffer" targets
+                                :name-of #'tuatara.buffer:buffer-name
+                                :after (format nil "of ~a~@[ in client ~d~]"
+                                               (buffer-section-title root sections)
+                                               (and (consp root) (client-p (car root)) (client-number (car root)))))
+               (kill-buffers-asked targets question :details details))))))
 
 (defun kill-project-buffers-of-every-client (root)
   "Kill the buffers of the project at ROOT whoever has them, after asking,
-the question saying how many are in each group of the buffer list (\"Kill 5
-buffers of tuatara: 3 of client 2, 2 of client 3\")."
+the question (\"Kill 5 buffers of tuatara\") saying in its details how many
+are in each group of the buffer list (\"3 of client 2\")."
   (let ((targets (project-buffers root t)))
     (if (null targets)
         (message "No buffer of ~a" (buffer-section-title root))
-        (kill-buffers-asked
-         targets (list-question "Kill" "buffer" targets
-                                :the nil :name-of #'tuatara.buffer:buffer-name
-                                :after (format nil "of ~a: ~{~a~^, ~}" (buffer-section-title root)
-                                               (mapcar (lambda (group)
-                                                         (format nil "~d of ~:[every client's~;client ~:*~d~]"
-                                                                 (length (section-leaves (cdr group)))
-                                                                 (and (client-p (car group))
-                                                                      (client-number (car group)))))
-                                                       (buffer-sections targets))))
-         :every-client t))))
+        (multiple-value-bind (question details)
+            (list-question "Kill" "buffer" targets
+                           :the nil :name-of #'tuatara.buffer:buffer-name
+                           :after (format nil "of ~a" (buffer-section-title root))
+                           :details (format nil "~{~a~^~%~}"
+                                            (mapcar (lambda (group)
+                                                      (format nil "~d of ~:[every client's~;client ~:*~d~]"
+                                                              (length (section-leaves (cdr group)))
+                                                              (and (client-p (car group))
+                                                                   (client-number (car group)))))
+                                                    (buffer-sections targets))))
+          (kill-buffers-asked targets question :details details :every-client t)))))
 
 (defmethod delete-list-entries ((mode buffers-mode) list mark)
   "On a section's heading with no buffer marked, \\<buffers-mode>\\[list-delete-marked] kills every buffer of

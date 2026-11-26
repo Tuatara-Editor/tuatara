@@ -295,7 +295,7 @@ the filters leave is counted and judged in the whole list."
 entries the search filters narrowing LIST hide now, in the order of KEYS:
 what a command on the marked entries takes though they are not on the
 screen. A key of no entry of the whole list (a file marked in another
-directory) is not hidden by them. NIL when filters narrow LIST not. O(entries)."
+directory) is not hidden by them. NIL when no filter narrows LIST. O(entries)."
   (let ((source (and (list-filters-on-p list) (list-filtering-source (list-filtering list)))))
     (when source
       (let ((hidden (make-hash-table :test 'equal)))

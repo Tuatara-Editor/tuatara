@@ -447,10 +447,6 @@ them.")
   "False: nothing else waits for a compile."
   nil)
 
-(defparameter *compile-stop-grace* 2
-  "Seconds the programs of a compile stopped have to end after being asked to
-\(SIGTERM), before they are killed (SIGKILL).")
-
 (defparameter *compile-open-grace* 1
   "Seconds a compile's output is read on after its command has ended, for what
 the programs it started still write; then it ends, said held open.")
@@ -474,25 +470,15 @@ against other threads doing the same or ending one."
   (sb-ext:atomic-update *compiles-stopping* (lambda (entries) (remove entry entries))))
 
 (defun end-compile-session (job process)
-  "End every program of JOB's session, PROCESS's, in the background: woken
-when stopped (SIGCONT) and asked to end (SIGTERM), then killed (SIGKILL)
-those not ended within *COMPILE-STOP-GRACE* seconds; none signalled once all
-have ended."
-  (let ((entry (cons process (or (compile-job-session job) (tuatara.io:session-leader process)))))
+  "End every program of JOB's session, PROCESS's, in the background, as a
+program no longer wanted is ended (TUATARA.IO:END-UNWANTED-PROGRAM): woken
+when stopped and asked to end (SIGTERM), then killed (SIGKILL) those not
+ended in time; the compile is among those being stopped until then."
+  (let* ((session (or (compile-job-session job) (tuatara.io:session-leader process)))
+         (entry (cons process session)))
     (note-compile-stopping entry)
-    (tuatara.runtime:make-guarded-thread
-     (lambda ()
-       (unwind-protect
-            (destructuring-bind (process . session) entry
-              (tuatara.io:signal-session process session sb-posix:sigcont)
-              (tuatara.io:signal-session process session sb-posix:sigterm)
-              (loop repeat (* 20 *compile-stop-grace*)
-                    while (compile-session-there-p process session)
-                    do (sleep 0.05))
-              (when (compile-session-there-p process session)
-                (tuatara.io:signal-session process session sb-posix:sigkill)))
-         (forget-compile-stopping entry)))
-     :name "tuatara compile stopping")))
+    (tuatara.io:end-unwanted-program process :close nil :session session
+                                             :then (lambda () (forget-compile-stopping entry)))))
 
 (defun kill-compiles-at-exit (editor)
   "Exit function: kill every program of the compiles still running or being

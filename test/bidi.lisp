@@ -87,9 +87,9 @@ order, worked out then wanted."
     (is equal '(0 4) (multiple-value-list (tuatara.display:point-row-column rows (utf-8-octet-count text))))
     (is equal '(0 11) (multiple-value-list (tuatara.display:point-row-column rows 0)))
     ;; the line point is on lit out to the edge: on that side, the blanks before its text
-    (tuatara.display:apply-highlights rows (list (list 0 (1+ (utf-8-octet-count text)) :hl-line)))
-    (is eq :hl-line (aref (tuatara.display:row-faces row) 0))
-    (is eq :hl-line (aref (tuatara.display:row-faces row) 4)))
+    (tuatara.display:apply-highlights rows (list (list 0 (1+ (utf-8-octet-count text)) :current-line)))
+    (is eq :current-line (aref (tuatara.display:row-faces row) 0))
+    (is eq :current-line (aref (tuatara.display:row-faces row) 4)))
   ;; brackets mirrored in text written from right to left
   (is string= (letters "(" #x5D1 ")" #x5D0)
       (string-left-trim " " (tuatara.display:row-string (aref (bidi-rows (letters #x5D0 "(" #x5D1 ")") 10) 0))))

@@ -31,8 +31,8 @@ when HOUR is given, ending at END-HOUR:END-MINUTE when that is given."
 (defun org-read-date-text (input now)
   "The active timestamp INPUT, a date as typed, stands for at the universal
 time NOW, an ORG-TS, or NIL when INPUT is no date: what READ-DATE-TEXT reads
-\(fri, +3d, 10-15, sep 30, tomorrow, 2026-12-24 14:00, 3pm)."
-  (multiple-value-bind (day hour minute end-hour end-minute) (read-date-text input (org-today now))
+\(fri, +3d, 10-15, sep 30, tomorrow, 2026-12-24 14:00, 3pm, 50m from now)."
+  (multiple-value-bind (day hour minute end-hour end-minute) (read-date-text input (org-today now) now)
     (and day (org-date-ts day hour minute end-hour end-minute))))
 
 (define-setting *org-read-date-popup-calendar* t
@@ -266,7 +266,15 @@ was before they came."
                                                                  :stacked))
                                   (funcall function)))))
 
-(defun read-org-date (prompt &key repeating several keymap details)
+(defun org-date-parts-with-time (parts current)
+  "PARTS, a day number, hour, minute, end hour and end minute (the hour NIL for
+none), given the time of CURRENT, an ORG-TS or NIL, when they name none."
+  (destructuring-bind (day &optional hour minute end-hour end-minute) parts
+    (if (and (null hour) current (org-ts-hour current))
+        (list day (org-ts-hour current) (org-ts-minute current) (org-ts-end-hour current) (org-ts-end-minute current))
+        (list day hour minute end-hour end-minute))))
+
+(defun read-org-date (prompt &key repeating several keymap details current)
   "Ask PROMPT for a date as any date is asked for (READ-DATE), what it reads
 shown as it is typed as the timestamp it makes, and the calendar below, its
 day marked (*ORG-READ-DATE-POPUP-CALENDAR*); a timestamp typed whole
@@ -279,8 +287,12 @@ calendar writes them (ORG-READ-SEVERAL-DATES). Begun in the calendar as
 *ORG-READ-DATE-IN-CALENDAR* says, the calendar's keys then shown beside the
 prompt with DETAILS, the question's own keys, after them. The ORG-TS, the
 text of a timestamp by rule or of several timestamps, or NIL when what was
-typed is no date."
-  (let* ((window (and *org-read-date-popup-calendar* (org-date-calendar-show (org-today))))
+typed is no date. With CURRENT, an ORG-TS, the question starts from it: the
+calendar shows its day, nothing typed is its day and time, and a day typed
+with no time takes its time."
+  (let* ((window (and *org-read-date-popup-calendar*
+                      (org-date-calendar-show (if current (org-ts-day-number current) (org-today)))))
+         (timed (lambda (parts) (org-date-parts-with-time parts current)))
          (*org-date-calendar* (and *org-read-date-popup-calendar* (calendar-buffer)))
          (keymap (or keymap **org-date-prompt-keymap**))
          (*org-date-choosing* (and *org-date-calendar* *org-read-date-in-calendar*
@@ -300,11 +312,13 @@ typed is no date."
                 (and lines (format nil "~{~a~^~%~}" lines)))
               (lambda ()
                 (read-date asking :now (org-now)
-                                  :shown (lambda (&rest parts) (org-ts-text (apply #'org-date-ts parts)))
+                                  :empty (and current (funcall timed (list (org-ts-day-number current))))
+                                  :shown (lambda (&rest parts)
+                                           (org-ts-text (apply #'org-date-ts (funcall timed parts))))
                                   :follow (lambda (&rest parts)
                                             ;; the calendar's day is the answer while it is chosen there
                                             (unless *org-date-choosing*
-                                              (org-date-calendar-follow (apply #'org-date-ts parts))))
+                                              (org-date-calendar-follow (apply #'org-date-ts (funcall timed parts)))))
                                   ;; a key typed while the calendar is answered in begins the date at the prompt;
                                   ;; nothing is offered to take till then
                                   :typed (lambda (input)
@@ -315,7 +329,7 @@ typed is no date."
                                   :keymap first-keys)))
            (cond ((or (org-ts-p time) (stringp time)) time)
                  ((and (consp time) (eq (first time) :several)) (second time))
-                 (t (and time (org-date-ts day hour minute end-hour end-minute)))))
+                 (t (and time (apply #'org-date-ts (funcall timed (list day hour minute end-hour end-minute)))))))
       (when (org-date-calendar-live)
         (setf (tuatara.buffer:buffer-local *org-date-calendar* 'calendar-chosen) nil))
       ;; the window made for the calendar goes with the question
@@ -590,10 +604,13 @@ typed is 1 March."
   "TIMESTAMP's text with [ and ] about it, as a date is written in a log."
   (format nil "[~a]" (subseq timestamp 1 (1- (length timestamp)))))
 
-(defun org-ts-keep-cycle (new old)
-  "NEW, an ORG-TS, given the repeater and the warning of OLD (an ORG-TS or NIL)
-where it has none of its own."
+(defun org-ts-keep-from (new old)
+  "NEW, an ORG-TS, given the time, the repeater and the warning of OLD (an
+ORG-TS or NIL) where it has none of its own."
   (when old
+    (when (and (org-ts-hour old) (not (org-ts-hour new)))
+      (setf (org-ts-hour new) (org-ts-hour old) (org-ts-minute new) (org-ts-minute old)
+            (org-ts-end-hour new) (org-ts-end-hour old) (org-ts-end-minute new) (org-ts-end-minute old)))
     (unless (org-ts-repeater new)
       (setf (org-ts-repeater new) (org-ts-repeater old) (org-ts-repeat-value new) (org-ts-repeat-value old)
             (org-ts-repeat-unit new) (org-ts-repeat-unit old)))
@@ -601,6 +618,70 @@ where it has none of its own."
       (setf (org-ts-warning new) (org-ts-warning old) (org-ts-warning-value new) (org-ts-warning-value old)
             (org-ts-warning-unit new) (org-ts-warning-unit old))))
   new)
+
+(defun org-entry-planning (headline text)
+  "Four values for HEADLINE of TEXT: its planning line as tokens, each
+\(KEYWORD . TIMESTAMP); where the text after its headline and planning line
+begins; where the entry ends; and whether it has a planning line."
+  (let* ((line-end (string-line-end text (org-node-begin headline)))
+         (end (org-entry-end headline text))
+         (first-line (and (< line-end end) (org-line-at text (1+ line-end))))
+         (planning-p (and first-line (org-planning-line-p first-line) t)))
+    (values (and planning-p (org-planning-tokens first-line))
+            (min end (1+ (if planning-p (string-line-end text (1+ line-end)) line-end)))
+            end
+            planning-p)))
+
+(defun org-text-timestamps (text start end)
+  "The active timestamps in TEXT from START to END, a range <a>--<b> one,
+each (FROM TO TS), TS the ORG-TS of its first date, in order."
+  (let ((found '()))
+    (cl-ppcre:do-matches (from to *org-timestamp-or-range-scanner* text nil :start start :end end)
+      (when (char= (char text from) #\<)
+        (let ((ts (org-read-ts (subseq text from (or (search "--" text :start2 from :end2 to) to)))))
+          (when (and ts (org-ts-active ts)) (push (list from to ts) found)))))
+    (nreverse found)))
+
+(defun org-entry-date (keyword)
+  "The date the entry point is under has for KEYWORD (\"SCHEDULED\" or
+\"DEADLINE\"), from which its date question starts: its planning date, else
+for a reminder the timestamp in its text; an ORG-TS, or NIL."
+  (with-org-structure (parse buffer tree text position)
+    (let ((headline (org-current-headline tree position)))
+      (when headline
+        (multiple-value-bind (tokens body end) (org-entry-planning headline text)
+          (let ((planned (cdr (assoc keyword tokens :test #'string=))))
+            (cond (planned (org-read-ts planned))
+                  ((org-reminder-headline-p headline text)
+                   (third (first (org-text-timestamps text body end)))))))))))
+
+(defun org-entry-event-time (keyword)
+  "The active timestamp in the text of the entry point is under, as written,
+when the entry is an event: no TODO keyword, not a reminder, and no KEYWORD
+planning date; else NIL."
+  (with-org-structure (parse buffer tree text position)
+    (let ((headline (org-current-headline tree position)))
+      (when (and headline (not (org-property headline :todo-keyword))
+                 (not (org-reminder-headline-p headline text)))
+        (multiple-value-bind (tokens body end) (org-entry-planning headline text)
+          (unless (assoc keyword tokens :test #'string=)
+            (let ((stamp (first (org-text-timestamps text body end))))
+              (and stamp (subseq text (first stamp) (second stamp))))))))))
+
+(defun org-text-without-stamp (text from to)
+  "TEXT with the timestamp from FROM to TO taken out, and the spaces beside it
+on one side; its line too when nothing else is left on it."
+  (let* ((line-start (string-line-start text from))
+         (line-end (string-line-end text to))
+         (after (or (position-if-not #'space-or-tab-char-p text :start to :end line-end) line-end)))
+    (cond ((and (blank-text-p text line-start from) (= after line-end))
+           (concatenate 'string (subseq text 0 line-start) (subseq text (min (length text) (1+ line-end)))))
+          ((blank-text-p text line-start from)
+           (concatenate 'string (subseq text 0 from) (subseq text after)))
+          (t
+           (let ((before (1+ (or (position-if-not #'space-or-tab-char-p text :start line-start :end from :from-end t)
+                                 (1- line-start)))))
+             (concatenate 'string (subseq text 0 before) (subseq text to)))))))
 
 (defun org-no-date ()
   "Say that what was typed at a date prompt is no date, with the kinds it reads."
@@ -638,47 +719,53 @@ date that does not repeat, which would end its repeats: that is said."
     (let ((headline (org-current-headline tree position)))
       (if (null headline)
           (message "Not under a headline")
-          (let* ((begin (org-node-begin headline))
-                 (line-end (string-line-end text begin))
-                 (end (org-entry-end headline text))
-                 (first-line (and (< line-end end) (org-line-at text (1+ line-end))))
-                 (planning-p (and first-line (org-planning-line-p first-line)))
-                 (tokens (and planning-p (org-planning-tokens first-line)))
-                 (old (cdr (assoc keyword tokens :test #'string=)))
-                 (deadline-p (string= keyword "DEADLINE")))
-            (cond ((and (null new) (null old))
-                   (message "~:[Not scheduled~;No deadline~]" deadline-p))
-                  ;; a date by rule is changed for another repeat, never quietly ended by one date
-                  ((and old (org-ts-p new) (not (org-repeating-ts-p new)) (org-rule-text-p old))
-                   (message "~a repeats by rule, ~a: one date would end its repeats. Type a repeat ~
-(every weekday 9:00) or C-r at the date prompt for the repeat menu; t at the question moves one time; ~
+          (multiple-value-bind (tokens body-start end planning-p) (org-entry-planning headline text)
+            (let* ((begin (org-node-begin headline))
+                   (line-end (string-line-end text begin))
+                   (old (cdr (assoc keyword tokens :test #'string=)))
+                   (deadline-p (string= keyword "DEADLINE")))
+             (cond ((and (null new) (null old))
+                    (message "~:[Not scheduled~;No deadline~]" deadline-p))
+                   ;; a date by rule is changed for another repeat, never quietly ended by one date
+                   ((and old (org-ts-p new) (not (org-repeating-ts-p new)) (org-rule-text-p old))
+                    (message "~a repeats by rule, ~a: one date would end its repeats. Type a repeat ~
+(every weekday 9:00) or \\<**org-repeat-date-prompt-keymap**>\\[org-date-repeat-menu] at the date prompt for ~
+the repeat menu; t at the question moves one time; ~
 \\<org-mode>\\[universal-argument] \\[org-schedule] takes it away"
-                            (org-property headline :raw-value) old))
-                  (t
-                   (let* ((new-text (cond ((null new) nil)
-                                          ((stringp new) new)
-                                          (t (org-ts-text (org-ts-keep-cycle new (and old (org-read-ts old)))))))
-                          (planning (format nil "~{~a~^ ~}"
-                                            (mapcar (lambda (token) (format nil "~a: ~a" (car token) (cdr token)))
-                                                    (org-planning-tokens-with tokens keyword new-text))))
-                          (note (org-plan-log-note keyword old new))
-                          (entry (org-entry-with-log headline text (and note (list note)) *org-log-into-drawer*))
-                          (entry-line-end (or (position #\Newline entry) (length entry)))
-                          (body (if (< entry-line-end (length entry)) (subseq entry (1+ entry-line-end)) ""))
-                          (lines (text-lines body))
-                          (new-entry (org-entry-from-lines
-                                      (subseq text begin line-end)
-                                      (append (and (plusp (length planning)) (list planning))
-                                              (if planning-p (rest lines) lines))
-                                      (ends-with-newline-p entry))))
-                     (org-replace-chars parse begin end new-entry
-                                        :point (cond ((<= position line-end) position)
-                                                     ((>= position end)
-                                                      (+ position (- (length new-entry) (- end begin))))
-                                                     (t begin)))
-                     (if new
-                         (message "~a: ~a" keyword new-text)
-                         (message (if deadline-p "Deadline taken away" "Scheduling taken away")))))))))))
+                             (org-property headline :raw-value) old))
+                   (t
+                    (let* ((moved-stamp (and new (not old) (string= keyword "SCHEDULED")
+                                             (org-reminder-headline-p headline text)
+                                             (first (org-text-timestamps text body-start end))))
+                           (new-text (cond ((null new) nil)
+                                           ((stringp new) new)
+                                           (t (org-ts-text (org-ts-keep-from new (or (and old (org-read-ts old))
+                                                                                     (third moved-stamp)))))))
+                           (planning (format nil "~{~a~^ ~}"
+                                             (mapcar (lambda (token) (format nil "~a: ~a" (car token) (cdr token)))
+                                                     (org-planning-tokens-with tokens keyword new-text))))
+                           (note (org-plan-log-note keyword old new))
+                           (entry (org-entry-with-log headline text (and note (list note)) *org-log-into-drawer*))
+                           (entry-line-end (or (position #\Newline entry) (length entry)))
+                           (body (if (< entry-line-end (length entry)) (subseq entry (1+ entry-line-end)) ""))
+                           ;; a reminder has one time: the one in its text goes into SCHEDULED:
+                           (lines (text-lines (if moved-stamp
+                                                  (org-text-without-stamp body (- (first moved-stamp) line-end 1)
+                                                                          (- (second moved-stamp) line-end 1))
+                                                  body)))
+                           (new-entry (org-entry-from-lines
+                                       (subseq text begin line-end)
+                                       (append (and (plusp (length planning)) (list planning))
+                                               (if planning-p (rest lines) lines))
+                                       (ends-with-newline-p entry))))
+                      (org-replace-chars parse begin end new-entry
+                                         :point (cond ((<= position line-end) position)
+                                                      ((>= position end)
+                                                       (+ position (- (length new-entry) (- end begin))))
+                                                      (t begin)))
+                      (if new
+                          (message "~a: ~a" keyword new-text)
+                          (message (if deadline-p "Deadline taken away" "Scheduling taken away"))))))))))))
 
 (define-command org-schedule ()
   "Schedule the task point is under (\\`C-c C-s'): the
@@ -688,20 +775,30 @@ a repeater and warning it had kept. With \\[universal-argument], take it away.
 An entry whose date repeats asks first: \\`t' moves this time alone to the
 day asked for, its time kept unless another is typed, the rest as it was,
 noted in its log; done there, it is done for the time it was. In the agenda
-it is the time of the line. \\`s' schedules the series."
-  (if (prefix-argument)
-      (org-plan "SCHEDULED" nil)
-      (case (org-occurrence-choice "Schedule")
-        (:this (org-move-asked))
-        (:series (org-ask-date "Schedule" (lambda (ts) (if ts (org-plan "SCHEDULED" ts) (org-no-date))))))))
+it is the time of the line. \\`s' schedules the series.
+The question starts from the date the task has: its SCHEDULED:, or for a
+reminder the time in its text, which then goes into SCHEDULED:, a reminder
+having one time. An event, an entry with no TODO keyword whose text holds its
+time, is not scheduled: \\[org-time-stamp] on that time changes it or makes it
+repeat."
+  (let ((event (and (not (prefix-argument)) (org-entry-event-time "SCHEDULED"))))
+    (cond ((prefix-argument) (org-plan "SCHEDULED" nil))
+          (event (message "An event, at ~a: \\<org-mode>\\[org-time-stamp] on that time changes it or makes it repeat"
+                          event))
+          (t (case (org-occurrence-choice "Schedule")
+               (:this (org-move-asked))
+               (:series (org-ask-date "Schedule" (lambda (ts) (if ts (org-plan "SCHEDULED" ts) (org-no-date)))
+                                      :current (org-entry-date "SCHEDULED"))))))))
 
 (define-command org-deadline ()
   "Give the task point is under a deadline (\\`C-c C-d'):
 the date asked for as \\[org-schedule] asks it, DEADLINE: on its planning
-line, a repeater and warning it had kept. With \\[universal-argument], take it away."
+line, a repeater and warning it had kept. With \\[universal-argument], take it away.
+The question starts from the deadline the task has."
   (if (prefix-argument)
       (org-plan "DEADLINE" nil)
-      (org-ask-date "Deadline" (lambda (ts) (if ts (org-plan "DEADLINE" ts) (org-no-date))))))
+      (org-ask-date "Deadline" (lambda (ts) (if ts (org-plan "DEADLINE" ts) (org-no-date)))
+                    :current (org-entry-date "DEADLINE"))))
 
 (defun org-timestamp-around (text position)
   "Where the timestamp of TEXT that holds the character POSITION, or ends just
@@ -718,7 +815,8 @@ is none."
 inactive [...]; on a timestamp or just after it (ORG-TIMESTAMP-AROUND), put it
 in that one's place, its repeater and warning kept, and its time when none
 was typed. An active one may be several days chosen in the calendar, put in
-one after another (*ORG-READ-DATE-IN-CALENDAR*)."
+one after another (*ORG-READ-DATE-IN-CALENDAR*). On a timestamp the question
+starts from it."
   (org-ask-date
    (if active "Date" "Inactive date")
    (lambda (ts)
@@ -734,14 +832,13 @@ one after another (*ORG-READ-DATE-IN-CALENDAR*)."
           (multiple-value-bind (from to) (org-timestamp-around text position)
             (let* ((old (and from (org-read-ts (subseq text from to))))
                    (new (progn (setf (org-ts-active ts) active)
-                               (when (and old (org-ts-hour old) (not (org-ts-hour ts)))
-                                 (setf (org-ts-hour ts) (org-ts-hour old) (org-ts-minute ts) (org-ts-minute old)
-                                       (org-ts-end-hour ts) (org-ts-end-hour old) (org-ts-end-minute ts)
-                                       (org-ts-end-minute old)))
-                               (org-ts-text (org-ts-keep-cycle ts old))))
+                               (org-ts-text (org-ts-keep-from ts old))))
                    (from (or from position)))
               (org-replace-chars parse from (or to position) new :point (+ from (length new)))))))))
-   :several active))
+   :several active
+   :current (with-org-structure (parse buffer tree text position)
+              (multiple-value-bind (from to) (org-timestamp-around text position)
+                (and from (org-read-ts (subseq text from to)))))))
 
 (define-command org-time-stamp ()
   "Put in a timestamp at point (\\`C-c .'), the date asked for as

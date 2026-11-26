@@ -199,7 +199,7 @@ holds:
 
 A few settings are better said with a function than with =setf=, because
 they take a mode and a value. The starter file has these written out, for
-example =(set-tab-width 'c-mode 8)=. Keep to the form the starter file shows.
+example =(set-indentation 'c 2)=. Keep to the form the starter file shows.
 
 *** Sizes and times in words
 
@@ -220,7 +220,8 @@ and 1G is 1024 times 1024 times 1024. A number without a unit is bytes.
 A setting that holds seconds or minutes, such as =*sandbox-seconds*= or
 =*org-agenda-refresh-minutes*=, takes a number in its own unit, or a time in
 words: ="500ms"=, ="90s"=, ="30m"=, ="1.5h"= or ="14d"=, for milliseconds,
-seconds, minutes, hours and days. The words are turned into the setting's own
+seconds, minutes, hours and days. Several amounts may follow each other, as
+in ="1h30m"= or ="1h 3m 10s"=. The words are turned into the setting's own
 unit: ="90s"= given to a setting in minutes is 1.5. A setting that takes only
 whole numbers refuses a time that is not a whole number of its unit, as ="90s"=
 for =*org-notify-before*=, which counts whole minutes. A number without a unit
@@ -229,19 +230,19 @@ counts in the setting's own unit.
 The words are turned into the number where a value is looked at (see below), so
 ~C-h v~ shows the number. Words that give no size or time, or one the setting
 does not take, are refused as any other value is. A setting that counts things,
-such as =*kill-ring-max*= or =*wipe-passes*=, takes a plain number. The help of
+such as =*kill-ring-length*= or =*wipe-passes*=, takes a plain number. The help of
 each setting says which values it takes.
 
 *** A value a setting does not take
 
-Each setting says which values it takes, and Tuatara refuses any other where
-you set it: by =setf= in the init file, at ~M-:~ or in IELM, in a package's
+Each setting says which values it takes, and Tuatara refuses any other where you
+set it: by =setf= in the init file, at ~M-:~ or in the Lisp REPL, in a package's
 =:init= or =:config=, or with a command such as a display toggle turned on in
 every buffer. The setting keeps the value it had, and the refusal names the
-setting and says what it takes. In the init file it is said as an error on
-the line of the form that gave it; the other settings that form gives stand,
-and the forms after it are read as usual. A value set by Lisp a package runs
-on its own, or bound with =let= in Lisp of your own, is not looked at then.
+setting and says what it takes. In the init file it is said as an error on the
+line of the form that gave it; the other settings that form gives stand, and the
+forms after it are read as usual. A value set by Lisp a package runs on its own,
+or bound with =let= in Lisp of your own, is not looked at then.
 
 For example, =(setf *gui-padding* 'x)= at ~M-:~ is refused with
 =*gui-padding* is x, but it takes a whole number, 0 or more, or a list, each a
@@ -353,7 +354,7 @@ want, or write your own with =:map :leader=.
 (bind-key "o" 'find-file :map :leader)
 (bind-key "t" nil :map :leader :label "toggles")
 (bind-key "t l" 'soft-wrap-mode :map :leader)
-(bind-key "t h" 'hl-line-mode :map :leader)
+(bind-key "t h" 'current-line-mode :map :leader)
 #+end_src
 
 The four lines make ~SPC o~ open a file. They also make ~SPC t~ a prefix with
@@ -455,8 +456,8 @@ put it in the init file:
 In a window of its own, Tuatara follows the desktop. If the desktop turns
 dark in the evening, Tuatara switches to its dark theme, and back again in
 the morning. GTK tells it the desktop's style from GTK 4.20, as the AppImage
-and the packages of newer systems have it; with an older GTK, as the legacy
-AppImage's, the theme stays the one it started with. A theme named in the
+and the packages of newer systems have it; with an older GTK, the theme stays
+the one it started with. A theme named in the
 init file stays too. =*follow-desktop-style*= set to =nil= stops that and
 keeps one theme. ~M-x toggle-light-dark-theme~ switches between the dark and the light
 theme by hand. =*light-theme*= and =*dark-theme*= say which two themes it,
@@ -488,7 +489,7 @@ attribute and a value:
 
 #+begin_src lisp
 (set-face :comment :fg :cyan :italic t)
-(set-face :hl-line :bg "#1a2a3a")
+(set-face :current-line :bg "#1a2a3a")
 #+end_src
 
 The first line draws comments in cyan italics. The second gives the line you are
@@ -532,19 +533,10 @@ the daemon (chapter 18), or in an editor of its own when no daemon runs.
 the desktop start the daemon as you log in. Nothing starts it unless you do.
 
 The window's title bar follows the desktop's light or dark style, as GTK 4.20
-and later do. The AppImage brings such a GTK. Moving to it from the legacy
-AppImage, run =--install-desktop= again, so that the desktop's entry starts
-the new one without =--dark= or =--light=.
-
-The legacy AppImage, for systems older than glibc 2.43, brings an older GTK
-that cannot learn the desktop's style, and shows the title bar in GTK's light
-style unless asked otherwise. Only it takes =--dark= and =--light=, and only
-its =--help= lists them. =--dark= before the rest shows the title bar dark, as
-in =./Tuatara-legacy-x86_64.AppImage --dark --gui FILE=, and =--install-desktop
---dark= starts it so from the desktop's applications. Programs started from
-Tuatara are shown dark too. The editor's own colours are its theme's.
-Tuatara 0.90.40 was the last release with a legacy AppImage; later
-releases build none.
+and later do. The AppImage brings such a GTK. A desktop entry written by the
+legacy AppImage of 0.90.40 or before may still start Tuatara with =--dark= or
+=--light=, which it no longer takes: run =--install-desktop= again to write
+the entry afresh.
 
 A package puts Tuatara in =/usr/lib/tuatara/= and it uses the system's GTK and
 libraries. With a GTK older than 4.20, =GTK_THEME=Adwaita:dark tuatara --gui=
@@ -695,7 +687,7 @@ switches it off.
 The commands and what they show, with the keys they have, are in the table
 below. Some of them are shown in other chapters. Here they are together.
 
-#+table: commands hl-line-mode cursor-column-mode soft-wrap-mode display-fill-column-mode centred-text-mode invisible-characters-mode text-direction-mode inline-pictures-mode global-hl-line-mode global-soft-wrap-mode global-display-fill-column-mode global-centred-text-mode global-cursor-column-mode global-invisible-characters-mode global-text-direction-mode global-inline-pictures-mode
+#+table: commands current-line-mode current-column-mode soft-wrap-mode display-fill-column-mode centred-text-mode invisible-characters-mode text-direction-mode inline-pictures-mode global-current-line-mode global-soft-wrap-mode global-display-fill-column-mode global-centred-text-mode global-current-column-mode global-invisible-characters-mode global-text-direction-mode global-inline-pictures-mode
 
 Text that is written from right to left, such as Hebrew and Arabic, is
 shown in the order it is read. =text-direction-mode= is for the rare text
@@ -715,10 +707,10 @@ and plain text but not in CSV files, whatever the rest do:
 
 The pairs, each with what it shows:
 
-- =*global-hl-line-mode*= and =*hl-line-modes*= paint the line the cursor is
+- =*global-current-line-mode*= and =*current-line-modes*= paint the line the cursor is
   on across the window. It is on for every buffer unless you set the first
   to =nil=. To keep it off in CSV files only:
-  =(setf *hl-line-modes* '((csv-mode . nil)))=.
+  =(setf *current-line-modes* '((csv-mode . nil)))=.
 - =*global-soft-wrap-mode*= and =*soft-wrap-modes*= wrap long lines onto
   several rows. They are off unless set, except in help and the about
   buffer, which wrap. =(setf *global-soft-wrap-mode* t)= wraps everywhere.
@@ -736,9 +728,9 @@ The pairs, each with what it shows:
 - =*centred-text-width*= is the width of that column, 80 by default. With
   =(setf *centred-text-width* 70)= the text takes 70 columns and the margins
   are blank.
-- =*global-cursor-column-mode*= and =*cursor-column-modes*= paint the column
+- =*global-current-column-mode*= and =*current-column-modes*= paint the column
   the cursor is in down the window. Off unless set:
-  =(setf *cursor-column-modes* '((csv-mode . t)))= helps to read a table.
+  =(setf *current-column-modes* '((csv-mode . t)))= helps to read a table.
 - =*global-invisible-characters-mode*= and =*invisible-characters-modes*=
   show characters that draw nothing as their codes, such as =<FEFF>= for a
   byte-order mark. Off unless set, but always on in a file opened safely.
@@ -756,12 +748,12 @@ The pairs, each with what it shows:
   Off unless set, and never in a file opened safely:
   =(setf *inline-pictures-modes* '((org-mode . t)))=.
 
-#+table: settings *global-hl-line-mode* *hl-line-modes* *global-soft-wrap-mode* *soft-wrap-modes* *soft-wrap-at-fill-column* *global-display-fill-column-mode* *display-fill-column-modes* *global-centred-text-mode* *centred-text-modes* *centred-text-width* *global-cursor-column-mode* *cursor-column-modes* *global-invisible-characters-mode* *invisible-characters-modes* *global-text-direction-mode* *text-direction-modes* *global-inline-pictures-mode* *inline-pictures-modes*
+#+table: settings *global-current-line-mode* *current-line-modes* *global-soft-wrap-mode* *soft-wrap-modes* *soft-wrap-at-fill-column* *global-display-fill-column-mode* *display-fill-column-modes* *global-centred-text-mode* *centred-text-modes* *centred-text-width* *global-current-column-mode* *current-column-modes* *global-invisible-characters-mode* *invisible-characters-modes* *global-text-direction-mode* *text-direction-modes* *global-inline-pictures-mode* *inline-pictures-modes*
 
 The faces paint the line, the column and the characters. The first three
 are the same colour unless you set them apart.
 
-#+table: faces :hl-line :cursor-column :soft-wrap-row :display-fill-column :invisible-character :current-line-number :raw-byte :right-to-left :stored-order
+#+table: faces :current-line :current-column :soft-wrap-row :display-fill-column :invisible-character :current-line-number :raw-byte :right-to-left :stored-order
 
 ** The calendar
 
@@ -809,7 +801,7 @@ which is quicker if you have a large agenda:
 
 *** Commands, settings and faces for the calendar
 
-#+table: commands calendar-forward-day calendar-backward-day calendar-forward-week calendar-backward-week calendar-forward-month calendar-backward-month calendar-forward-year calendar-backward-year calendar-goto-today calendar-goto-date calendar-jump-back calendar-other-month calendar-open-day calendar-journal-entry calendar-mark-days calendar-unmark calendar-beginning-of-week calendar-end-of-week calendar-beginning-of-month calendar-end-of-month calendar-beginning-of-year calendar-end-of-year calendar-scroll-left calendar-scroll-right calendar-scroll-left-three-months calendar-scroll-right-three-months calendar-print-day-of-year calendar-iso-print-date calendar-here
+#+table: commands calendar-forward-day calendar-backward-day calendar-forward-week calendar-backward-week calendar-forward-month calendar-backward-month calendar-forward-year calendar-backward-year calendar-goto-today calendar-goto-date calendar-jump-back calendar-other-month calendar-open-day calendar-journal-entry calendar-mark-days calendar-unmark calendar-beginning-of-week calendar-end-of-week calendar-beginning-of-month calendar-end-of-month calendar-beginning-of-year calendar-end-of-year calendar-scroll-left calendar-scroll-right calendar-next-months calendar-previous-months calendar-print-day-of-year calendar-iso-print-date calendar-here
 
 #+table: settings *calendar-months* *calendar-months-per-row* *calendar-week-start-day* *calendar-mark-days*
 
@@ -960,7 +952,7 @@ for the name of a field and for what cannot be changed:
 Four settings are limits that keep a mistake from filling your computer. Each
 has a sensible standard, and a reason to change it is rare.
 
-- =*insert-file-limit*= is how much of another file ~M-x
+- =*note-template-file-limit*= is how much of another file ~M-x
   insert-formatted-note-template~ reads. A larger file is refused.
 - =*program-output-limit*= is how much of what a program writes Tuatara
   takes. A program that writes more is stopped.
@@ -970,7 +962,7 @@ has a sensible standard, and a reason to change it is rare.
 - =*markdown-toc-on-save*= makes the table of contents of a Markdown file
   again each time you save, under the heading tagged =:TOC:=.
 
-#+table: settings *insert-file-limit* *program-output-limit* *wipe-passes* *markdown-toc-on-save*
+#+table: settings *note-template-file-limit* *program-output-limit* *wipe-passes* *markdown-toc-on-save*
 
 *** About, the tutor and Lisp
 
@@ -984,4 +976,4 @@ faces of their own, so that a theme can colour them.
 you write your own functions in the init file. =pattern-finish= takes what you
 typed in a question that asks for a pattern, and says why when it cannot.
 
-#+table: commands pp-macroexpand-all-last-expression pattern-finish
+#+table: commands lisp-macroexpand-all pattern-finish

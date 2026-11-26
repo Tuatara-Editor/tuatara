@@ -337,6 +337,18 @@ decoder (*SANDBOX-MEMORY-COPY-LIMIT*)."
                              (false (tuatara.io::disk-copy-p copy)))
         (tuatara.io:close-sealed-copy copy)))))
 
+(define-test (sandbox refused-disk-copy-forgotten)
+  ;; a copy on the drive refused as changed while it was copied is closed and forgotten, as every copy closed is
+  (with-copies-on-the-drive (cache path text)
+    (let ((before (hash-table-count tuatara.io::**disk-copies**)))
+      (sb-int:encapsulate 'tuatara.io::fd-size 'shorter (lambda (function fd &optional default)
+                                                         (declare (ignore function fd default))
+                                                         -1))
+      (unwind-protect (fail (copy-of-file path) 'tuatara.io:file-system-error)
+        (sb-int:unencapsulate 'tuatara.io::fd-size 'shorter))
+      (is = before (hash-table-count tuatara.io::**disk-copies**)))
+    (is equal '() (entries-in cache))))
+
 (define-test (sandbox disk-copy-kept-from-its-decoder)
   ;; a decoder given a copy on the drive cannot make it writable again: changing permissions is refused it
   ;; (chmod, and access lists through setxattr), so it reads what was copied, and so does the next. A copy
@@ -602,10 +614,12 @@ grep -c : /proc/net/dev; ls /proc | grep -c '^[0-9]'")
     (true (< (- (get-internal-real-time) start) (* 3 internal-time-units-per-second)))))
 
 (defun gone-within (mark seconds)
-  "True once no process has MARK in its command line, looked for over SECONDS."
-  (loop repeat (ceiling seconds 0.02)
-        thereis (zerop (processes-running mark))
-        do (sleep 0.02)))
+  "True once no process has MARK in its command line, looked for over SECONDS
+of the clock, however long each look takes on a busy machine."
+  (let ((deadline (+ (get-internal-real-time) (* seconds internal-time-units-per-second))))
+    (loop thereis (zerop (processes-running mark))
+          while (< (get-internal-real-time) deadline)
+          do (sleep 0.02))))
 
 (defun kill-marked (mark)
   "Kill (SIGKILL) every process with MARK in its command line."

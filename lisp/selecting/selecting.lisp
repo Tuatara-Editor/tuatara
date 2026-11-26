@@ -357,7 +357,7 @@ instead, and the key pressed again pastes."
 (define-command join-selected-lines ()
   "Pull the following line up onto this one, COUNT times; with a selection,
 join the lines it touches into one, or the line it touches and the next.
-In the background when the lines hold more than 32 MB."
+In the background when the lines hold more than *REWRITE-THRESHOLD* octets."
   (let ((b (current-buffer)))
     (multiple-value-bind (start end) (selection-range)
       (let* ((top (tuatara.buffer:buffer-line-start b (or start (point))))

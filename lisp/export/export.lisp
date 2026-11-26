@@ -3,9 +3,9 @@
 ;;;;
 ;;;; In an Org buffer M-x org-export-latex-pdf makes the file into a PDF beside
 ;;;; it, as Org's own export makes it; org-export-latex-pdf-buffer shows the PDF
-;;;; too, beside the file when the screen is wide enough, org-export-latex-pdf-xdg
+;;;; too, beside the file when the screen is wide enough, org-export-latex-pdf-externally
 ;;;; opens it in the desktop's program, and the -enhanced ones add Tuatara's own
-;;;; improvements. In a LaTeX buffer export-latex-compile-pdf, -buffer and -xdg do the
+;;;; improvements. In a LaTeX buffer latex-export-pdf, -buffer and -externally do the
 ;;;; same for the LaTeX file. An Org buffer is first written as LaTeX, as it is
 ;;;; in the buffer, by ORG-LATEX-PARTS; a LaTeX file is saved first. The
 ;;;; LaTeX is then run through the first of *LATEX-ENGINES*, xelatex as
@@ -209,8 +209,8 @@ its own thread before anything is made; NIL when nothing is looked for.")
          :documentation "NIL, or a function of no arguments starting the same export again without looking: while
 it is set, an EXPORT-JOB looks for a hidden text shown elsewhere first.")
   (found nil
-         :documentation "What an EXPORT-JOB found before making anything, a list of the text looked through and
-its REDACTION-FINDINGS; NIL when it found nothing."))
+         :documentation "What an EXPORT-JOB found before making anything, a list of the text looked through, its
+REDACTION-FINDINGS and the text as a rope (LOOK-FOR-REDACTIONS); NIL when it found nothing."))
 
 (define-record (pdf-export (:include export-job)
                           (:constructor make-pdf-export (buffer source kind then save rope enhanced))
@@ -387,7 +387,7 @@ no kpsewhich there, or no sandbox to ask it in. Directories under /usr, which a
 program shut in sees already, are left out, and so are those not to be shown
 whole (TUATARA.IO:SHOWN-PLACE-P), which a setting may name."
   (let* ((own (string-right-trim "/" (tuatara.io:parent-path path)))
-         (key (list path (tuatara.io:own-variable "HOME")))
+         (key (list path (tuatara.runtime:own-variable "HOME")))
          (found (or (gethash key *tex-trees*)
                     (multiple-value-bind (said kept) (tex-settings-said path)
                       (let* ((lines (and said (text-lines said)))
@@ -421,7 +421,7 @@ directory where VAR is not there yet)."
   "Your home directory as a LaTeX program is told it, shut in: as the editor has
 it in its environment, so that TeX and the fonts find your own where they
 always do."
-  (string-right-trim "/" (or (tuatara.io:own-variable "HOME") (tuatara.io:home-directory))))
+  (string-right-trim "/" (or (tuatara.runtime:own-variable "HOME") (tuatara.io:home-directory))))
 
 (defparameter *latex-picture-file-kinds* '(:png :jpeg :pdf :postscript)
   "The kinds of file, by their contents, a LaTeX program shut in is shown when
@@ -1263,7 +1263,7 @@ text."
 
 (defparameter *enhanced-commands*
   '((:file . org-export-latex-pdf-enhanced) (:view . org-export-latex-pdf-enhanced-buffer)
-    (:outside . org-export-latex-pdf-enhanced-xdg) (:latex-only . org-export-latex-enhanced))
+    (:outside . org-export-latex-pdf-enhanced-externally) (:latex-only . org-export-latex-enhanced))
   "The enhanced export's command for each THEN of START-LATEX-EXPORT.")
 
 (defun export-looked-through-p (job kind &optional file)
@@ -1283,25 +1283,25 @@ about once it is taken in (EXPORT-ASKED-AGAIN)."
       (refuse "~a changed since it was looked through for hidden text: make it again"
               (tuatara.io:native-file-name file)))
     (or (null looked) (null (export-job-again job))
-        (let* ((text (if (stringp looked) looked (tuatara.text:rope-string looked)))
-               (directory (export-job-directory job))
-               (spans (hidden-spans text kind directory))
-               (findings (and spans (redaction-findings text kind directory spans))))
+        (multiple-value-bind (text spans findings rope) (look-for-redactions looked kind (export-job-directory job))
+          (declare (ignore spans))
           (tuatara.runtime:job-check-stop)
           (if findings
-              (progn (setf (export-job-found job) (list text findings)) nil)
+              (progn (setf (export-job-found job) (list text findings rope)) nil)
               t)))))
 
 (defun export-asked-again (job words)
   "When JOB, an EXPORT-JOB, found a text its file hides shown elsewhere before
 it made anything (EXPORT-LOOKED-THROUGH-P): list the places in *Redactions*,
 ask whether to make WORDS (the PDF) anyway, and when you say yes start it again
-without looking. True when it had found any, NIL otherwise."
-  (destructuring-bind (&optional text findings) (export-job-found job)
+without looking. The places are named in the text looked through. True when it
+had found any, NIL otherwise."
+  (destructuring-bind (&optional text findings rope) (export-job-found job)
     (when findings
       (let ((buffer (tuatara.runtime:job-buffer job)))
         (when (live-buffer-p buffer)
-          (show-redaction-findings buffer text findings)
+          ;; the places named in the text looked through, whatever the buffer holds now
+          (show-redaction-findings buffer text findings rope)
           (if (yes-or-no-p* (format nil "Make ~a anyway?" words)
                             :details (format nil "~d place~:p show~:[~;s~] text hidden elsewhere in the note: ~
                                                   *Redactions* lists where."
@@ -1686,7 +1686,7 @@ directory gets only the .tex and the .pdf. When no program makes it,
 *LaTeX errors* shows what they said, each error at the line of your file it
 comes from, \\<latex-errors-mode>\\[list-visit] there showing that line. A
 view of the PDF already open is read again; the PDF is not shown otherwise:
-\\[org-export-latex-pdf-buffer] shows it, \\[org-export-latex-pdf-xdg] opens it
+\\[org-export-latex-pdf-buffer] shows it, \\[org-export-latex-pdf-externally] opens it
 in the desktop's program. \\[org-export-latex-pdf-enhanced] makes it with
 Tuatara's own improvements. With text selected, only the
 lines it is on are exported, under the document's keywords; with
@@ -1704,7 +1704,7 @@ again, at the same page. Where it shows is the rule for :exported buffers:
 \(place-buffers :exported :right-or-alone) as standard."
   (start-latex-export :view))
 
-(define-command org-export-latex-pdf-xdg ()
+(define-command org-export-latex-pdf-externally ()
   "Make the Org file of the current buffer into a PDF beside it, as
 \\[org-export-latex-pdf] does, and open the PDF in the desktop's program for
 PDFs (xdg-open), or the one *open-externally-programs* gives
@@ -1739,13 +1739,13 @@ it."
 \\[org-export-latex-pdf-buffer] shows its PDF."
   (start-latex-export :view :enhanced t))
 
-(define-command org-export-latex-pdf-enhanced-xdg ()
+(define-command org-export-latex-pdf-enhanced-externally ()
   "Make the Org file of the current buffer into a PDF as
 \\[org-export-latex-pdf-enhanced] does, and open it in the desktop's program
-as \\[org-export-latex-pdf-xdg] opens its PDF."
+as \\[org-export-latex-pdf-externally] opens its PDF."
   (start-latex-export :outside :enhanced t))
 
-(define-command export-latex-compile-pdf ()
+(define-command latex-export-pdf ()
   "Make the LaTeX file of the current buffer into a PDF beside it, in the
 background, saving it first when it has changes, by xelatex, or by lualatex
 when xelatex fails (*latex-engines*), or first by the one its first lines name
@@ -1754,23 +1754,23 @@ often as its cross-references need. Their working files are kept apart, so the
 directory gets only the .pdf. When no program makes it, *LaTeX errors* shows
 what they said, each error at its line, \\<latex-errors-mode>\\[list-visit]
 there showing that line. A view of the PDF already open is read again; the PDF
-is not shown otherwise: \\[export-latex-compile-pdf-buffer] shows it,
-\\[export-latex-compile-pdf-xdg] opens it in the desktop's program."
+is not shown otherwise: \\[latex-export-pdf-buffer] shows it,
+\\[latex-export-pdf-externally] opens it in the desktop's program."
   (start-latex-export :file))
 
-(define-command export-latex-compile-pdf-buffer ()
+(define-command latex-export-pdf-buffer ()
   "Make the LaTeX file of the current buffer into a PDF beside it, as
-\\[export-latex-compile-pdf] does, and show the PDF where and as
+\\[latex-export-pdf] does, and show the PDF where and as
 \\[org-export-latex-pdf-buffer] shows an Org file's."
   (start-latex-export :view))
 
-(define-command export-latex-compile-pdf-xdg ()
+(define-command latex-export-pdf-externally ()
   "Make the LaTeX file of the current buffer into a PDF beside it, as
-\\[export-latex-compile-pdf] does, and open the PDF in the desktop's program
-as \\[org-export-latex-pdf-xdg] opens an Org file's."
+\\[latex-export-pdf] does, and open the PDF in the desktop's program
+as \\[org-export-latex-pdf-externally] opens an Org file's."
   (start-latex-export :outside))
 
-(define-command export-latex-template-copy ()
+(define-command export-template-copy-latex ()
   "Copy a built-in template of the enhanced export, asked for with completion
 \(article, its own look, or org, the plain export's document), into your
 own templates, ~/.config/tuatara/latex-templates/NAME.tex, and visit it there
@@ -1792,7 +1792,7 @@ note's #+template: names by its path."
 TEXT the note's, FILE its file; THEN :FILE or :OUTSIDE (opened in the
 desktop's program after); PATH, the file written; NOTES, what else to say of
 it."
-  (text nil :documentation "The text of the Org note NOTE-EXPORT writes as a document.")
+  (text nil :documentation "The text of the Org note NOTE-EXPORT writes as a document, a rope.")
   (file nil :documentation "The file of the note.")
   (then nil :documentation "What is done after: :FILE or :OUTSIDE (opened in the desktop's program).")
   (path nil :documentation "The path of the file written.")
@@ -1853,7 +1853,7 @@ it is looked for first, in the job (EXPORT-LOOKED-THROUGH-P)."
                                   :running (and (find-if (lambda (job) (typep job kind)) (jobs-of buffer :running t))
                                                 (format nil "~a is being written as ~a already" name words)))
                 (export-target-refused-p buffer (list type) nil))
-      (let ((text (tuatara.buffer:buffer-string buffer))
+      (let ((text (tuatara.buffer:buffer-text buffer))
             (file (tuatara.io:native (tuatara.io:expand-path (tuatara.buffer:buffer-file buffer)))))
         (labels ((launch (look)
                    (let ((job (funcall make buffer text file then)))
@@ -1865,7 +1865,8 @@ it is looked for first, in the job (EXPORT-LOOKED-THROUGH-P)."
                       job (lambda (job)
                             (when (export-looked-through-p job :org)
                               (multiple-value-bind (contents named notes)
-                                  (funcall write (note-export-text job) (note-export-file job))
+                                  (funcall write (tuatara.text:rope-string (note-export-text job))
+                                           (note-export-file job))
                                 (let ((path (or named (replaced-type (note-export-file job) type))))
                                   (check-export-directory path)
                                   (tuatara.io:replace-file path contents)
@@ -1887,10 +1888,16 @@ reads it, its :EXPORT: drawers' settings and all, what redact and protect hide
 a black bar, never its text, in the file; in the background."
   (start-docx-export :file))
 
-(define-command org-export-docx-xdg ()
+(define-command org-export-docx-externally ()
   "Write the Org note of this buffer as a Word document, as \\[org-export-docx]
 does, and open it in the desktop's program for Word documents."
   (start-docx-export :outside))
+
+(defun start-html-export (then)
+  "Start writing the current buffer's Org note as a web page beside it (or
+where #+EXPORT_FILE_NAME says), then do THEN with it; or say why not."
+  (start-note-export then 'html-export "html" "a web page" #'make-html-export
+                     (lambda (text file) (org-html-document text :file file))))
 
 (define-command org-export-html ()
   "Write the Org note of this buffer as a web page (.html) beside it, or where
@@ -1899,8 +1906,13 @@ Ao theme's colours, light or dark as the reader's system prefers: read as the
 enhanced PDF export reads it, what redact and protect hide a black bar, never
 its text. Every character of the note escaped and raw HTML left out, so a note
 from anywhere cannot make the page do anything. In the background."
-  (start-note-export :file 'html-export "html" "a web page" #'make-html-export
-                     (lambda (text file) (org-html-document text :file file))))
+  (start-html-export :file))
+
+(define-command org-export-html-externally ()
+  "Write the Org note of this buffer as a web page, as \\[org-export-html]
+does, and open it in the desktop's program for web pages, after asking when the
+file is not trusted (*untrusted-directories*)."
+  (start-html-export :outside))
 
 (define-major-mode latex-errors-mode special-mode
   "*LaTeX errors*: what the programs making a PDF said when none made it, or
@@ -1929,12 +1941,12 @@ and marking of redactions (INSTALL-REDACTIONS), and the showing of a line in
 the PDF and back (INSTALL-PDF-SYNC)."
   (entry-list-keys 'latex-errors-mode "*LaTeX errors*")
   (commands-for-mode 'org-mode "Org files" 'org-export-latex 'org-export-latex-enhanced 'org-export-latex-pdf
-                     'org-export-latex-pdf-buffer 'org-export-latex-pdf-xdg
+                     'org-export-latex-pdf-buffer 'org-export-latex-pdf-externally
                      'org-export-latex-pdf-enhanced 'org-export-latex-pdf-enhanced-buffer
-                     'org-export-latex-pdf-enhanced-xdg)
-  (commands-for-mode 'latex-mode "LaTeX files" 'export-latex-compile-pdf 'export-latex-compile-pdf-buffer
-                     'export-latex-compile-pdf-xdg)
-  (commands-for-mode 'org-mode "Org files" 'org-insert-export-drawer 'org-export-docx 'org-export-docx-xdg
+                     'org-export-latex-pdf-enhanced-externally)
+  (commands-for-mode 'latex-mode "LaTeX files" 'latex-export-pdf 'latex-export-pdf-buffer
+                     'latex-export-pdf-externally)
+  (commands-for-mode 'org-mode "Org files" 'org-insert-export-drawer 'org-export-docx 'org-export-docx-externally
                      'org-export-html)
   (place-buffers :exported :right-or-alone)
   (install-redactions)

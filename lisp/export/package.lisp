@@ -34,8 +34,8 @@
                 #:picture-source-words #:private-cache-directory #:read-native-path #:read-synctex #:region-active-p
                 #:render-pieces #:replaced-type #:save-buffer-with-care #:selection-range #:set-search-filtering
                 #:show-buffer-position #:show-file-line #:special-mode #:*synctex-largest* #:synctex-line
-                #:synctex-octets #:synctex-path #:synctex-place #:title-slug #:use-places #:visit-entry
-                #:with-org-note-keywords)
+                #:synctex-octets #:synctex-path #:synctex-place #:take-in-soon #:title-slug #:use-places
+                #:visit-entry #:with-org-note-keywords)
   (:documentation "Org notes and LaTeX files made into PDFs, Word documents and web pages in the
 background, with the templates, the redactions checked and the macros that
 mark them. The rest of the editor installs it and asks, for the health

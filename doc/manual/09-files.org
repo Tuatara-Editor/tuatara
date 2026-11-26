@@ -281,6 +281,9 @@ of the same file, and you choose which to keep.
 
 ~M-x revert-buffer~ reads the file again and replaces the text in the
 buffer. It asks first when the buffer has changes you have not saved. The
+file is read in the background, so a slow drive never holds you up, and the
+text comes in once it is read; if you edit the buffer meanwhile, your edit is
+kept and the file is not taken. The
 reading is one step in the undo history, so ~C-/~ (modal: ~u~) takes it back if
 you made a mistake. Point and the window stay on the same text, so you do not
 lose your place. If the file only grew, only the new part is added.
@@ -653,8 +656,11 @@ with a message that the question was not answered. Nothing is left running.
 ~C-x C-f /ssh:pinetree:/srv/notes/ RET~, or ~C-x d~ with that name, lists the
 directory as one is listed on your computer. Chapter 10 describes the list. What
 would read many files, or keep watching them, is left out on a server: there is
-no git column and no directory size, and the list is read again after each
-change you make, not as files change.
+no git column, and the list is read again after each change you make, not as
+files change. ~S~ does show sizes there, read in the background a directory at
+a time over the same connection, with nothing run on the server; chapter 10
+says how they may differ from sizes on your computer. ~g h~ lists your home
+directory on the server, and ~g l~ the directory listed before.
 
 A preview shows each file beside the list as you move. On a server each file
 must come to your computer first, so the preview starts off. ~P~ in the list
@@ -731,7 +737,11 @@ keeps what came. The next time you open the file, the transfer goes on from
 where it stopped, after the same checks of what has come, by its small parts,
 as a sum of part of a file cannot be had; the echo area says how much was
 compared. If any differs, the file is fetched again whole, never joined from
-two versions. Copies of evidence are checked the same way.
+two versions.
+
+A file you open safely (~C-u C-x C-f~), or one that is or may be evidence, is
+always fetched again over SFTP. A kept copy never stands in for it, and
+nothing else is run on the server for it, not even =sha256sum=.
 
 An entry in use is never cleared. It is in use while a buffer or list shows
 it, in any of your sessions. Its last use is the moment it stops being in use:
@@ -846,17 +856,20 @@ and why.
 
 *** Encrypting and decrypting
 
-~M-x gpg-encrypt-file~ encrypts the file shown, or the one on the line of a
-directory list, into =FILE.gpg=. It asks whom to encrypt to in the minibuffer:
-your keys, or a passphrase, with commas between several. gpg lists the keys in
-the background first, so the question can come after a short wait, and the
-editor answers your keys meanwhile. Saving a new =.gpg= file asks the same way
-and saves once you have chosen. It then offers to wipe
-the original. Say no if you are not sure, since a wiped file cannot be recovered
-and a solid state disk may keep old copies anyway. ~M-x wipe-file~ does that
-wipe by itself. ~M-x gpg-decrypt-file~ writes a decrypted copy to a file you
-name, after warning you that its text is then on disk. To read an encrypted
-file, open the =.gpg= file instead.
+~M-x gpg-encrypt-file~ encrypts the file shown into =FILE.gpg=. In a directory
+list it takes the files marked, or the one on the line when none is marked; the
+same goes for ~M-x gpg-decrypt-file~, ~M-x gpg-sign-file~ and ~M-x
+gpg-verify-file~, which ask their questions once and then work on one file after
+another in the background. It asks whom to encrypt to in the minibuffer: your
+keys, or a passphrase, with commas between several. gpg lists the keys in the
+background first, so the question can come after a short wait, and the editor
+answers your keys meanwhile. Saving a new =.gpg= file asks the same way and
+saves once you have chosen. Encrypting also offers, once, to wipe the originals.
+Say no if you are not sure, since a wiped file cannot be recovered and a solid
+state disk may keep old copies anyway. ~M-x wipe-file~ does that wipe by itself.
+~M-x gpg-decrypt-file~ writes a decrypted copy, after warning you that its text
+is then on disk: for one file to a name you give, for several to their names
+without =.gpg=. To read an encrypted file, open the =.gpg= file instead.
 
 You can also encrypt part of a buffer. Select some text and use
 ~M-x gpg-encrypt-region~. The text becomes a block that starts with
@@ -877,7 +890,12 @@ and clipboard managers, can read it and keep it.
 signature, =FILE.sig=, which leaves the file as it is; clear-signed text,
 =FILE.asc=; or a signed file, =FILE.gpg=. ~M-x gpg-sign-region~ clear-signs the
 selected text in place. ~M-x gpg-verify-file~ and ~M-x gpg-verify-region~ check
-a signature. They say who signed, when, and how far that key is trusted.
+a signature. They say who signed, when, and how far that key is trusted. Text
+with more than one signature gets each in turn, as in "2 signatures: good
+signature by ...; BAD signature by ...". The answer begins "Good signature"
+only when there is one signature, it holds, and gpg ended without an error.
+When gpg fails after a good signature, as when a forged block follows a signed
+one, the answer begins "Not verified".
 
 Read the answer for what it says. A good signature tells you the text has not
 changed since that key signed it. It does not tell you the text is safe, and it
@@ -888,8 +906,8 @@ tells you who signed only as far as you trust the key.
 ~M-x gpg-keys-manager~ opens a list of your keys and those you have of others,
 each in a section of its own. The list fills in as gpg answers. ~RET~ or ~l~
 shows the fingerprint, names and expiry of the key on the line, and ~h~ folds
-a section. ~M-x gpg-import-keys~ and
-~M-x gpg-import-keys-region~ add keys from a file or from selected text.
+a section. ~M-x gpg-keys-import~ and
+~M-x gpg-keys-import-region~ add keys from a file or from selected text.
 ~M-x gpg-keys-export~ writes the public part of marked keys to a file, and
 ~M-x gpg-keys-insert~ puts it at the cursor in the buffer the list was opened
 from. The directory list (chapter 10) has keys for the same jobs on files.
@@ -915,7 +933,7 @@ from. The directory list (chapter 10) has keys for the same jobs on files.
 
 *** Commands and settings
 
-#+table: commands gpg-encrypt-file gpg-decrypt-file gpg-encrypt-region gpg-decrypt-region gpg-decrypt-with-passphrase gpg-choose-encryption-keys gpg-copy-to-clipboard gpg-lock wipe-file gpg-sign-file gpg-sign-region gpg-verify-file gpg-verify-region gpg-import-keys gpg-import-keys-region gpg-keys-manager gpg-keys-export gpg-keys-insert
+#+table: commands gpg-encrypt-file gpg-decrypt-file gpg-encrypt-region gpg-decrypt-region gpg-decrypt-with-passphrase gpg-choose-encryption-keys gpg-copy-to-clipboard gpg-lock wipe-file gpg-sign-file gpg-sign-region gpg-verify-file gpg-verify-region gpg-keys-import gpg-keys-import-region gpg-keys-manager gpg-keys-export gpg-keys-insert
 
 #+table: settings *gpg-program* *gpg-passphrase-from* *gpg-loopback-warning*
 

@@ -35,7 +35,16 @@ names_in() {
   has() { grep -qiF -- "$1" <<< "$text"; }       # in any case
   named() { [ -z "$texts_only" ] && has "$1"; }  # named only, by a notice
   heading() { grep -qF -- "$1" <<< "$text"; }    # as a heading, in capitals
-  if has "Permission is hereby granted, free of charge, to any person"; then echo MIT; fi
+  # the Boost and the Unicode licence open as the MIT one does; they come first
+  boost="" unicode=""
+  if has "Boost Software License - Version 1.0" ||
+     has "to any person or organization obtaining a copy of the software and accompanying documentation"; then
+    echo BSL-1.0; boost=1
+  fi
+  if has "UNICODE LICENSE V3" || has "obtaining a copy of data files and any associated documentation"; then
+    echo Unicode-3.0; unicode=1
+  fi
+  if [ -z "$boost$unicode" ] && has "Permission is hereby granted, free of charge, to any person"; then echo MIT; fi
   if has "Apache License Version 2.0, January 2004" || named "Licensed under the Apache License, Version 2.0"; then
     echo Apache-2.0
   fi

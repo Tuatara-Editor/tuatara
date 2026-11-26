@@ -40,7 +40,12 @@ there.")
   (numbers (make-hash-table :test 'eq) :documentation "The number of each headline of DOCX, by node.")
   (bookmarks (make-hash-table :test 'eq) :documentation "The bookmark name of each node of DOCX, by node.")
   (next-bookmark 0 :documentation "How many bookmarks DOCX has given out.")
-  (section "" :documentation "The page's properties of DOCX as XML, from which a section of columns takes its own.")
+  (section '()
+           :documentation "The page of DOCX, a plist, from which a section of columns takes its own: :REFERENCES,
+the template's header and footer references as XML; :PAGE, its page size and margins as XML; :TITLE-PAGE, true when
+its first page has a header of its own; :DESIGN, what the template says of its design; :TABLES-LEFT, true when a
+table is set to the left; :BROKEN, true once a section break is written; :START, how the section after the last
+break begins, :CONTINUOUS or :NEXT-PAGE.")
   (text-width 8730 :documentation "The width of the text of DOCX, in twentieths of a point.")
   (list-base 3 :documentation "The first number the lists of DOCX take, above a template's.")
   (media-prefix "image" :documentation "What the names of the pictures of DOCX begin with."))
@@ -269,17 +274,16 @@ the PDF measures its box, holding none of what it hides."
 
 (defun docx-footnote (node out)
   "Write the footnote reference NODE to OUT, its text among the document's footnotes."
-  (let* ((definition (with-org-export-expanding (:footnote (or (org-property node :label) node)) (nil)
-                        (if (eq (org-property node :type) 'inline)
-                            (format nil
-                                    "<w:p><w:pPr><w:pStyle w:val=\"FootnoteText\"/>~
-</w:pPr>~a</w:p>" (docx-objects node))
-                            (let ((found (gethash (org-property node :label)
-                                                  (org-export-footnotes *org-export*))))
-                              (and found (with-output-to-string (s)
-                                           (let ((*docx-paragraph-style* "FootnoteText"))
-                                             (dolist (child (org-node-children found))
-                                               (docx-element child s)))))))))
+  (let* ((definition (org-export-footnote-text
+                      node
+                      (lambda (inline)
+                        (format nil "<w:p><w:pPr><w:pStyle w:val=\"FootnoteText\"/></w:pPr>~a</w:p>"
+                                (docx-objects inline)))
+                      (lambda (found)
+                        (with-output-to-string (s)
+                          (let ((*docx-paragraph-style* "FootnoteText"))
+                            (dolist (child (org-node-children found))
+                              (docx-element child s)))))))
          (id (+ 2 (length (docx-footnotes *docx*)))))
     (when (org-export-option "f")
       (push (cons id (if (and definition (search "<w:p" definition)) definition
@@ -313,25 +317,24 @@ and title, Table N or Figure N for a captioned element, else its own words."
 
 (defun docx-link (node out)
   "Write the link NODE to OUT: a picture shown, an address of the web or a
-file as a hyperlink, a place in the note as a link to its bookmark."
-  (let* ((type (org-property node :type))
-         (path (org-property node :path))
+file as a hyperlink, a place in the note as a link to its bookmark, anything
+else as its words (ORG-EXPORT-LINK-KIND)."
+  (let* ((path (org-property node :path))
          ;; its words in the document's link style (blue and underlined, or black, as its styles say)
          (words (and (org-node-contents-begin node) (not (org-latex-image-link-p node))
                      (let ((*docx-run* (list* :style "Hyperlink" *docx-run*))) (docx-objects node)))))
-    (cond ((org-latex-image-link-p node)
-           (write-string (docx-picture node (org-export-attributes (org-node-parent node) "latex")) out))
-          ((or (string= type "file") (org-link-address type path))
-           (let* ((url (if (string= type "file") (org-export-file-address path :whole t) (org-link-address type path)))
-                  (id (docx-relation "hyperlink" url :external t)))
-             (format out "<w:hyperlink r:id=\"~a\">~a</w:hyperlink>" id
-                     (or words (docx-run path (list* :style "Hyperlink" *docx-run*))))))
-          (t
-           (let ((target (org-export-link-target node)))
-             (if target
-                 (format out "<w:hyperlink w:anchor=\"~a\">~a</w:hyperlink>" (docx-bookmark target)
-                         (or words (docx-run (docx-link-words target) (list* :style "Hyperlink" *docx-run*))))
-                 (write-string (or words (docx-run path)) out)))))))
+    (multiple-value-bind (kind value) (org-export-link-kind node #'org-latex-image-link-p)
+      (ecase kind
+        (:picture (write-string (docx-picture node (org-export-attributes (org-node-parent node) "latex")) out))
+        ((:address :file)
+         (let ((id (docx-relation "hyperlink" (if (eq kind :file) (org-export-file-address value :whole t) value)
+                                  :external t)))
+           (format out "<w:hyperlink r:id=\"~a\">~a</w:hyperlink>" id
+                   (or words (docx-run path (list* :style "Hyperlink" *docx-run*))))))
+        ((:heading :target)
+         (format out "<w:hyperlink w:anchor=\"~a\">~a</w:hyperlink>" (docx-bookmark value)
+                 (or words (docx-run (docx-link-words value) (list* :style "Hyperlink" *docx-run*)))))
+        (:plain (write-string (or words (docx-run value)) out))))))
 
 (defun docx-object (node out)
   "Write the object NODE to OUT as runs."
@@ -361,16 +364,10 @@ file as a hyperlink, a place in the note as a link to its bookmark."
       (timestamp (when (org-export-option "<")
                    (write-string (docx-run (org-property node :raw-value) (list* :italic t *docx-run*)) out)))
       ((subscript superscript)
-       (let ((script (org-export-option "^")))
-         (if (or (null script) (and (equal script "{}") (not (org-property node :use-brackets-p))))
-             (write-string (docx-as-written node) out)
-             (within :vert (if (eq (org-node-type node) 'subscript) "subscript" "superscript")))))
-      (macro (let ((value (org-export-macro-value node)))
-               (write-string (if value
-                                 (with-org-export-expanding (:macro (org-property node :key)) ((docx-as-written node))
-                                                            (docx-string value))
-                                 (docx-as-written node))
-                             out)))
+       (if (org-export-script-p node)
+           (within :vert (if (eq (org-node-type node) 'subscript) "subscript" "superscript"))
+           (write-string (docx-as-written node) out)))
+      (macro (write-string (org-export-macro-expansion node (docx-as-written node) #'docx-string) out))
       ((inline-babel-call) nil)
       ;; what is left as written: a fragment of LaTeX, a macro not known, a citation
       (t (write-string (docx-as-written node) out)))))

@@ -42,6 +42,34 @@ ended)."
       (false ok))
     (true (gone-within mark 6))))
 
+(define-test (core-edges program-output-reads-while-it-writes)
+  ;; input larger than a pipe holds, given to a program that answers as it reads, is all read back
+  (let ((input (make-string (* 1024 1024) :initial-element #\k)))
+    (multiple-value-bind (output ok)
+        (tuatara.io:program-output (list (tuatara.io:find-program "cat")) :input input :seconds 10)
+      (true ok)
+      (is = (length input) (length output)))))
+
+;; a program the time ran out on before it had started is ended as it starts, not left running
+(define-test (core-edges program-output-ends-one-started-late)
+  (let ((mark (format nil "33.~d" (+ 100000 (random 900000)))))
+    (sb-int:encapsulate 'tuatara.io:start-program 'started-late
+                        (lambda (function &rest arguments)
+                          (sleep 1)
+                          (apply function arguments)))
+    (unwind-protect
+         (multiple-value-bind (output ok)
+             (tuatara.io:program-output (list (tuatara.io:find-program "sh") "-c"
+                                              (format nil "trap '' TERM; sleep ~a & wait" mark))
+                                        :seconds 1/4)
+           (false output)
+           (false ok)
+           ;; the start it was waiting on comes after the time is up
+           (sleep 3/2)
+           (true (gone-within mark 6)))
+      (sb-int:unencapsulate 'tuatara.io:start-program 'started-late)
+      (kill-marked mark))))
+
 (defun core-edges-environment-host ()
   "A host whose programs are given one variable, CORE_EDGES=yes, and nothing else."
   (make-instance 'core-edges-host))
@@ -542,6 +570,18 @@ three runs of CALLS calls."
     (let ((said (handler-case (progn (tuatara.io:zip-entries octets) nil)
                   (tuatara.io:zip-error (condition) (princ-to-string condition)))))
       (true (and said (search "zip64" said)) "~a" said))))
+
+(define-test (core-edges zip-in-parts-said)
+  ;; the last part of an archive split over several files is said to be one in parts, not damaged
+  (let ((octets (make-array 22 :element-type '(unsigned-byte 8) :initial-element 0)))
+    (tuatara.text:octets-put-integer octets #x06054b50 4 :at 0)
+    (tuatara.text:octets-put-integer octets 2 2 :at 4)
+    (tuatara.text:octets-put-integer octets 1 2 :at 8)
+    (tuatara.text:octets-put-integer octets 1 2 :at 10)
+    (tuatara.text:octets-put-integer octets 46 4 :at 12)
+    (let ((said (handler-case (progn (tuatara.io:zip-entries octets) nil)
+                  (tuatara.io:zip-error (condition) (princ-to-string condition)))))
+      (true (and said (search "in parts" said)) "~a" said))))
 
 (define-test (core-edges shown-place-bound-as-checked)
   ;; a place shown to a program shut in is given to bwrap as a descriptor of what was checked: a part

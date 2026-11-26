@@ -616,20 +616,23 @@ the first section's, and what follows columns going on on their page."
                          document))))
     ;; sections in the text: the first page is the first section's, not the last's, and the text
     ;; after columns goes on on their page, the columns balanced, not on a new one; after pages
-    ;; turned sideways, on a page of its own (the type Word takes when none is given)
-    (if (and (getf (docx-section *docx*) :broken) (not last))
-        (let* ((last (search "<w:sectPr" document :from-end t))
-               (section (cl-ppcre:regex-replace-all "<w:type(?:\\s[^>]*)?/>"
-                                                    (cl-ppcre:regex-replace "<w:titlePg(?:\\s[^>]*)?/>"
-                                                                            (subseq document last) "")
-                                                    ""))
-               (at (or (search "<w:pgSz" section) (search "</w:sectPr>" section))))
-          (concatenate 'string (subseq document 0 last)
-                       (subseq section 0 at)
-                       (if (eq (getf (docx-section *docx*) :start :continuous) :continuous)
-                           "<w:type w:val=\"continuous\"/>" "")
-                       (subseq section at)))
-        document)))
+    ;; turned sideways, on a page of its own (the type Word takes when none is given); a template
+    ;; with no page of its own, its last w:sectPr a break's inside a paragraph, is left as it is
+    (let ((final (search "<w:sectPr" document :from-end t)))
+      (if (and (getf (docx-section *docx*) :broken) (not last) final
+               (> final (or (search "</w:p>" document :from-end t) -1)))
+          (let* ((last final)
+                 (section (cl-ppcre:regex-replace-all "<w:type(?:\\s[^>]*)?/>"
+                                                      (cl-ppcre:regex-replace "<w:titlePg(?:\\s[^>]*)?/>"
+                                                                              (subseq document last) "")
+                                                      ""))
+                 (at (or (search "<w:pgSz" section) (search "</w:sectPr>" section))))
+            (concatenate 'string (subseq document 0 last)
+                         (subseq section 0 at)
+                         (if (eq (getf (docx-section *docx*) :start :continuous) :continuous)
+                             "<w:type w:val=\"continuous\"/>" "")
+                         (subseq section at)))
+          document))))
 
 (defun docx-template-styles (parts)
   "The styles of a Word document made from the template PARTS: its own, with

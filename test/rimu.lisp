@@ -368,6 +368,35 @@ shown at the end of a row after a space."
         (let ((point (session-point editor)) (below (car (last (pathname-directory dir)))))
           (is string= below (subseq (session-text editor) point (+ point (length below)))))))))
 
+(define-test (rimu goto-path)
+  ;; g p takes a path typed or pasted: a directory is listed, a file is listed in its directory with point on
+  ;; it, a path that names nothing is said and the list stays
+  (with-rimu-tree (dir)
+    (let* ((deep (merge-pathnames "deep/below/" dir))
+           (inner (merge-pathnames "inner.txt" deep)))
+      (ensure-directories-exist deep)
+      (alexandria:write-string-into-file "x" inner)
+      (flet ((go-to (path)
+               (rimu-session dir (format nil "g p C-a C-k ~a RET" (rimu-typed path)) :width (width-for dir))))
+        (multiple-value-bind (f editor) (go-to (namestring inner))
+          (declare (ignore f))
+          (is string= (rimu-list-name deep) (current-name editor))
+          (let ((point (session-point editor)))
+            (is string= "inner.txt" (subseq (session-text editor) point (+ point 9)))))
+        (multiple-value-bind (f editor) (go-to (namestring deep))
+          (declare (ignore f))
+          (is string= (rimu-list-name deep) (current-name editor)))
+        (multiple-value-bind (f editor) (go-to (namestring (merge-pathnames "nowhere/at-all" dir)))
+          (true (tuatara.frontend.fake:fake-frame-showing f "nothing is there"))
+          (is string= (rimu-list-name dir) (current-name editor)))))
+    ;; the question opens empty, for a path to be pasted
+    (let ((f (rimu-session dir "g p" :width (width-for dir))))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Go to path: "))
+      (false (tuatara.frontend.fake:fake-frame-showing f (format nil "Go to path: ~a" (namestring dir)))))
+    ;; C-c p asks the same
+    (is eq 'tuatara.defaults::rimu-goto-path
+        (tuatara.command:lookup-key tuatara.defaults::*rimu-keymap* (tuatara.frontend:parse-key-sequence "C-c p")))))
+
 (define-test (rimu stands-in-its-directory)
   (with-rimu-tree (dir)
     (multiple-value-bind (f editor) (rimu-session dir "C-x C-f" :width (width-for dir))
@@ -1465,6 +1494,31 @@ and the editor."
                (true (tuatara.frontend.fake:fake-frame-showing f "  Reading..."))
                (true (find "text.txt" (rimu-lines editor) :test (lambda (name line) (uiop:string-suffix-p line name)))))))
       (setf tuatara.defaults::*rimu-columns* columns))))
+
+(define-test (rimu shown-list-not-waited-on)
+  ;; a list already showing its directory lays it out again without keeping the keys waiting
+  (with-rimu-tree (dir)
+    (let* ((list (tuatara.defaults::rimu-make-list (namestring dir)))
+           (go-on (sb-thread:make-semaphore))
+           (tuatara.defaults::*rimu-read-wait* 5))
+      (unwind-protect
+           (progn
+             (tuatara.defaults::rimu-update list :wait t :fresh t)
+             (true (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-layout))
+             (sb-int:encapsulate 'tuatara.defaults::rimu-lay-out 'held
+                                 (lambda (function &rest arguments)
+                                   (sb-thread:wait-on-semaphore go-on :timeout 10)
+                                   (apply function arguments)))
+             (let ((start (get-internal-real-time)))
+               (tuatara.defaults::rimu-update list :wait t)
+               (true (< (- (get-internal-real-time) start) (* 2 internal-time-units-per-second))
+                     "returned without waiting for the layout")))
+        (sb-thread:signal-semaphore go-on)
+        (let ((job (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-job)))
+          (when job (sb-thread:join-thread (tuatara.defaults::rimu-job-thread job) :default nil)))
+        (sb-int:unencapsulate 'tuatara.defaults::rimu-lay-out 'held)
+        (setf tuatara.defaults::*rimu-waiting* '())
+        (rimu-forget)))))
 
 (define-test (rimu texts)
   ;; sizes as ls -h writes them, every figure rounded up

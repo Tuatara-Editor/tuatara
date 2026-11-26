@@ -588,20 +588,6 @@ abc")
                        :text ""
                        :width 100)))
       (true (tuatara.frontend.fake:fake-frame-showing f "SV<"))))
-  ;; your own under SPC i, made into commands; taken away again after, so that no later test finds
-  ;; the command or its key
-  (let ((tuatara-user:*input-method-keys* '(("s" "swedish" "swedish-postfix")
-                                            ("&" "taken" "rfc1345")
-                                            ("x" "none" "no-such-method")))
-        (name 'tuatara.defaults::input-method-swedish))
-    (unwind-protect
-         (progn
-           (is string= "å" (session-text (nth-value 1 (run-keys "SPC i s i a a C-g" :text ""))))
-           (true (tuatara.command:find-command name)))
-      (tuatara.command:define-key tuatara.defaults::*tuatara-leader-keymap* "i s" nil)
-      (tuatara.command:forget-command name)
-      (remprop name 'tuatara.defaults::input-method-key)
-      (fmakunbound name)))
   ;; its rules listed
   (true (tuatara.frontend.fake:fake-frame-showing
          (run-keys "M-x d e s c r i b e - i n p u t - m e t h o d RET s w e d i s h - p o s t f i x RET"
@@ -614,20 +600,6 @@ abc")
     (is equal '("" "aa") (multiple-value-list (tuatara.defaults::input-method-step m "aa")))
     (is equal '("aa" "") (multiple-value-list (tuatara.defaults::input-method-step m "aaa")))
     (is equal '("åx" "") (multiple-value-list (tuatara.defaults::input-method-step m "aax")))))
-
-(define-modal-test (objects input-method-key-leaves-functions-alone)
-  ;; a label that would name a function already there is left out, and the function stays
-  (let ((before (fdefinition 'tuatara.defaults::input-method-step))
-        (tuatara-user:*input-method-keys* '(("t" "step" "swedish-postfix"))))
-    (run-keys "SPC i t" :text "")
-    (is eq before (fdefinition 'tuatara.defaults::input-method-step))
-    (false (tuatara.command:find-command 'tuatara.defaults::input-method-step))))
-
-(define-modal-test (objects input-method-key-dotted-left-out)
-  ;; an entry with a dotted tail is left out and said, and the editor goes on
-  (let ((tuatara-user:*input-method-keys* '(("d" "dotted" . "swedish-postfix"))))
-    (true (tuatara.frontend.fake:fake-frame-showing (run-keys "SPC i" :text "" :width 100) "is left out"))
-    (false (tuatara.command:find-command 'tuatara.defaults::input-method-dotted))))
 
 (define-test (objects insert-char)
   (let ((tuatara-user:*modal-editing* nil))
@@ -702,7 +674,7 @@ x
 abcd")))))
 
 (define-modal-test (objects pairing-as-typed)
-  (let ((tuatara-user:*electric-pair-mode* t))
+  (let ((tuatara-user:*auto-close-mode* t))
     (flet ((typed (keys text) (session-text (nth-value 1 (run-keys keys :text text)))))
       (is string= "(a)" (typed "i ( a C-g" ""))
       ;; the closing half typed where it stands steps over it
@@ -714,7 +686,7 @@ abcd")))))
       (is string= "a" (typed "i a b DEL C-g" ""))
       ;; the apostrophe and other everyday punctuation are left alone
       (is string= "don't" (typed "i d o n ' t C-g" ""))
-      (let ((tuatara-user:*electric-pair-typing* :all))
+      (let ((tuatara-user:*auto-close-delimiters* :all))
         (is string= "''" (typed "i ' C-g" "")))))
   ;; off, as it is unless asked for
   (is string= "(" (session-text (nth-value 1 (run-keys "i ( C-g" :text "")))))
@@ -724,9 +696,9 @@ abcd")))))
   ;; the setting
   (loop for (setting value) in '((tuatara-user:*pair-delimiters* (#\( . #\)))
                                  (tuatara-user:*pair-delimiters* ((#\( . #\)) (#\[ . #\]) . #\x))
-                                 (tuatara-user:*electric-pair-safe-exclusions* (#\< . #\())
-                                 (tuatara-user:*electric-pair-typing* (#\[ . #\())
-                                 (tuatara-user:*electric-pair-typing* #\())
+                                 (tuatara-user:*auto-close-safe-exclusions* (#\< . #\())
+                                 (tuatara-user:*auto-close-delimiters* (#\[ . #\())
+                                 (tuatara-user:*auto-close-delimiters* #\())
         do (let ((words (handler-case (progn (tuatara.runtime:set-setting setting value) nil)
                           (tuatara.runtime:refusal (e) (princ-to-string e)))))
              (true (search (string-downcase (symbol-name setting)) words) "~s for ~s" words value))))
@@ -734,8 +706,8 @@ abcd")))))
 (define-modal-test (objects pairs-past-a-slip-in-lisp)
   ;; pairs set as one dotted pair by Lisp the editor did not look at: typing goes on, with the
   ;; standard pairs
-  (let ((tuatara-user:*electric-pair-mode* t) (tuatara-user:*pair-delimiters* '(#\( . #\)))
-        (tuatara-user:*electric-pair-typing* '(#\( . #\[)))
+  (let ((tuatara-user:*auto-close-mode* t) (tuatara-user:*pair-delimiters* '(#\( . #\)))
+        (tuatara-user:*auto-close-delimiters* '(#\( . #\[)))
     (is string= "(a)" (session-text (nth-value 1 (run-keys "i ( a C-g" :text ""))))))
 
 (define-modal-test (objects pairs-far-and-limited)
@@ -793,7 +765,7 @@ abcd")))))
     ;; C-x f asks as well, the buffer's column offered: a number typed becomes
     ;; the buffer's, RET alone keeps it, 0 is no column, a count answers at once
     (multiple-value-bind (f editor) (run-keys "C-x f 7 2 RET" :text line :width 80)
-      (true (tuatara.frontend.fake:fake-frame-showing f "Set fill column (now 80): "))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Fill column (default 80): "))
       (true (tuatara.frontend.fake:fake-frame-showing f "Fill column 72 for this buffer (was 80)"))
       (is = 72 (tuatara.defaults::buffer-fill-column (session-buffer editor)))
       (is string= line (session-text editor)))
@@ -801,10 +773,10 @@ abcd")))))
       (true (tuatara.frontend.fake:fake-frame-showing f "Fill column stays 80"))
       (is = 80 (tuatara.defaults::buffer-fill-column (session-buffer editor))))
     (multiple-value-bind (f editor) (run-keys "C-x f 0 RET 6 0 RET" :text line :width 80)
-      (true (tuatara.frontend.fake:fake-frame-showing f "Not a column. Set fill column (now 80): "))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Not a column. Fill column (default 80): "))
       (is = 60 (tuatara.defaults::buffer-fill-column (session-buffer editor))))
     (multiple-value-bind (f editor) (run-keys "C-u 6 6 C-x f" :text line :width 80)
-      (false (tuatara.frontend.fake:fake-frame-showing f "Set fill column"))
+      (false (tuatara.frontend.fake:fake-frame-showing f "Fill column (default"))
       (is = 66 (tuatara.defaults::buffer-fill-column (session-buffer editor))))
     (is = 80 (tuatara.defaults::buffer-fill-column (session-buffer (nth-value 1 (run-keys "C-x f C-g" :text line)))))))
 
@@ -1222,6 +1194,35 @@ first."
                do (is string= (apply #'rows-job-mapped text kind left right keys)
                       (apply #'rows-job-written text kind left right keys)
                       "~s ~s ~s ~s" kind left right keys))
+      (tuatara.buffer:kill-buffer source-buffer))))
+
+(define-test (objects rectangle-paste-reads-rows-in-bounded-pieces)
+  ;; a large count must not make one block of every row times the count
+  (let* ((source-text (format nil "PQ~%RS~%TU~%VW~%XY~%ZZ~%"))
+         (source-buffer (tuatara.buffer:make-buffer "rows chunk source" :text source-text))
+         (source (tuatara.defaults::make-rectangle-source
+                  (tuatara.buffer:buffer-text source-buffer) 0
+                  (tuatara.buffer:buffer-line-start source-buffer (1- (length source-text))) 0 2 nil 6 8))
+         (target (tuatara.buffer:make-buffer "rows chunk target" :text (format nil "a~%b~%c~%d~%e~%f~%")))
+         (asked '()))
+    (unwind-protect
+         (let* ((spec (tuatara.defaults::rows-job-spec target :paste 0 (tuatara.buffer:buffer-line-start target 10) 0 0
+                                                       :source source :repeat 1000))
+                (tuatara.defaults::*rectangle-chunk-octets* 4000)
+                (reader (tuatara.defaults::source-row-reader spec)))
+           (sb-int:encapsulate 'tuatara.defaults::source-rows-block 'rows-chunk
+                               (lambda (f source from to &optional (repeat 1))
+                                 (push (- to from) asked)
+                                 (funcall f source from to repeat)))
+           (unwind-protect
+                (loop for k below 6
+                      do (multiple-value-bind (octets from to) (funcall reader k)
+                           (is = 2000 (- to from))
+                           (is string= (tuatara.text:octets-string (subseq octets from (+ from 4)))
+                               (subseq (nth k '("PQPQ" "RSRS" "TUTU" "VWVW" "XYXY" "ZZZZ")) 0 4))))
+             (sb-int:unencapsulate 'tuatara.defaults::source-rows-block 'rows-chunk))
+           (true (<= (reduce #'max asked) 2)))
+      (tuatara.buffer:kill-buffer target)
       (tuatara.buffer:kill-buffer source-buffer))))
 
 (define-test (objects rectangle-unwraps-no-escaped-opener)

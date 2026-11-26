@@ -135,7 +135,7 @@
                    (is eq :variable.builtin (face-at 0 resolved))
                    (is eq :variable.builtin (face-at at nil))
                    (is eq :variable (face-at at resolved)))))
-          (tuatara.syntax:delete-tree tree)
+          (tuatara.syntax:free-tree tree)
           (tuatara.syntax:delete-parser parser))))
     (let ((text (format nil "proc { |a|~%  def m~%    a~%  end~%  a~%}~%")))
       (multiple-value-bind (tree rope language parser) (setup 'ruby text)
@@ -146,7 +146,7 @@
                (declare (ignore ranges))
                ;; the a after the method is the block's parameter; the one in it is not
                (is equal (list (search (format nil "a~%}") text)) (resolved-starts resolved)))
-          (tuatara.syntax:delete-tree tree)
+          (tuatara.syntax:free-tree tree)
           (tuatara.syntax:delete-parser parser))))
     ;; every local name used gets its colour, not only the last found
     (let ((text (format nil "function f(a, b) { return a + b; }~%")))
@@ -156,7 +156,7 @@
                                                              (constantly :variable))))
                (is equal (list (search "a + b" text) (+ 4 (search "a + b" text)))
                    (remove-if (lambda (start) (< start (search "return" text))) (mapcar #'first ranges))))
-          (tuatara.syntax:delete-tree tree)
+          (tuatara.syntax:free-tree tree)
           (tuatara.syntax:delete-parser parser))))))
 
 (define-modal-test (syntax colours-on-screen)
@@ -688,7 +688,7 @@
                                  (multiple-value-bind (copy told) (apply function arguments)
                                    (setf made copy)
                                    (values copy told))))
-           (sb-int:encapsulate 'tuatara.syntax:delete-tree 'watching
+           (sb-int:encapsulate 'tuatara.syntax:free-tree 'watching
                                (lambda (function tree) (push tree let-go) (funcall function tree)))
            (sb-int:encapsulate 'tuatara.syntax::parse-time-limit 'failing
                                (lambda (function &rest arguments)
@@ -697,7 +697,7 @@
            (unwind-protect
                 (handler-case (tuatara.buffer:buffer-insert buffer 0 " ") (simple-error () nil))
              (sb-int:unencapsulate 'tuatara.syntax::parse-time-limit 'failing)
-             (sb-int:unencapsulate 'tuatara.syntax:delete-tree 'watching)
+             (sb-int:unencapsulate 'tuatara.syntax:free-tree 'watching)
              (sb-int:unencapsulate 'tuatara.syntax:edit-tree 'watching))
            (true made)
            (true (member made let-go)))
@@ -720,7 +720,7 @@
                                    (setf made copy)
                                    (values copy told))))
            ;; stopped just after the copy is let go
-           (sb-int:encapsulate 'tuatara.syntax:delete-tree 'stopping
+           (sb-int:encapsulate 'tuatara.syntax:free-tree 'stopping
                                (lambda (function tree)
                                  (funcall function tree)
                                  (when (and stopping (eq tree made))
@@ -737,7 +737,7 @@
                 (let ((tuatara.syntax:*syntax-size-limit* 10))
                   (handler-case (tuatara.buffer:buffer-insert buffer 0 " ") (simple-error () nil)))
              (sb-int:unencapsulate 'tuatara.syntax::call-send 'counting)
-             (sb-int:unencapsulate 'tuatara.syntax:delete-tree 'stopping)
+             (sb-int:unencapsulate 'tuatara.syntax:free-tree 'stopping)
              (sb-int:unencapsulate 'tuatara.syntax:edit-tree 'watching))
            (true made)
            (is = 1 (count (tuatara.syntax::tree-number made) requests) "requests to let go of ~s" requests))
@@ -835,7 +835,7 @@
   ;; the message without a sandbox says that text is not parsed, in words that
   ;; read right for both kinds of text
   (flet ((said (trusted)
-           (let ((tuatara.command::*messages-kept* (list '())))
+           (let ((tuatara.command::*messages-gathered* (list '())))
              (tuatara.defaults::report-no-sandbox-for-grammars trusted))))
     (true (search "Files outside the projects you trust are not coloured or parsed" (said nil)))
     (true (search "No text is coloured or parsed" (said t)))))
@@ -870,7 +870,7 @@
                                                         (tuatara.syntax:kept-helper :shared))))
                (multiple-value-bind (tree why) (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text))
                  (true tree "~a nested deeply is parsed (~s)" grammar why)
-                 (when tree (tuatara.syntax:delete-tree tree)))
+                 (when tree (tuatara.syntax:free-tree tree)))
                (ignore-errors (tuatara.syntax:delete-parser parser))))))
 
 (define-test (syntax brace-left-open-parsed-at-once)
@@ -883,7 +883,7 @@
     (multiple-value-bind (tree why)
         (tuatara.syntax:parse-rope parser (tuatara.text:string->rope (concatenate 'string run "{" run)) :limit 2)
       (true tree "parsed within two seconds (~s)" why)
-      (when tree (tuatara.syntax:delete-tree tree)))
+      (when tree (tuatara.syntax:free-tree tree)))
     (ignore-errors (tuatara.syntax:delete-parser parser))))
 
 (define-test (syntax rules-not-answered-asked-again)
@@ -1013,3 +1013,49 @@
         (setf sum (logxor sum (ldb (byte 62 0) (tuatara.text:rope-hash rope 690 (+ 700 (mod i 300)))))))
       (let ((made (- (sb-ext:get-bytes-consed) before)))
         (true (< made 4096) "~d octets made for ~d hashes" made count)))))
+
+(define-test (syntax text-in-another-language-parsed-in-the-background)
+  ;; a code block whose parse is slow never holds up the rows being coloured on the editor's thread: they
+  ;; are shown at once without its colours, and with them once it is parsed
+  (let* ((text (format nil "# Title~%~%```python~%def f(x):~%    return x~%```~%"))
+         (buffer (tuatara.buffer:make-buffer "*syntax-later*" :text text))
+         (markdown (tuatara.defaults::find-language 'markdown))
+         (python (tuatara.syntax:find-grammar "python"))
+         (first nil) (second nil) (seconds nil))
+    (sb-int:encapsulate 'tuatara.syntax::parse-texts 'slow
+                        (lambda (function rope parses &rest more)
+                          (when (some (lambda (parse) (eq (tuatara.syntax::text-parse-grammar parse) python))
+                                      parses)
+                            (sleep 1))
+                          (apply function rope parses more)))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "markdown"))))
+           (parse-done syntax)
+           ;; the rules compiled first, so that only the parse is waited on
+           (dolist (name '(markdown markdown-inline python))
+             (tuatara.defaults::rules-at-hand (tuatara.defaults::find-language name) :wait 30))
+           (let* ((query (tuatara.defaults::language-compiled-query markdown :colouring))
+                  (faces (tuatara.defaults::query-faces query :rich 3))
+                  (keyword (search "def" text)))
+             (flet ((colours ()
+                      (let ((injections (let ((tuatara.defaults::*rules-wait* 30))
+                                          (list (tuatara.defaults::language-compiled-query markdown :injection)
+                                                (tuatara.defaults::injection-resolver :rich 3)))))
+                        (loop for part in (tuatara.syntax:syntax-highlights syntax query faces
+                                                                            (list (cons 0 (length text))) injections)
+                              append (copy-tree part))))
+                    (keyword-p (ranges)
+                      (find-if (lambda (r) (and (= (first r) keyword) (eq (third r) :keyword))) ranges)))
+               (run-keys (list (lambda ()
+                                 (let ((tuatara.syntax:*syntax-wait* 0.02)
+                                       (start (get-internal-real-time)))
+                                   (setf first (keyword-p (colours))
+                                         seconds (/ (- (get-internal-real-time) start) internal-time-units-per-second))
+                                   (sleep 2)
+                                   (setf second (keyword-p (colours)))))))
+               (false first "coloured before it was parsed")
+               (true (< seconds 1/2) "the rows waited ~,2f s" seconds)
+               (true second "not coloured once parsed"))))
+      (sb-int:unencapsulate 'tuatara.syntax::parse-texts 'slow)
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))

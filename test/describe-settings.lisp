@@ -245,7 +245,7 @@ of its lines set in more than two columns, as a list of lists."
                              flags)
         "flags the reader takes, not in the list")
     (is equal '() (missing-from text operators) "two-letter operators not in the text")
-    (is equal '() (missing-from text '("#+TBLFM:" "$3=" "@4$2=" "@2$2..@3$3" "@<" "@>" "@I" "@#" "$#" "::" "Calc"
+    (is equal '() (missing-from text '("#+TBLFM:" "$3=" "@4$2=" "@2$2..@3$3" "@<" "@>" "@I" "@#" "$#" "::" "arithmetic"
                                        "C-c *" "C-c =" "C-c C-c")))))
 
 (define-test (describe-settings capture-placeholders-are-all-described)
@@ -299,4 +299,7 @@ of its lines set in more than two columns, as a list of lists."
     (is equal (sort (copy-list units) #'char<) (sort (mapcar #'first tuatara.defaults::*org-timestamp-units*) #'char<)
         "units read and units described")
     (is equal '() (missing-from text '("<2026" "[2026" "+1w" "++1w" ".+1w" "-3d" "--3d" "09:00-10:00" "%%(" "CANCELLED"
-                                       "MOVED" "C-c ." "C-c !" "C-c C-s" "C-c C-d")))))
+                                       "MOVED" "C-c ." "C-c !" "C-c C-s" "C-c C-d")))
+    ;; + and ++ go on alike, as ORG-TS-REPEAT moves them
+    (true (search "read as +1w" text))
+    (false (search "cumulate" text))))

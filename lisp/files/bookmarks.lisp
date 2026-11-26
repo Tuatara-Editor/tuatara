@@ -352,10 +352,11 @@ sections holding them unfolded first, and make LIST again: from that category
 only, the bookmark staying in its others; the bookmark itself when it is in
 no other, or in the section of those in none."
   (unfold-list-sections list (mapcar #'cdr places))
-  (when (yes-or-no-p* (format nil "~a?" (list-question "Delete" "bookmark" places
-                                                       :name-of (lambda (place)
-                                                                  (format nil "~a~:[ from ~a~;~*~]" (car place)
-                                                                          (eq (cdr place) :none) (cdr place))))))
+  (when (ask-list-question (yes-or-no-p*)
+          (list-question "Delete" "bookmark" places
+                         :name-of (lambda (place)
+                                    (format nil "~a~:[ from ~a~;~*~]"
+                                            (car place) (eq (cdr place) :none) (cdr place)))))
     (let ((gone 0))
       (loop for (name . section) in places
             for bookmark = (find-bookmark name)

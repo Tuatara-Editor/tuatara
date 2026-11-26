@@ -177,11 +177,29 @@ there lists every action."
 of the list's path doing BODY, a shell command where $1 is that path."
   (format nil "f() { ~a; }; f" body))
 
-(defun git-rebase-todo-lines (text)
-  "The lines of a rebase's list TEXT that are not comments or empty."
+(defun git-rebase-todo-lines (text &optional (comment "#"))
+  "The lines of a rebase's list TEXT that are not comments, those beginning
+with COMMENT (GIT-REBASE-COMMENT), or empty."
   (remove-if (lambda (line)
-               (let ((l (string-left-trim '(#\Space #\Tab) line))) (or (zerop (length l)) (char= (char l 0) #\#))))
+               (let ((l (string-left-trim '(#\Space #\Tab) line)))
+                 (or (zerop (length l)) (uiop:string-prefix-p comment l))))
              (uiop:split-string text :separator '(#\Newline))))
+
+(defun git-rebase-comment (job top todo)
+  "On JOB's thread: what begins a comment line of TODO, the list of a rebase
+git wrote in the repository at TOP: its core.commentString or core.commentChar,
+# when neither is set; with auto, the first character of TODO's last line,
+git's help after the commits being comments."
+  (let ((set (loop for name in '("core.commentString" "core.commentChar")
+                   for (text ok) = (multiple-value-list (git-job-try job top (list "config" "--get" name)))
+                   for value = (string-right-trim '(#\Newline) text)
+                   when (and ok (plusp (length value))) return value)))
+    (cond ((null set) "#")
+          ((string-equal set "auto")
+           (let ((last (find-if (lambda (line) (plusp (length line)))
+                                (reverse (uiop:split-string todo :separator '(#\Newline))))))
+             (if last (subseq last 0 1) "#")))
+          (t set))))
 
 (defun git-reword-line-p (line)
   "The hash and subject of LINE of a rebase's list when it rewords a commit
@@ -226,31 +244,35 @@ menu's switches go with it (--autosquash orders fixups first)."
                                                                               :cancel (tuatara.runtime:job-cancel job)
                                                                               :errors t))))
                                              (if (eq :regular (tuatara.io:path-kind copy :follow nil))
-                                                 (tuatara.io:file-text copy :limit tuatara.io:*memory-read-limit*)
+                                                 (let ((todo (tuatara.io:file-text
+                                                              copy :limit tuatara.io:*memory-read-limit*)))
+                                                   (values todo nil (git-rebase-comment job top todo)))
                                                  (values nil said))))
-                                         (lambda (todo &optional said)
+                                         (lambda (todo &optional said comment)
                                            (cond ((null todo)
                                                   (message "git made no list of commits after ~a to rebase~@[: ~a~]"
                                                            base
                                                            (and said (plusp (length said))
                                                                 (git-failure-words "rebase" said))))
-                                                 ((null (git-rebase-todo-lines todo))
+                                                 ((null (git-rebase-todo-lines todo comment))
                                                   (message "No commits after ~a to rebase" base))
-                                                 (t (git-show-rebase-todo top base switches directory todo)
+                                                 (t (git-show-rebase-todo top base switches directory todo comment)
                                                     (setf shown t))))
                                          :after (lambda () (unless shown (delete-private-directory directory)))
                                          :quiet t))))))
 
-(defun git-show-rebase-todo (top base switches directory todo)
+(defun git-show-rebase-todo (top base switches directory todo comment)
   "Show git's list TODO of the commits of the repository at TOP after BASE to
 change, the rebase to take SWITCHES and keep its files in DIRECTORY, which goes
 with the list when it is killed or given up (FORGET-PRIVATE-DIRECTORY), and the
-directory of a list it replaces with it."
+directory of a list it replaces with it. The line put above it to say what the
+keys do begins with COMMENT, git's comment (GIT-REBASE-COMMENT)."
   (let ((old (git-buffer-of top 'git-rebase-mode)))
     (when (and old (buffer-private-directory old))
       (delete-private-directory (buffer-private-directory old))))
   (git-edit-buffer "*git rebase: ~a*" top 'git-rebase-mode
-                   (format nil "# ~a~%~a"
+                   (format nil "~a ~a~%~a"
+                           comment
                            (substitute-command-keys
                             (concatenate 'string "\\<git-rebase-mode>\\[git-rebase-todo-finish] rebases as these "
                                          "lines say, \\[git-rebase-todo-cancel] gives it up."))
@@ -435,7 +457,10 @@ not to be tried."
 commit tried whether it has the fault (it fails) or not (it succeeds, 125 for
 one not to be tried), until the first bad commit is found."
   (with-git-repository (top)
-    (let ((command (read-string "Command telling good (succeeds) from bad (fails): ")))
+    (let ((command (read-string "Test command: "
+                                :details "Run by the shell in the repository at each commit tried: it succeeds
+for a good one, fails for a bad one, and exits with 125 for one not to be
+tried.")))
       (when (plusp (length command))
         (git-run "Bisecting" top (list "bisect" "run" "sh" "-c" command) #'git-bisect-words
                  :environment *git-english*)))))

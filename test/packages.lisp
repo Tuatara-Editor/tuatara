@@ -614,7 +614,7 @@ after."
       (sb-int:encapsulate 'tuatara.command:defer-action 'never-fetches
                           (lambda (function action &rest keys)
                             (declare (ignore function keys))
-                            (let ((tuatara.command:*message-log-max* most-positive-fixnum))
+                            (let ((tuatara.command:*messages-kept* most-positive-fixnum))
                               (funcall action)
                               (push (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)) said))))
       (unwind-protect (false (tuatara.packages::compiler-core))
@@ -1171,6 +1171,25 @@ no Lisp package any more, each (COMMAND . PLACE)."
           (when symbol
             (unexport symbol :tuatara-user)
             (unintern symbol :tuatara-user))))
+      (when (package-name package)
+        (tuatara.packages::forget-package-code (list package))))))
+
+(define-test (packages forgotten-package-takes-its-mode-hooks)
+  ;; a hook a package added to a mode goes with the package, so opening a buffer in that mode afterwards works
+  (let ((package (make-package "HOOKFORGOTTEN" :use '("CL" "TUATARA")))
+        (info (tuatara.modes::find-mode 'tuatara.modes:fundamental-mode))
+        (hook nil))
+    (unwind-protect
+         (progn
+           (let ((*package* package))
+             (eval (read-from-string "(progn
+  (defun hookforgotten-hook (buffer) (declare (ignore buffer)) nil)
+  (add-mode-hook 'fundamental-mode 'hookforgotten-hook))")))
+           (setf hook (find-symbol "HOOKFORGOTTEN-HOOK" package))
+           (true (member hook (tuatara.modes::mode-info-hooks info)))
+           (tuatara.packages::forget-package-code (list package))
+           (false (member hook (tuatara.modes::mode-info-hooks info))))
+      (setf (tuatara.modes::mode-info-hooks info) (remove hook (tuatara.modes::mode-info-hooks info)))
       (when (package-name package)
         (tuatara.packages::forget-package-code (list package))))))
 

@@ -445,3 +445,23 @@ echo commented
                                                    :text (format nil "| 2 |  |~%after~%") :width 80 :height 12)))))
     (true (uiop:string-prefix-p (format nil "Top~%| 4 |") text) "~a" text)
     (true (search "#+TBLFM: $1=$1^2" text) "~a" text)))
+
+(define-test (org formula-chain-nested-too-deeply)
+  ;; a long chain of operators nests as deep as brackets do: refused, never the stack run out
+  (let ((chain (with-output-to-string (out)
+                 (dotimes (i 100000) (write-string "1+" out))
+                 (write-string "1" out))))
+    (true (search "nested too deeply"
+                  (handler-case (progn (tuatara.defaults::org-formula-parse chain) "parsed")
+                    (tuatara.defaults::org-formula-error (e) (tuatara.defaults::org-formula-error-text e)))))
+    (true (tuatara.defaults::org-formula-parse "1+2*3-4"))))
+
+(define-test (org tangle-from-outside-said)
+  ;; writing the code files of a note from outside says where it came from beside the question
+  (with-test-directory (dir)
+    (let ((org (namestring (merge-pathnames "t.org" dir))))
+      (alexandria:write-string-into-file *org-tangled* org)
+      (let ((tuatara-user:*untrusted-directories* (list (namestring dir))))
+        (true (search "t.org came from outside" (tuatara.defaults::code-files-origin-words org))))
+      (let ((tuatara-user:*untrusted-directories* '()))
+        (false (tuatara.defaults::code-files-origin-words org))))))

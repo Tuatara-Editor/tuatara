@@ -585,7 +585,7 @@ file of text; their native names, as two values."
   (let ((environment (tuatara.io:environment-without '("HOME=") "TUATARA_TEST=1")))
     (is string= "TUATARA_TEST=1" (first environment))
     (false (find-if (lambda (s) (uiop:string-prefix-p "HOME=" s)) environment)))
-  (let ((fd (tuatara.io:duplicate-fd 0 :lowest 20)))
+  (let ((fd (tuatara.runtime:duplicate-fd 0 :lowest 20)))
     (unwind-protect (true (>= fd 20))
       (sb-posix:close fd))))
 

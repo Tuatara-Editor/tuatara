@@ -119,15 +119,15 @@ file read again or sorted), but nothing changes the lines hidden. Where a list
 or file is large, what is typed is matched from the top of the window first and
 shown at once (*SEARCH-FILTER-SCREEN-SECONDS*), and the rest in the background
 on all but two cores, the mode line saying how far it has got (\\[stop-job]
-stops it, taking the filter away); the editor goes on meanwhile. So is a pattern
-so slow on some line that matching it there would hold the editor up, the prompt
-saying slow pattern. A pattern that cannot be used shows why in the prompt, and
+stops it, taking the filter away); the editor goes on meanwhile. A pattern so
+slow on some line that matching it there would hold the editor up goes on in
+the background too, the prompt saying slow pattern. A pattern that cannot be used shows why in the prompt, and
 \\<search>\\[search-exit] waits for it to be mended."
   (let ((buffer (current-buffer)))
     (if (search-filterable-p buffer)
         (progn (list-filtering-made buffer)
                (search-start t t :filtering buffer))
-        (say-unfilterable "this buffer has none"))))
+        (say-unfilterable 'search-filter-regex))))
 
 (defparameter *search-filters-columns*
   '(("Filter" :width 40) ("Kind" :width 26) ("Leaves" :width 12 :right t))
@@ -169,7 +169,7 @@ in a buffer of their own, each with how many entries it leaves; there
 line and \\[search-filter-remove-all] all of them."
   (let ((filtered (filtered-list-at-hand)))
     (if (null filtered)
-        (message "Not a list: no filters to list")
+        (say-unfilterable 'search-filter-list)
         (let ((list (buffer-in-mode (format nil "*Filters of ~a*" (tuatara.buffer:buffer-name filtered))
                                     'search-filters-mode)))
           (setf (tuatara.buffer:buffer-local list 'filtered-list) filtered)
@@ -266,7 +266,7 @@ entries in a list that names them), kept with the others; with HIDE, one that
 leaves what it does not match. COMMAND names the command in messages."
   (let ((buffer (current-buffer)))
     (if (not (search-filterable-p buffer))
-        (say-unfilterable (format nil "~(~a~) was not run" command))
+        (say-unfilterable command)
         (let* ((filtering (list-filtering-made buffer))
                (words (format nil "~:[show~;hide~] ~a" hide (list-filtering-nouns filtering))))
           (multiple-value-bind (pattern regex matcher what where)
@@ -310,11 +310,10 @@ file offers name, version and markers. todo.txt offers done, priority,
 completed, created, text, project, context and the keys of its key:value tags.
 JSON Lines offers its keys, strings read with their escapes undone, a path of
 keys apart by dots (user.id) reaching inside. A .gitignore and every list try
-the whole line. A line longer than *REWRITE-LINE-LIMIT* octets (16 MiB as
-shipped) has its column tried on its first part alone, and the mode line says
-how many lines were. The filter is kept
-with the others, the next narrowing what it leaves; \\[search-filter-list]
-lists them and \\[search-filter-remove-all] takes them all away.
+the whole line. A line longer than *REWRITE-LINE-LIMIT* octets has its column
+tried on its first part alone, and the mode line says how many lines were. The
+filter is kept with the others, the next narrowing what it leaves;
+\\[search-filter-list] lists them and \\[search-filter-remove-all] takes them all away.
 \\[list-keep-records] deletes the others instead."
   (filter-records-by 'search-filter-show-records nil))
 

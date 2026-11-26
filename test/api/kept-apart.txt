@@ -23,7 +23,6 @@ docx-footnote org-html-footnote each writes its format's footnote; the shared pa
 kill-project-buffers-asked kill-project-buffers-of-every-client one client's buffers against every client's, asked differently
 office-file-format office-preview-format by a file's name and head against by contents already read
 buffer-tab-width host-tab-width the host method asks the buffer's setting; one call of the other
-gpg-decrypt-file rimu-decrypt-files one file asked for against the marked files, asked once
 org-agenda-now-time org-agenda-time-of-day a time of day from a universal time against from a text
 org-agenda-grid-items org-agenda-grid-pieces making the grid's items against drawing one item
 calendar-print-day-of-year day-number a command against the date function it uses
@@ -33,7 +32,6 @@ line-text-ends-p line-text-end a test at one octet against the end found from a 
 carried-line-number carried-line-start the two directions of one lookup
 mark-whole-buffer select-whole-buffer one command calls the other
 org-date-choosing-prompt org-date-choosing-end building the prompt against ending the choosing
-gpg-encrypt-file rimu-encrypt-files one file against the marked files, with one passphrase for all
 terminal-library-version terminal-version the version as text against the command saying it
 org-agenda-day-view org-agenda-day a command against the lines of one day
 tuatara.io:host-say-writing tell-writing the host's method and the function that calls it
@@ -86,5 +84,5 @@ know-language-tools language-tools-words recording tools against wording them
 todotxt-each todotxt-keys one task's parts against the keys of many tasks
 org-agenda-later org-agenda-deadlines a command against one kind of lines
 git-log-all git-show-refs a log of everything against the list of references
-import-on-server gpg-import-keys importing on a server against into the local keyring
+import-on-server gpg-keys-import importing on a server against into the local keyring
 anchor-position anchor-move a position read against a position set

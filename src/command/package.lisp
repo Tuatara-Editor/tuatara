@@ -5,9 +5,10 @@
   (:use #:cl #:alexandria)
   (:import-from #:tuatara.runtime #:define-record #:refuse #:define-setting #:quit #:quit-words)
   (:import-from #:tuatara-user #:*use-system-clipboard* #:*cursor-shape* #:*cursor-colour* #:message #:current-buffer
-                #:*message-log-max* #:*mode-line-name-limit* #:*gui-title* #:place-buffers #:*split-height-threshold*
+                #:*messages-kept* #:*mode-line-name-limit* #:*gui-title* #:place-buffers
+                #:*split-height-threshold*
                 #:*split-width-threshold* #:*show-completion-count* #:*prompt-above-candidates* #:*key-hint-rows*
-                #:*debug-on-error*)
+                #:*backtrace-on-error*)
   (:import-from #:tuatara.buffer #:live-buffer-p)
   (:import-from #:tuatara.display #:escape-controls #:shown-name)
   (:documentation "Events, keymaps and key-sequence reading in precedence order, interactive calls,
@@ -21,16 +22,17 @@ hooks, the minibuffer core, the modal state slot.")
            #:*keymaps-generation* #:forget-command #:install-command
            #:quit #:keyboard-quit-signal #:editor #:editor-p #:make-editor #:*editor* #:current-buffer
            #:selected-window-buffer
-           #:*current-buffer* #:host-command-refusal #:sandbox-outcome-words #:editor-host #:current-window
-           #:repeat-hint #:message #:say-with-command-messages #:*messages-kept* #:*exit-functions* #:*exit-code*
-           #:cursor-look #:*cursor-colour-functions* #:echo #:*message-log-max* #:log-message #:add-to-log
+           #:*current-buffer* #:with-buffer-current #:buffer-list #:host-command-refusal #:sandbox-outcome-words
+           #:editor-host #:current-window
+           #:repeat-hint #:message #:say-with-command-messages #:*messages-gathered* #:*exit-functions* #:*exit-code*
+           #:cursor-look #:*cursor-colour-functions* #:echo #:*messages-kept* #:log-message #:add-to-log
            #:messages-buffer #:log-buffer #:host-messages-made #:read-string #:finish-minibuffer
            #:minibuffer-previous-history #:read-typed-answer
            #:minibuffer-next-history #:echo-question-p #:yes-or-no-p* #:y-or-n-p* #:read-password #:wipe-string
            #:*minibuffer-hidden* #:show-buffer #:run-editor #:visit-startup-files #:host-visit-file
            #:host-visit-standard-input #:command-loop #:redisplay #:redisplay-or-say
            #:quit-key-p #:*keys-as-typed* #:wait-interruptibly #:wait-until-interruptibly #:wait-while-interruptibly
-           #:run-and-wait-interruptibly
+           #:run-and-wait-interruptibly #:wait-for-clipboard-text
            #:editor-unread #:editor-deferred #:running-editor #:defer-action #:call-with-editor-held
            #:away-from-editor-p #:wake-editor #:later #:later-p #:take-answer
            #:editor-frontend #:editor-window #:editor-global-keymap #:editor-state-keymap #:editor-minibuffer-keymap
@@ -58,14 +60,15 @@ hooks, the minibuffer core, the modal state slot.")
            #:*highlight-functions* #:*view-change-functions* #:look-at-views-again #:*key-hint-focus-functions*
            #:*job-highlight-functions*
            #:*syntax-highlight-functions* #:*text-highlight-functions* #:window-highlights-for #:window-syntax
-           #:read-key #:read-answer-key #:read-key-choice #:read-event #:*tick-functions* #:*last-input-time*
+           #:read-key #:read-key-choice #:read-event #:*tick-functions* #:*last-input-time*
            #:*after-tick-functions*
            #:*title-functions* #:*background-work* #:*tick-interval* #:run-tick-functions
            #:*gutter-providers* #:add-gutter-provider #:gutter-width #:gutter-width-except #:window-margin-for
            #:gutter-cells #:*ruler-functions*
            #:editor-minibuffer-prompt #:editor-minibuffer-text #:editor-minibuffer-point
            ;; windows
-           #:editor-windows #:frames-windows #:editor-frames #:editor-frame #:frame-window #:open-frame
+           #:editor-windows #:frames-windows
+           #:ring-bell #:mode-line-alarm-start #:editor-frames #:editor-frame #:frame-window #:open-frame
            #:open-frame-asked-for #:*most-frames* #:remove-frame
            #:do-frames-windows #:*question-variables*
            ;; clients
@@ -105,7 +108,7 @@ hooks, the minibuffer core, the modal state slot.")
            #:rectangle-columns #:region-rectangle-rows #:*other-cursor-functions* #:*point-marked-functions*
            #:*read-key-replay*
            #:*this-command-keys* #:*command-undo-since* #:*command-notes* #:editor-transient-fresh #:*dropped*
-           #:*debug-on-error* #:host-show-backtrace #:*backtrace-frames* #:capture-backtrace
+           #:*backtrace-on-error* #:host-show-backtrace #:*backtrace-frames* #:capture-backtrace
            ;; completing a word in the text
            #:complete-in-text #:complete-in-minibuffer #:popup-insert #:*popup-insert-functions* #:close-popup
            #:show-note #:close-note #:editor-note #:*note-limits* #:editor-popup #:popup-p #:popup-target

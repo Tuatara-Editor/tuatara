@@ -672,20 +672,21 @@ wiped when nothing is begun."
 
 ;;; The operations
 
-(defun rimu-question (verb paths &key here after)
+(defun rimu-question (verb paths &key here after details)
   "What rimu asks before VERB acts on PATHS, as the lists ask (LIST-QUESTION),
-without the question mark: VERB, the name of one or how many, and AFTER. With
-HERE, the directory the list shows, also where they are when that is
-elsewhere: the whole name of one, or \"7 files in 3 directories\". How many
-of them the search filters narrowing the current list hide is said: 3 files
-\(1 hidden by the filter)."
+as two values: the question without the question mark, VERB, the name of one
+or how many, and AFTER; and its details. With HERE, the directory the list
+shows, the whole name of one that is elsewhere, and in the details where they
+are when that is elsewhere: \"in 3 directories\". The details also say how
+many of them the search filters narrowing the current list hide, then
+DETAILS, lines of the caller's own."
   (let ((directories (make-hash-table :test 'equal))
         (*list-hidden-count* (if (and *editor* (rimu-list-p (current-buffer)))
                                  (list-hidden-count (current-buffer) paths)
                                  *list-hidden-count*)))
     (when here
       (dolist (path paths) (setf (gethash (tuatara.io:parent-path path) directories) t)))
-    (list-question verb "file" paths :the nil :after after
+    (list-question verb "file" paths :the nil :after after :details details
                    :name-of (lambda (path)
                               (if (and here (not (gethash here directories)))
                                   (abbreviated-path path)
@@ -706,9 +707,9 @@ entries to a place asked for."
         (message "~a" (rimu-nothing-words buffer (rimu-verb-words verb :verb)))
         (let* ((offered (or (rimu-other-directory buffer)
                             here))
-               (target (read-native-path (format nil "~a " (rimu-question (rimu-verb-words verb :ask) paths
-                                                                          :here here :after "to:"))
-                                         :initial (abbreviated-path offered) :writing t)))
+               (target (ask-list-question (read-native-path :end " ")
+                         (rimu-question (rimu-verb-words verb :ask) paths :here here :after "to:")
+                         :initial (abbreviated-path offered) :writing t)))
           (cond ((null target) (message "Nowhere given: nothing done"))
                 ((and (eq verb :move) (not (eq :directory (rimu-place-kind target))))
                  (message "~a is no directory: nothing moved (\\<rimu-mode>\\[rimu-rename] renames)"
@@ -810,8 +811,11 @@ the words saying what was left alone."
          (replace (and there
                        (ask-on-editor
                         (lambda ()
-                          (yes-or-no-p* (format nil "~a ~:[is~;are~] there already: replace, the old to the trash?"
-                                                (rimu-question nil (mapcar #'car there)) (rest there))))))))
+                          (ask-list-question (yes-or-no-p*
+                                              :end (format nil " ~:[is~;are~] there already: replace, the old to the ~
+                                                                trash?"
+                                                           (rest there)))
+                            (rimu-question nil (mapcar #'car there))))))))
     (values (if replace pairs (rimu-without-pairs pairs there))
             replace
             (append (rimu-itself-words itself)
@@ -894,12 +898,10 @@ going to the trash."
                              (tuatara.io:native-file-name
                               (if (rest paths) (string-right-trim "/" (paths-common-directory paths)) (first paths)))
                              locked))
-               (target (read-native-path (format nil "~a " (rimu-question "Archive" paths :here here
-                                                                          :after (if locked
-                                                                                     "with a password, as:"
-                                                                                     "as:")))
-                                         :initial (abbreviated-path (or (rimu-other-directory buffer) here))
-                                         :kind :any :writing t))
+               (target (ask-list-question (read-native-path :end " ")
+                         (rimu-question "Archive" paths :here here :after (if locked "with a password, as:" "as:"))
+                         :initial (abbreviated-path (or (rimu-other-directory buffer) here))
+                         :kind :any :writing t))
                (target (if (and target (eq :directory (tuatara.io:path-kind target)))
                            (tuatara.io:path-join target (if (member name '(".tar.gz" ".zip") :test #'string=)
                                                             (format nil "archive~a" name)
@@ -960,9 +962,10 @@ the background, shut in the sandbox."
           ((rest (rest paths))
            (message "~d entries are marked: mark two to compare them, or one to compare with another" (length paths)))
           ((rest paths) (compare-paths (first paths) (second paths)))
-          (t (let ((other (read-native-path (format nil "~a " (rimu-question "Compare" paths :here here :after "with:"))
-                                            :initial (abbreviated-path (or (rimu-other-directory buffer) here))
-                                            :kind :any)))
+          (t (let ((other (ask-list-question (read-native-path :end " ")
+                            (rimu-question "Compare" paths :here here :after "with:")
+                            :initial (abbreviated-path (or (rimu-other-directory buffer) here))
+                            :kind :any)))
                (if other
                    (compare-paths (first paths) other)
                    (message "Nothing to compare with")))))))
@@ -994,8 +997,9 @@ bsdtar does it in the background, shut in the sandbox."
                       here
                       (tuatara.io:slash-ended (tuatara.io:path-join (tuatara.io:parent-path (first paths))
                                                                     (archive-stem (first paths))))))
-         (target (read-native-path (format nil "~a " (rimu-question "Extract" paths :here here :after "into:"))
-                                   :initial (abbreviated-path offered) :writing t)))
+         (target (ask-list-question (read-native-path :end " ")
+                   (rimu-question "Extract" paths :here here :after "into:")
+                   :initial (abbreviated-path offered) :writing t)))
     (cond ((null target) (message "Nowhere given: nothing extracted"))
           ((and (tuatara.io:path-kind target :follow nil) (not (eq :directory (tuatara.io:path-kind target))))
            (message "~a is no directory: nothing extracted" (abbreviated-path target)))
@@ -1016,11 +1020,10 @@ renames many as text, \\[rimu-move] moves into another directory."
           (t
            (let* ((from (first paths))
                   (old (tuatara.io:native-file-name from))
-                  (new (read-string (format nil "~a " (rimu-question "Rename" paths
-                                                                     :here (tuatara.buffer:buffer-local buffer
-                                                                                                        'rimu-directory)
-                                                                     :after "to:"))
-                                    :initial old))
+                  (new (ask-list-question (read-string :end " ")
+                         (rimu-question "Rename" paths :here (tuatara.buffer:buffer-local buffer 'rimu-directory)
+                                                       :after "to:")
+                         :initial old))
                   (to (tuatara.io:path-join (tuatara.io:parent-path from) new)))
              (cond ((or (string= new "") (string= new old)) (message "Not renamed"))
                    ((not (tuatara.io:entry-name-p new :controls t))
@@ -1036,6 +1039,9 @@ renames many as text, \\[rimu-move] moves into another directory."
                         (rimu-update buffer :reread t :point-on (tuatara.text:string-octets new))
                         (message "Renamed to ~a" new)))))))))
 
+(alexandria:define-constant +cannot-be-put-back+ "It cannot be put back." :test #'string=
+  :documentation "What the details of a question before deleting for good say.")
+
 (defun rimu-delete-paths (paths buffer &key for-good)
   "Put PATHS, of the rimu list BUFFER, in the trash, or with FOR-GOOD delete
 them, asking first; those that cannot go to the trash are deleted only after a
@@ -1044,18 +1050,18 @@ deleted for good after one plain yes that says so."
   (let ((here (and (live-buffer-p buffer) (tuatara.buffer:buffer-local buffer 'rimu-directory)))
         (remote (remove-if-not #'remote-name-p paths)))
     (when remote
-      (when (yes-or-no-p* (format nil "~a for good?" (rimu-question "Delete" remote :here here))
-                          :details "A server keeps no trash: nothing deleted there can be put back.")
+      (when (ask-list-question (yes-or-no-p* :end " for good?")
+              (rimu-question "Delete" remote
+                             :here here :details "A server keeps no trash: nothing deleted there can be put back."))
         (rimu-start-operation :delete (mapcar #'list remote) buffer))
       (setf paths (remove-if #'remote-name-p paths))
       (unless paths (return-from rimu-delete-paths nil)))
     (cond ((or for-good (not *rimu-delete-to-trash*))
-           (when (and (yes-or-no-p* (format nil "~a for good?" (rimu-question "Delete" paths :here here)))
-                      (yes-or-no-p* (format nil
-                                            "~a for good? It cannot be put back."
-                                            (rimu-question "Really delete" paths :here here))))
+           (when (and (ask-list-question (yes-or-no-p* :end " for good?") (rimu-question "Delete" paths :here here))
+                      (ask-list-question (yes-or-no-p* :end " for good?")
+                        (rimu-question "Really delete" paths :here here :details +cannot-be-put-back+)))
              (rimu-start-operation :delete (mapcar #'list paths) buffer)))
-          ((y-or-n-p* (format nil "~a?" (rimu-question "Move" paths :here here :after "to the trash")))
+          ((ask-list-question (y-or-n-p*) (rimu-question "Move" paths :here here :after "to the trash"))
            ;; whether a trash can be had is the same for every file of one directory
            (let ((trash-p (make-hash-table :test 'equal)) (to-trash '()) (no-trash '()))
              (dolist (path paths)
@@ -1071,9 +1077,10 @@ deleted for good after one plain yes that says so."
              (when to-trash
                (rimu-start-operation :trash (mapcar #'list to-trash) buffer))
              (when (and no-trash
-                        (yes-or-no-p* (format nil "~a cannot go to a trash (none can be made on its drive): ~
-                                                   delete for good?"
-                                              (rimu-question nil no-trash))))
+                        (ask-list-question (yes-or-no-p* :end " for good?")
+                          (rimu-question "Delete" no-trash
+                                         :details (format nil "No trash can be made on ~:[its~;their~] drive. ~a"
+                                                          (rest no-trash) +cannot-be-put-back+))))
                (rimu-start-operation :delete (mapcar #'list no-trash) buffer)))))))
 
 (defmethod delete-list-entries ((mode rimu-mode) list mark)
@@ -1339,8 +1346,9 @@ one on the line. A name with a / or a control character in it is refused."
   (let* ((buffer (current-buffer))
          (here (tuatara.buffer:buffer-local buffer 'rimu-directory))
          (chosen (rimu-chosen-paths buffer))
-         (name (read-string (format nil "Touch in ~a~@[ (RET: ~a)~]: " (abbreviated-path here)
-                                    (and chosen (rimu-question nil chosen)))))
+         (name (multiple-value-bind (words details) (and chosen (rimu-question nil chosen))
+                 (read-string (format nil "Touch in ~a~@[ (RET: ~a)~]: " (abbreviated-path here) words)
+                              :details details)))
          (path (tuatara.io:path-join here name)))
     (flet ((touch (paths)
              (reporting-errors ("touching ~a" (first paths))
@@ -1387,7 +1395,8 @@ list shows it, point on it."
                     (refuse "~a" (rimu-nothing-words buffer "wipe"
                                                      :files-only t
                                                      :none "No file here: mark files, or put the cursor on one")))))
-    (when (confirm-wipe paths (rimu-question nil paths :here (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+    (when (multiple-value-call #'confirm-wipe paths
+            (rimu-question nil paths :here (tuatara.buffer:buffer-local buffer 'rimu-directory)))
       (start-wiping paths))))
 
 (defun install-rimu-operations ()

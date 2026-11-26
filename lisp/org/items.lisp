@@ -177,7 +177,7 @@ clear it, and bring up to date what depends on it."
 - t: \\<normal>\\[tuatara-normal-return] in NORMAL state anywhere on a list item's line
   with a checkbox cycles it, [ ] to [-] to [X] and round, the counts above
   brought up to date (a link point is on is followed first).
-- nil: the checkbox is left to \\[org-ctrl-c-ctrl-c]."
+- nil: the checkbox is left to \\[org-act-here]."
   :values boolean)
 
 (defparameter *org-checkbox-cycle* '((off . trans) (trans . on) (on . off))
@@ -203,7 +203,7 @@ cycle it (*ORG-RETURN-CYCLES-CHECKBOXES*); true when it did."
         (org-cycle-checkbox parse position item)
         t))))
 
-(define-command org-ctrl-c-minus ()
+(define-command org-rule-or-bullet ()
   "Do what Org's C-c - does where point is: in a table, a rule line below the
 row (org-table-insert-hline); in a list, the next kind of bullet
 \(org-cycle-list-bullet)."
@@ -412,7 +412,7 @@ with it; a string saying why when it is at the margin already."
         (org-list-edits entries text columns (make-hash-table :test 'eq)))))
 
 (defun org-items-to-shift (parse)
-  "The list items of PARSE that \\[org-metaright] and the like move, as a list,
+  "The list items of PARSE that \\[org-demote] and the like move, as a list,
 and whether they were selected as a second value: those whose first line is
 among the selection's lines; else the innermost item point is in. NIL when
 the selection begins on a headline or none is there."
@@ -453,8 +453,8 @@ NIL elsewhere, for a headline's command to run."
             (let* ((entries (org-list-entries (org-children-of list 'item)))
                    (first-p (and (not selected) (eq (first items) (car (first entries)))))
                    (found (cond ((and first-p subtree) (org-list-moved-whole-edits text entries by))
-                                (first-p (concatenate 'string "At first item: use \\[org-shiftmetaright] or "
-                                                      "\\[org-shiftmetaleft] to move the whole list"))
+                                (first-p (concatenate 'string "At first item: use \\[org-demote-subtree] or "
+                                                      "\\[org-promote-subtree] to move the whole list"))
                                 (t (org-list-shift-edits text entries targets by)))))
               (when (stringp found)
                 (message found)
@@ -589,7 +589,7 @@ headline it is on counts (`org-cookie-counts'), point left at POSITION."
                (lambda (node) (and (eq (org-node-type node) 'statistics-cookie) (org-before-blank-p node position)))
                :titles t))
 
-(define-command org-ctrl-c-ctrl-c ()
+(define-command org-act-here ()
   "Do what Org's C-c C-c does where point is: on a dynamic block's #+BEGIN:
 line, make the block again (\\[org-dblock-update]). On an item with a checkbox,
 tick it or clear it, the counts above brought up to date. On a statistics
@@ -680,7 +680,7 @@ pairs writes, make it the checkbox [ ] and a space, point after them
 what point is on (ORG-CONTEXT-KEYS), have typing - [ make a checkbox and RET
 in NORMAL state on its line cycle it, and on a headline's line with a TODO
 keyword change that (ORG-TODO-RETURN)."
-  (define-key (mode-keymap 'org-mode) "C-c C-c" 'org-ctrl-c-ctrl-c)
+  (define-key (mode-keymap 'org-mode) "C-c C-c" 'org-act-here)
   (pushnew 'org-context-keys *key-hint-focus-functions*)
   ;; after closing pairs, whose ] it takes in
   (setf *post-self-insert-functions*

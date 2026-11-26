@@ -281,22 +281,24 @@ universal time for %z; NIL to work it out. O(length of PATTERN)."
                              (piece (char pattern i) plain upper colon)
                              (incf i)))))))))))
 
-(defun format-time (pattern time)
-  "The universal TIME in local time written as PATTERN says, its % specifiers
-as FORMAT-DAY has them: (format-time \"[%F %a %R]\" time) writes
-[2026-10-04 Sun 10:30]. Any year: times before 1901 as DAY-UNIVERSAL-TIME
-counts them. O(length of PATTERN)."
-  (multiple-value-bind (day hour minute second) (time-day time)
-    (format-day pattern day hour minute second (and (search "z" pattern) (local-offset time)))))
+(defun format-time (pattern time &key utc)
+  "The universal TIME in local time, or with UTC in universal time, written as
+PATTERN says, its % specifiers as FORMAT-DAY has them: (format-time \"[%F %a
+%R]\" time) writes [2026-10-04 Sun 10:30], and (format-time
+\"%Y%m%dT%H%M%SZ\" time :utc t) 20261004T093000Z. Any year: times before 1901
+as DAY-UNIVERSAL-TIME counts them. O(length of PATTERN)."
+  (if utc
+      (multiple-value-bind (day seconds) (floor time 86400)
+        (multiple-value-bind (hour rest) (floor seconds 3600)
+          (multiple-value-bind (minute second) (floor rest 60)
+            (format-day pattern day hour minute second 0))))
+      (multiple-value-bind (day hour minute second) (time-day time)
+        (format-day pattern day hour minute second (and (search "z" pattern) (local-offset time))))))
 
 (defun utc-time-words (time)
   "The universal TIME in universal time, any year: 2026-10-06 20:15:00 UTC;
 NIL for none."
-  (when time
-    (multiple-value-bind (day seconds) (floor time 86400)
-      (multiple-value-bind (hour rest) (floor seconds 3600)
-        (multiple-value-bind (minute second) (floor rest 60)
-          (format-day "%F %T UTC" day hour minute second))))))
+  (and time (format-time "%F %T UTC" time :utc t)))
 
 (defun duration-words (seconds)
   "SECONDS, how long something took or may take, in words: 1 second, 0.25
@@ -343,11 +345,23 @@ significant digits, any other to a tenth."
   "The patterns READ-DATE-TEXT reads a date as typed with, each made once, by
 the part of a date it reads.")
 
-(defun read-date-text (input today)
+(defun from-now-time (input now)
+  "The universal time INPUT, a time from now written as settings take one with
+its units (50m, 1h3m, 90s), comes to from NOW, rounded up to its next whole
+minute; NIL when INPUT is no such time."
+  (multiple-value-bind (seconds unit)
+      (tuatara.runtime:seconds-in-words (string-trim '(#\Space #\Tab) input))
+    (and seconds unit (plusp seconds)
+         (* 60 (ceiling (+ now seconds) 60)))))
+
+(defun read-date-text (input today &optional now)
   "The day INPUT, a date as typed, names, TODAY being the day number of
 today, as five values: its day number, the hour and minute when INPUT names
 a time, and the hour and minute it ends at when it names a time range. The
-result is NIL when INPUT names no date.
+result is NIL when INPUT names no date. With NOW, the universal time taken as
+now, a time from now alone names that day and time: 50m, 1h3m, 90s, 2h, 1d,
+the minute it comes to, rounded up, so that it is never sooner (m is minutes
+here; +1m stays a month).
 Read these. Nothing, . or today is today, and tomorrow and yesterday are as
 they say. fri is the Friday to come (a week on when today is one). +3d, -1w,
 +1m, +1y count from today, or from the date before it (2026-10-20 +3d). 5 is
@@ -362,6 +376,10 @@ A month or year on keeps the day of the month, a day past the month's end
 counted on into the next: 31 January a month on is 3 March. A day or a time
 that does not exist (31 in a month of 30 days, 13pm, 10:00-25:00) names no
 date. O(length of INPUT)."
+  (let ((from-now (and now (from-now-time input now))))
+    (when from-now
+      (return-from read-date-text
+        (multiple-value-bind (day hour minute) (time-day from-now) (values day hour minute nil nil)))))
   (multiple-value-bind (year month day) (day-date today)
     (let ((weekday (weekday today))
           (text (string-downcase (string-trim '(#\Space #\Tab)
@@ -741,9 +759,9 @@ when it gives none; NIL when it names no date."
     (multiple-value-bind (after day nanos zone) (date-time-at text 0 end :iso)
       (cond (after
              (values (- (+ (* 86400 day) (floor nanos 1000000000)) (* 60 (or zone 0))) zone))
-            ;; a date running into more digits is none
+            ;; a date running into more digits, or into a time that is not one, is none
             ((let ((at (nth-value 3 (written-date-at text 0 end :iso))))
-               (and at (not (ascii-digit text at end))))
+               (and at (not (ascii-digit text at end)) (not (char-at-p text at end "Tt"))))
              (multiple-value-bind (year month day) (written-date-at text 0 end :iso)
                (values (utc-universal-time year month day) nil)))
             ;; a month alone: its first day

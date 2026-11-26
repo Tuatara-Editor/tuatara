@@ -106,15 +106,19 @@ as COUNT says, each moving down a line, or with a negative COUNT up a line
 first: what \\[list-mark-entry], \\[list-mark-for-deletion] and \\[list-unmark-entry] do in that list.")
   (:method ((mode marked-list-mode) list mark count)
     "A line showing no entry, or one that takes no mark, is passed over; the
-list is drawn again once (REDRAW-LIST)."
-    (loop repeat (abs count)
-          do (when (minusp count)
-               (setf (tuatara.buffer:buffer-point list) (list-line-after list (tuatara.buffer:buffer-point list) -1)))
-             (let ((key (entry-mark-key list (list-entry-at list))))
-               (when key (set-entry-mark list key mark)))
-             (when (plusp count)
-               (setf (tuatara.buffer:buffer-point list) (list-line-after list (tuatara.buffer:buffer-point list) 1))))
-    (redraw-list list)))
+rows of those marked are drawn again (REDRAW-TABLE-ROWS), or in a list that
+is no table the whole list, once (REDRAW-LIST)."
+    (let ((changed '()))
+      (loop repeat (abs count)
+            do (when (minusp count)
+                 (setf (tuatara.buffer:buffer-point list) (list-line-after list (tuatara.buffer:buffer-point list) -1)))
+               (let* ((entry (list-entry-at list)) (key (entry-mark-key list entry)))
+                 (when key
+                   (set-entry-mark list key mark)
+                   (push (entry-member-or-self entry) changed)))
+               (when (plusp count)
+                 (setf (tuatara.buffer:buffer-point list) (list-line-after list (tuatara.buffer:buffer-point list) 1))))
+      (redraw-table-rows list changed))))
 
 (defgeneric unmark-entries (mode list)
   (:documentation "Take every mark off the entries of LIST, a buffer in MODE, as
@@ -228,25 +232,73 @@ this line."
           (deletion (message "No ~as marked for deletion" noun))
           (t (message "No ~a on this line" noun)))))
 
-(defun list-question (verb noun keys &key (name-of #'identity) where after (the t))
+(defun plural-noun (noun)
+  "The plural of NOUN, an English noun or words ending in one, made by the
+common rule: entry, entries; buffer, buffers."
+  (let ((length (length noun)))
+    (if (and (> length 1) (char= (char noun (1- length)) #\y) (not (find (char noun (- length 2)) "aeiou")))
+        (concatenate 'string (subseq noun 0 (1- length)) "ies")
+        (concatenate 'string noun "s"))))
+
+(defun list-question (verb noun keys &key (name-of #'identity) where after (the t) details)
   "What a list asks before VERB (\"Delete\") acts on its entries known by KEYS,
-NOUN naming one, without the question mark: VERB the NOUN and its name (what
-NAME-OF gives of the key) for one, VERB the N NOUNs for more; WHERE, words
-saying where they are (\"in 2 directories\"), and AFTER, when given, then.
-With THE NIL, the name of one alone (VERB NAME), and N NOUNs for more; with
-VERB NIL, the words for the entries alone. Those of them the list's search
-filters hide are said (*LIST-HIDDEN-COUNT*), as in the 4 buffers (2 hidden by
-the filter), and so are those its folded sections hide (*LIST-FOLDED-COUNT*),
-as in the 3 keys (1 in a folded section)."
-  (format nil "~@[~a ~]~a~[~:; (~:*~d hidden by the filter)~]~[~:; (~:*~d in ~:*~[~;a folded section~:;folded ~
-               sections~])~]~@[ ~a~]~@[ ~a~]"
-          verb
-          (if (rest keys)
-              (format nil "~:[~;the ~]~d ~as" the (length keys) noun)
-              (format nil "~:[~*~;the ~a ~]~a" the noun (funcall name-of (first keys))))
-          (min *list-hidden-count* (length keys))
-          (min *list-folded-count* (length keys))
-          where after))
+NOUN naming one, as two values: the question, short and without the question
+mark, and its details, the lines shown beside it (CALL-WITH-QUESTION-DETAILS),
+or NIL when there are none. The question is VERB the NOUN and its name (what
+NAME-OF gives of the key) for one, VERB the N NOUNs for more (PLURAL-NOUN),
+then AFTER when given (\"to:\"). With THE NIL, the name of one alone (VERB
+NAME), and N NOUNs for more; with VERB NIL, the words for the entries alone.
+The details say how
+many of them the list's search filters hide (*LIST-HIDDEN-COUNT*) and how many
+its folded sections hide (*LIST-FOLDED-COUNT*), then WHERE, words saying where
+they are (\"in 2 directories\"), then DETAILS, lines of the caller's own."
+  (let* ((count (length keys))
+         (hidden (min *list-hidden-count* count))
+         (folded (min *list-folded-count* count))
+         (lines (remove nil (list (and (plusp hidden)
+                                       (format nil "~:[~d of them ~:*~[~;is~:;are~]~;It is~*~] hidden by the filter."
+                                               (= count 1) hidden))
+                                  (and (plusp folded)
+                                       (format nil "~:[~d of them ~:*~[~;is in a folded section~:;are in folded ~
+                                                    sections~]~;It is in a folded section~*~]."
+                                               (= count 1) folded))
+                                  (and where (format nil "They are ~a." where))))))
+    (values (format nil "~@[~a ~]~a~@[ ~a~]"
+                    verb
+                    (if (rest keys)
+                        (format nil "~:[~;the ~]~d ~a" the count (plural-noun noun))
+                        (format nil "~:[~*~;the ~a ~]~a" the noun (funcall name-of (first keys))))
+                    after)
+            (cond ((and lines details) (format nil "~{~a~%~}~%~a" lines details))
+                  (lines (format nil "~{~a~^~%~}" lines))
+                  (t details)))))
+
+;; The two values of LIST-QUESTION go to the asker together, so that no caller drops the details.
+(defmacro ask-list-question ((asker &key (end "?")) question-form &rest arguments)
+  "Ask a question about the entries of a list: QUESTION-FORM, a call of
+LIST-QUESTION or RIMU-QUESTION, gives the question and its details, and ASKER
+(Y-OR-N-P*, YES-OR-NO-P*, READ-STRING, READ-NATIVE-PATH) is called with the
+question followed by END (a string, \"?\" when not given; \" \" before a
+prompt to type into), then ARGUMENTS, and the details as :DETAILS. Gives
+what ASKER gives."
+  (let ((question (gensym "QUESTION")) (details (gensym "DETAILS")))
+    `(multiple-value-bind (,question ,details) ,question-form
+       (,asker (format nil "~a~a" ,question ,end) ,@arguments :details ,details))))
+
+(defun names-shown (items &key (most 20) (name-of #'identity) (separator :lines))
+  "The names of ITEMS, a list, what NAME-OF gives of each, the first MOST of
+them and how many more, or NIL for none. With SEPARATOR :LINES one name to a
+line, the last line \"and 5 more\"; with :WORDS run together as words, \"a, b
+and c\" or \"a, b, c and 2 more\". All are named when one more is all that
+would be left out."
+  (let* ((count (length items))
+         (shown (if (> count (1+ most)) most count))
+         (names (mapcar name-of (subseq items 0 shown)))
+         (more (and (< shown count) (- count shown))))
+    (cond ((null names) nil)
+          ((eq separator :lines) (format nil "~{~a~^~%~}~@[~%and ~d more~]" names more))
+          (more (format nil "~{~a~^, ~} and ~d more" names more))
+          (t (format nil "~{~a~#[~; and ~:;, ~]~}" names)))))
 
 (defun list-every-entry (list)
   "The entries of LIST in order, a sequence: those its lines show, with those
@@ -264,7 +316,7 @@ order, those its folded sections or its search filters hide too
 \(ENTRY-MEMBER)."
   (let ((wanted (make-hash-table :test 'equal)))
     (dolist (key keys) (setf (gethash key wanted) t))
-    (map 'list (lambda (entry) (if (and (consp entry) (eq (first entry) :member)) (second entry) entry))
+    (map 'list #'entry-member-or-self
          (remove-if-not (lambda (entry) (gethash (entry-mark-key list entry) wanted)) (list-every-entry list)))))
 
 ;;; How many are marked, in the mode line

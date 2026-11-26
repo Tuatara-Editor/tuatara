@@ -3,12 +3,16 @@
 
 (in-package #:tuatara.tests)
 
+(defun week-start-keys (keys)
+  "KEYS with BOW typed as M-x calendar-beginning-of-week, which has no key of its own."
+  (cl-ppcre:regex-replace-all "BOW" keys "M-x c a l e n d a r - b e g i n n i n g - o f - w e e k RET"))
+
 (define-modal-test (calendar week-commands-from-the-weeks-edge)
-  ;; on the week's first day C-a goes a week back, on its last C-e a week on; a count says how many
-  (flet ((at (keys) (nth-value 2 (calendar-keys keys))))
-    (is = (calendar-day 2026 9 21) (at "C-a C-a"))
-    (is = (calendar-day 2026 9 14) (at "C-a C-a C-a"))
-    (is = (calendar-day 2026 9 14) (at "C-a C-u 2 C-a"))
+  ;; on the week's first day the week-start command goes a week back, on its last C-e a week on; a count says how many
+  (flet ((at (keys) (nth-value 2 (calendar-keys (week-start-keys keys)))))
+    (is = (calendar-day 2026 9 21) (at "BOW BOW"))
+    (is = (calendar-day 2026 9 14) (at "BOW BOW BOW"))
+    (is = (calendar-day 2026 9 14) (at "BOW C-u 2 BOW"))
     (is = (calendar-day 2026 10 11) (at "C-e C-e"))
     (is = (calendar-day 2026 10 18) (at "C-e C-e C-e"))))
 
@@ -44,14 +48,14 @@
 (define-modal-test (calendar week-commands-counted-either-way)
   ;; a count says how many starts or ends of weeks to go past, back or on; a negative one the other way, zero
   ;; none; the same from a week's edge and from within it, and with weeks starting on another day
-  (flet ((at (keys) (nth-value 2 (calendar-keys keys))))
-    (is = (calendar-day 2026 10 5) (at "C-u - 1 C-a"))
-    (is = (calendar-day 2026 10 12) (at "C-u - 2 C-a"))
-    (is = (calendar-day 2026 10 5) (at "C-a C-u - 1 C-a"))
-    (is = (calendar-day 2026 10 3) (at "C-u 0 C-a"))
+  (flet ((at (keys) (nth-value 2 (calendar-keys (week-start-keys keys)))))
+    (is = (calendar-day 2026 10 5) (at "C-u - 1 BOW"))
+    (is = (calendar-day 2026 10 12) (at "C-u - 2 BOW"))
+    (is = (calendar-day 2026 10 5) (at "BOW C-u - 1 BOW"))
+    (is = (calendar-day 2026 10 3) (at "C-u 0 BOW"))
     (is = (calendar-day 2026 10 11) (at "C-u 2 C-e"))
     (is = (calendar-day 2026 10 18) (at "C-e C-u 2 C-e"))
     (is = (calendar-day 2026 9 27) (at "C-u - 1 C-e"))
     (let ((tuatara-user:*calendar-week-start-day* 0))
-      (is = (calendar-day 2026 9 27) (at "C-a"))
+      (is = (calendar-day 2026 9 27) (at "BOW"))
       (is = (calendar-day 2026 10 10) (at "C-e")))))

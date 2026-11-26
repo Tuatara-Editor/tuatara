@@ -81,9 +81,7 @@ followed by another is not missed."
   "True when a message said TEXT since the step before the one
 AUTO-SAVE-SESSION waits on began (*SESSION-MESSAGES-START*); after the
 session, since its last step but one began."
-  (let ((log (tuatara.command::messages-buffer)))
-    (search text
-            (tuatara.buffer:buffer-string log :start (min *session-messages-start* (tuatara.buffer:buffer-size log))))))
+  (search text (messages-since-step)))
 
 (defun packages-settled-p ()
   "True when no package is being fetched, checked or loaded, nor waits to be
@@ -596,8 +594,9 @@ the tests' own keyring lacks: the directory and the key's fingerprint."
   ;; a commit's is in its header only
   (false (tuatara.packages::signature-block (format nil "tree 0~%author A~%~%-----BEGIN PGP SIGNATURE-----~%x~%-----END PGP SIGNATURE-----~%") :commit))
   ;; gpg's status lines read only at the start of a line
-  (false (tuatara.packages::gnupg-status (format nil "Name [GNUPG:] GOODSIG 1 x~%") "GOODSIG"))
-  (true (tuatara.packages::gnupg-status (format nil "[GNUPG:] NEWSIG~%[GNUPG:] GOODSIG 1 x~%") "GOODSIG"))
+  (false (tuatara.defaults::gpg-status-lines (format nil "Name [GNUPG:] GOODSIG 1 x~%")))
+  (is equal '("NEWSIG" "GOODSIG 1 x")
+      (tuatara.defaults::gpg-status-lines (format nil "[GNUPG:] NEWSIG~%[GNUPG:] GOODSIG 1 x~%")))
   ;; an expired signature, or one made by an expired key, is expired, as for a commit
   (loop for (line which) in '(("EXPSIG" :signature) ("EXPKEYSIG" :key))
         do (let ((signature (tuatara.packages::tag-signature
@@ -607,6 +606,20 @@ the tests' own keyring lacks: the directory and the key's fingerprint."
                              (format nil "tag v1~%~%-----BEGIN PGP SIGNATURE-----~%x~%-----END PGP SIGNATURE-----~%"))))
              (is eq :expired (getf signature :status))
              (is eq which (getf signature :expired))))
+  ;; a tag holds one signature: with a second, one failing makes it bad, and two good ones are not taken
+  (flet ((status (&rest lines)
+           (getf (tuatara.packages::tag-signature
+                  (format nil "~{[GNUPG:] ~a~%~}" lines)
+                  (format nil "tag v1~%~%-----BEGIN PGP SIGNATURE-----~%x~%-----END PGP SIGNATURE-----~%"))
+                 :status)))
+    (let ((good (list "NEWSIG" "GOODSIG 42C0A0291C34DD19 Ana" "VALIDSIG D647C771761F736B31ED8A2E42C0A0291C34DD19 x")))
+      (is eq :good (apply #'status good))
+      (is eq :bad (apply #'status (append good '("NEWSIG" "BADSIG 1C34DD1942C0A029 Bo"))))
+      (is eq :bad (apply #'status (append '("NEWSIG" "REVKEYSIG 1C34DD1942C0A029 Bo") good)))
+      (is eq :error (apply #'status (append good good)))
+      (is eq :error (apply #'status (append good '("NEWSIG" "ERRSIG 1C34DD1942C0A029 22 10 00 1795651200 9 -")))))
+    (is eq :unchecked (status "NEWSIG" (concatenate 'string "ERRSIG 1C34DD1942C0A029 22 10 00 1795651200 9 "
+                                                    "D647C771761F736B31ED8A2E42C0A0291C34DD19"))))
   ;; a signed commit git could not check is no unsigned one
   (is eq :error (getf (tuatara.packages::commit-signature (list "N" "" "" "" "")
                                                           (format nil "tree 0~%gpgsig -----BEGIN PGP SIGNATURE-----~% x~% -----END PGP SIGNATURE-----~%~%m~%"))

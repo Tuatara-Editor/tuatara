@@ -134,7 +134,7 @@ press ~C-g~.
 ~TAB~ indents the line the cursor is on. The cursor can be anywhere in the
 line. When the line is already right, ~TAB~ does something else: it completes
 the name before the cursor, as the section on language servers describes. The
-setting =*tab-always-indent*= says what ~TAB~ does. Its default,
+setting =*tab-key-action*= says what ~TAB~ does. Its default,
 =:complete=, indents and then completes. With =t= it only indents. With =nil=
 it indents only while the cursor is in the blanks at the start of the line, and
 anywhere else it moves on to the next tab stop.
@@ -154,22 +154,23 @@ A /tab stop/ is a column that a tab character moves to. Tuatara puts them 4
 columns apart. =*tab-width*= changes that. Indentation is made of spaces unless
 you say otherwise, which keeps a file looking the same in every program. Some
 projects, a Makefile or a C project with its own style, use tab characters. For
-those, ~M-x indent-tabs-mode~ switches the buffer between tabs and spaces, and
-=*indent-tabs-mode*= sets the starting choice. ~M-x insert-tab~ puts in one tab
+those, ~M-x indent-with-tabs-mode~ switches the buffer between tabs and spaces, and
+=*indent-with-tabs*= sets the starting choice. ~M-x insert-tab~ puts in one tab
 character whatever the settings say, and ~C-z TAB~ (=tab-to-tab-stop=) moves on
 to the next tab stop with spaces or a tab as the buffer wants.
 
-The init file has forms for one language at a time:
+The init file sets them for one language at a time:
 
 #+begin_example
-(set-indentation 'c 2)            ; two columns a level in C
-(set-tab-width 'c-mode 8)         ; tab stops 8 apart in C files
-(set-indent-tabs-mode 'bash t)    ; tabs in shell scripts
+(set-indentation 'c 2)                         ; two columns a level in C
+(setf *tab-width-modes* '((c-mode . 8)))       ; tab stops 8 apart in C files
+(setf *indent-with-tabs-modes* '((bash . t)))  ; tabs in shell scripts
 #+end_example
 
 =set-indentation= takes 1 to 16 columns for a language whose rules indent by
-levels. =set-tab-width= takes 1 to 64, and =prog-mode= in place of a language
-means every programming language. A file can also say its own settings in its
+levels. A tab width is 1 to 64, and =prog-mode= in place of a language means
+every programming language. The starter init file lists the languages whose
+own tools require tabs in =*indent-with-tabs-modes*=. A file can also say its own settings in its
 first line or in a block of =Local Variables:= at its end, and Tuatara reads
 them while =*file-local-variables*= is =t=.
 
@@ -208,7 +209,7 @@ shfmt for shell scripts. The section on language servers covers it.
    ~I~, type four blanks and press ~C-g~. The line sits too far in. Press ~>~.
    It moves back to where the language wants it. Press ~u~ (non-modal: ~C-/~) to
    undo that.
-6. Try the tab setting. Press ~M-x~, type =indent-tabs-mode= and press ~RET~.
+6. Try the tab setting. Press ~M-x~, type =indent-with-tabs-mode= and press ~RET~.
    Press ~g g~, ~j j~ to reach the =total= line, ~I~, type four blanks and
    press ~C-g~. Press ~>~, then ~M-m~. The mode line says =C1=: the
    indentation is one tab character. With spaces it says =C4=. Run the command
@@ -218,9 +219,9 @@ shfmt for shell scripts. The section on language servers covers it.
 
 *** Commands and settings
 
-#+table: commands indent-for-tab-command indent-region indent-selection-or-line back-to-indentation tab-to-tab-stop insert-tab indent-tabs-mode
+#+table: commands indent-for-tab-command indent-region indent-selection-or-line back-to-indentation tab-to-tab-stop insert-tab indent-with-tabs-mode
 
-#+table: settings *tab-always-indent* *indent-new-lines* *tab-width* *indent-tabs-mode* *file-local-variables*
+#+table: settings *tab-key-action* *indent-new-lines* *tab-width* *indent-with-tabs* *tab-width-modes* *indent-with-tabs-modes* *file-local-variables*
 
 ** Comments
 
@@ -275,21 +276,21 @@ not run. Tuatara helps in three ways.
 /Showing the partner./ When the cursor is on a bracket, or just after a closing
 one, the bracket that pairs with it is lit in the =:paren-match= colour. A
 bracket with no partner, or the wrong kind, is lit in =:paren-mismatch=. It is
-on as standard, and ~M-x show-paren-mode~ turns it off and on in every buffer.
-To start every session with it off, put =(setf *show-paren-mode* nil)= in your
+on as standard, and ~M-x show-matching-bracket-mode~ turns it off and on in every buffer.
+To start every session with it off, put =(setf *show-matching-bracket* nil)= in your
 init file.
 When you type a closing bracket whose partner is out of sight, the echo area
-tells you what it matches (=*blink-matching-paren*= controls that).
+tells you what it matches (=*say-matching-bracket*= controls that).
 
-/Closing them as you type./ ~M-x electric-pair-mode~ makes an opening bracket
+/Closing them as you type./ ~M-x auto-close-mode~ makes an opening bracket
 write its closing half too, with the cursor between. Typing the closing half
 when it is already there steps over it, and ~DEL~ between an empty pair takes
 both away. It is off as standard. To turn it on for every session, put
-=(setf *electric-pair-mode* t)= in your init file. It does not pair everything,
+=(setf *auto-close-mode* t)= in your init file. It does not pair everything,
 because some characters are usually plain text: the apostrophe in "don't", for
-example. =*electric-pair-typing*= says which are paired. Its default,
+example. =*auto-close-delimiters*= says which are paired. Its default,
 =:safe=, pairs the delimiters of =*pair-delimiters*= except those in
-=*electric-pair-safe-exclusions*=. =:all= pairs every one.
+=*auto-close-safe-exclusions*=. =:all= pairs every one.
 
 /Putting a pair round something./ Select some text and press ~M-(~
 (=insert-pair=) to put brackets round it. With nothing selected it writes an
@@ -317,7 +318,7 @@ The second line is indented one level.
    if you need to move. The matching =)= at the end of the line is lit.
 4. Press ~m i~. The text inside the brackets is selected, and ~M-o~ makes the
    selection one piece larger. ~C-g~ lets go.
-5. Press ~M-x~, type =electric-pair-mode= and press ~RET~. On a new line type
+5. Press ~M-x~, type =auto-close-mode= and press ~RET~. On a new line type
    =[=. You get =[]= with the cursor between. Type =1= and then =]=. The
    closing bracket is stepped over and you have =[1]=. Press ~u~ (non-modal:
    ~C-/~) until the line is gone, and run the command again to switch pairing
@@ -327,9 +328,9 @@ The second line is indented one level.
 
 *** Commands and settings
 
-#+table: commands show-paren-mode electric-pair-mode insert-pair delete-pair select-pair select-inside-pair select-sexp select-sexp-inside
+#+table: commands show-matching-bracket-mode auto-close-mode insert-pair delete-pair select-pair select-inside-pair select-sexp select-sexp-inside
 
-#+table: settings *show-paren-mode* *blink-matching-paren* *electric-pair-mode* *electric-pair-typing* *electric-pair-safe-exclusions* *pair-delimiters*
+#+table: settings *show-matching-bracket* *say-matching-bracket* *auto-close-mode* *auto-close-delimiters* *auto-close-safe-exclusions* *pair-delimiters*
 
 #+table: faces :paren-match :paren-mismatch
 
@@ -542,7 +543,7 @@ the names that fit what you have typed, each with what it is, and the chosen
 one's documentation beside the list. Typing narrows the list. ~C-n~ and ~C-p~
 choose, ~TAB~ or ~RET~ puts the chosen name in, and ~C-g~ closes the list. In
 Lisp it offers the names of Lisp, and elsewhere what the server offers. Because
-=*tab-always-indent*= is =:complete=, ~TAB~ also completes when the line is
+=*tab-key-action*= is =:complete=, ~TAB~ also completes when the line is
 already indented right.
 
 Without a server you can still complete from the words you already have. ~M-/~
@@ -577,7 +578,9 @@ key. ~C-c i~ shows /inlay hints/: the types of variables and the names of the
 parameters a call fills in, written faint. ~C-c S~ colours each name by what the
 server says it is, a parameter, a field, a macro, over the usual colours. ~C-c
 K~ shows /code lenses/, short notes such as =3 references= or =Run test= at the
-end of a line, and ~C-c k~ runs the one on the current line. Their settings are
+end of a line, and ~C-c k~ runs the one on the current line. A server that has
+not answered such a command after five minutes is given up on, and a change it
+asks to make after that is asked about first. Their settings are
 =*lsp-inlay-hints*=, =*lsp-semantic-tokens*= and =*lsp-code-lenses*=, which say
 whether each is on as a file opens.
 
@@ -902,22 +905,62 @@ buffer =*lisp-scratch*= (~M-x lisp-scratch~) and your init file.
   and writes its value into the buffer.
 - ~M-:~ (=eval-expression=) works anywhere. It asks for an expression, shows its
   value, and runs only what you typed.
-- ~C-c C-m~ (=pp-macroexpand-last-expression=) shows a macro call expanded once,
+- ~C-c C-m~ (=lisp-macroexpand=) shows a macro call expanded once,
   laid out in a window of its own.
 
 A file opened safely (chapter 12) runs nothing: the keys say so and do nothing.
 
-~M-x ielm~ opens =*ielm*=, a prompt where you type Lisp and read the answer at
-once. The modal keys are off there, so you type without pressing ~i~. ~RET~ runs
-the input when it is a whole expression, and otherwise starts a new line of it.
-~C-j~ runs it as it is. ~M-p~ and ~M-n~ go back and forward through what you
-typed before, ~C-c C-u~ clears the input, and ~TAB~ completes a name. ~C-c C-b~
-chooses the buffer that the Lisp you type sees as current, so that =(insert
-"x")= puts text there.
+~M-x lisp-repl~ opens =*Lisp REPL*=, a prompt where you type Lisp and read the
+answer at once. The modal keys are off there, so you type without pressing ~i~.
+~RET~ runs the input when it is a whole expression, and otherwise starts a new
+line of it. ~C-j~ runs it as it is. ~M-p~ and ~M-n~ go back and forward through
+what you typed before, ~C-c C-u~ clears the input, and ~TAB~ completes a name.
+~C-c C-b~ chooses the buffer that the Lisp you type sees as current, so that
+=(buffer-insert (current-buffer) 0 "x")= puts text there.
 
-When something fails, ~M-x toggle-debug-on-error~ makes the next error show the
+The Lisp you type, the init file's included, reaches the functions a package
+uses (chapter 19). A place in a buffer is counted in bytes from 0, as the
+editor counts it, so an =é= takes two. =(buffer-point (current-buffer))= is
+where the cursor is, =(setf (buffer-point b) 0)= moves it to the start,
+=(buffer-forward-line b p 1)= gives the start of the next line and
+=(with-point-kept (b) ...)= puts the cursor back after the forms inside.
+
+Before 0.90.47 the Lisp you type also had names of its own for these, counting
+characters from 1. They are gone; each is written so now, =b= a buffer and =p=
+a place:
+
+| Before 0.90.47                      | Now                                                       |
+|-------------------------------------+-----------------------------------------------------------|
+| =point=, =goto-char=                | =(buffer-point b)=, =(setf (buffer-point b) p)=           |
+| =point-min=, =point-max=            | =(buffer-start b)=, =(buffer-end b)=                      |
+| =bobp=, =eobp=                      | compare =(buffer-point b)= with those two                 |
+| =bolp=, =eolp=                      | compare with =(buffer-line-start b p)=, =buffer-line-end= |
+| =char-after=, =char-before=         | =(buffer-char-at b p)=, =(buffer-char-before b p)=        |
+| =forward-char=, =backward-char=     | =(buffer-forward-char b p n)=, with =n= below 0 back      |
+| =line-beginning-position=           | =(buffer-line-start b p)=                                 |
+| =line-end-position=                 | =(buffer-line-end b p)=                                   |
+| =line-number-at-pos=                | =(buffer-line-number b p)=, counting lines from 0         |
+| =count-lines=                       | =(span-line-count b (list (cons start end)))=             |
+| =forward-line=                      | =(buffer-forward-line b p n)=                             |
+| =count-words=                       | =(buffer-count-words b start end)=                        |
+| =insert=                            | =(buffer-insert b p text)=                                |
+| =delete-region=, =erase-buffer=     | =(delete-spans b (list (cons start end)))=                |
+| =buffer-substring=                  | =(buffer-string b :start start :end end)=                 |
+| =buffer-string=, =buffer-size=      | the same names, given the buffer, in bytes                |
+| =kill-new=                          | =(kill-text text)=                                        |
+| =narrow-to-region=, =widen=         | =(narrow-buffer b start end)=, =(widen-buffer b)=         |
+| =save-restriction=                  | =(with-narrowing-kept (b) ...)=                           |
+| =buffer-name=, =buffer-list=        | the same names, =buffer-name= given the buffer            |
+| =buffer-file-name=                  | =(native (buffer-file b))=                                |
+| =get-buffer=                        | =(find-buffer name)=                                      |
+| =get-buffer-create=                 | =(find-or-make-buffer name)=                              |
+| =switch-to-buffer=, =find-file=     | =(show-buffer b)=, =(visit-path path)=                    |
+| =set-buffer=, =with-current-buffer= | =(with-buffer-current (b) ...)=                           |
+| =save-excursion=                    | =(with-point-kept (b) ...)=                               |
+
+When something fails, ~M-x toggle-backtrace-on-error~ makes the next error show the
 calls that were running when it happened, innermost first, in =*Backtrace*=.
-The setting =*debug-on-error*= makes that the standard.
+The setting =*backtrace-on-error*= makes that the standard.
 
 #+begin_try Try it, with a Lisp function that adds numbers
 1. Open =~/code-practice/sum.lisp=, press ~i~ and type these lines. ~RET~
@@ -938,7 +981,7 @@ The setting =*debug-on-error*= makes that the standard.
    and hexadecimal.
 4. Put the cursor on =add-up= in the last line, with ~C-a~ (modal: ~g h~) and
    ~l l~, and press ~M-.~. It goes to the =defun=. Press ~M-,~ to come back.
-5. Press ~M-x~, type =ielm= and press ~RET~. After the prompt type
+5. Press ~M-x~, type =lisp-repl= and press ~RET~. After the prompt type
    =(add-up '(10 20))= and press ~RET~. The answer is =30=. Press ~M-p~ and the
    same input comes back.
 6. Press ~M-x~, type =lisp-scratch= and press ~RET~ for a buffer of your own to
@@ -948,11 +991,11 @@ The setting =*debug-on-error*= makes that the standard.
 
 *** Commands
 
-#+table: commands eval-last-expression eval-top-level-form eval-region eval-buffer eval-print-last-expression eval-expression pp-macroexpand-last-expression lisp-scratch ielm ielm-send-input ielm-return ielm-previous-input ielm-next-input ielm-kill-input ielm-change-working-buffer ielm-tab toggle-debug-on-error
+#+table: commands eval-last-expression eval-top-level-form eval-region eval-buffer eval-print-last-expression eval-expression lisp-macroexpand lisp-scratch lisp-repl lisp-repl-send-input lisp-repl-return lisp-repl-previous-input lisp-repl-next-input lisp-repl-kill-input lisp-repl-change-working-buffer lisp-repl-tab toggle-backtrace-on-error
 
 *** Settings
 
-#+table: settings *debug-on-error*
+#+table: settings *backtrace-on-error*
 
 ** LaTeX
 

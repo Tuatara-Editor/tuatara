@@ -53,7 +53,7 @@
           (type-keys second "i z z <escape>")
           (see :typed-in-another (and (wait-until (lambda () (search "zz" (shown-text first))) 30) t))
           (setf *to-close* second)
-          (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-close-pressed) (tuatara.io:null-pointer))
+          (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-close-pressed) (tuatara.runtime:null-pointer))
           (see :closed-another (and (wait-until (lambda () (= 1 (length (windows)))) 30) t))))
       ;; files dropped on the window: a text, then a picture, sent as a file in memory
       (tuatara.frontend.gtk::push-event first :drop :files (list (fourth *arguments*)) :column 1 :row 1)

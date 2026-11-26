@@ -95,7 +95,7 @@ the list."
     (true (tuatara.frontend.fake:fake-frame-showing f "incomplete")))
   ;; not a list: said so
   (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x / s" :text "plain text")
-                                                  "Only a list or a file of records")))
+                                                  "Not a list or a file of records")))
 
 (define-test (search-filters stacked)
   ;; each filter narrows what the one before it left
@@ -1804,3 +1804,32 @@ JSON and the value looked up in what is read: the oracle of the JSON Lines filte
       (sb-int:unencapsulate 'tuatara.text:string-octet-length 'counted)
       (tuatara.buffer:kill-buffer buffer))
     (true (< counted 100))))
+
+(define-test (search-filters long-lines-let-a-stop-in)
+  ;; a filter trying lines of its own way asks whether to stop as the octets pass, not only every 1024 lines,
+  ;; so that a stop asked for after the first of many long lines ends the scan within two of them
+  (let* ((line (make-string 300000 :initial-element #\a))
+         (rope (tuatara.text:string->rope (format nil "~{~a~%~}" (make-list 6 :initial-element line))))
+         (tried 0)
+         (filter (tuatara.defaults::make-search-filter "b" :test (lambda (scanner text length)
+                                                                   (declare (ignore scanner text length))
+                                                                   (incf tried)
+                                                                   nil))))
+    (tuatara.defaults::lines-decoded filter rope
+                                     (coerce (list 0 (tuatara.text:rope-octet-length rope)) '(vector fixnum)) nil
+                                     :halt (lambda () (plusp tried)))
+    (true (<= 1 tried 2) "~d long lines tried after the stop" tried)))
+
+(define-test (search-filters undo-goes-through-hidden-lines)
+  ;; undo and redo take back a change to the lines filters now hide, whatever command asks for them
+  ;; (cursors-undo as well as undo)
+  (with-test-buffer (b "*undo-hidden*" :text (format nil "a~%b~%c~%"))
+    (tuatara.buffer:buffer-insert b 2 "x")
+    (tuatara.display:hide-ranges b (make-array 2 :element-type 'fixnum :initial-contents '(1 4)))
+    (let ((tuatara.buffer:*before-edit-functions* (list 'tuatara.defaults::guard-hidden-lines)))
+      (finish (tuatara.buffer:buffer-undo b))
+      (is string= (format nil "a~%b~%c~%") (tuatara.buffer:buffer-string b))
+      (finish (tuatara.buffer:buffer-redo b))
+      (is string= (format nil "a~%xb~%c~%") (tuatara.buffer:buffer-string b))
+      ;; an edit of a hidden line is still refused
+      (fail (tuatara.buffer:buffer-insert b 3 "y")))))

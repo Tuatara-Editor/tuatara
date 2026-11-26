@@ -283,6 +283,7 @@ its number, size, channels, pixels and place: lists EQUAL compares."
       (tuatara.frontend:frontend-set-primary-selection remote "selected")
       (true (tuatara.frontend:frontend-toggle-state remote :fullscreen))
       (tuatara.frontend:frontend-raise remote)
+      (tuatara.frontend:frontend-bell remote)
       (setf (tuatara.frontend::remote-exit-code remote) 3)
       (tuatara.frontend:frontend-stop remote)
       (is eql 3 (client-done runner))
@@ -306,7 +307,32 @@ its number, size, channels, pixels and place: lists EQUAL compares."
       (is equal "copied" (tuatara.frontend.fake:fake-clipboard local))
       (is equal "selected" (tuatara.frontend.fake:fake-primary local))
       (is equal '(:fullscreen) (tuatara.frontend.fake:fake-toggles local))
-      (is = 1 (tuatara.frontend.fake:fake-raised local)))))
+      (is = 1 (tuatara.frontend.fake:fake-raised local))
+      (is = 1 (tuatara.frontend.fake:fake-bells local)))))
+
+(define-test (remote client-paints-what-came-before-the-editor-went)
+  ;; a send to an editor that has gone is answered by painting everything it sent before going, though
+  ;; the client's reader takes it in late, as on a busy machine
+  (let ((local (make-instance 'queued-fake-frontend :width 20 :height 4)))
+    (multiple-value-bind (remote client) (connect-remote local :run nil)
+      (sb-int:encapsulate 'tuatara.frontend::take-from-editor 'late
+                          (lambda (take client kind inbox)
+                            (when (eq kind :frame) (sleep 0.3))
+                            (funcall take client kind inbox)))
+      (unwind-protect
+           (progn
+             (tuatara.frontend:frontend-begin-frame remote)
+             (tuatara.frontend:frontend-put-row remote 0 "kiwi")
+             (tuatara.frontend:frontend-end-frame remote)
+             (setf (tuatara.frontend::remote-exit-code remote) 3)
+             (tuatara.frontend:frontend-stop remote)
+             (type-at local (tuatara.frontend:make-event
+                               :key :key (tuatara.frontend:spec-key
+                                          (first (tuatara.frontend:parse-key-sequence "a")))))
+             (is eql 3 (client-done (sb-thread:make-thread
+                                     (lambda () (tuatara.frontend:run-remote-client client)))))
+             (is equal "kiwi" (tuatara.frontend.fake:fake-screen-line local 0)))
+        (sb-int:unencapsulate 'tuatara.frontend::take-from-editor 'late)))))
 
 (define-test (remote events-carried-back)
   ;; what is typed at the client reaches the editor as it was read there, each event naming its frame
@@ -875,6 +901,19 @@ cleanly or as malformed, else the error, in words."
       (tuatara.frontend:malformed-message () nil)
       (error (condition) (princ-to-string condition)))))
 
+(define-test (remote status-in-a-session-refused)
+  ;; the question how the editor stands, and its answer, come only in place of attaching: within a session each
+  ;; ends the connection as malformed
+  (flet ((octets (write)
+           (let ((box (tuatara.frontend::make-outbox)))
+             (funcall write box)
+             (subseq (tuatara.frontend::outbox-octets box) 0 (tuatara.frontend::outbox-fill box)))))
+    (is eq nil (read-spoilt (octets #'tuatara.frontend::put-status-asked) :editor))
+    (is eq nil (read-spoilt (octets (lambda (box)
+                                      (tuatara.frontend::put-status
+                                       box (list :pid 1 :started (get-universal-time) :clients 0 :unsaved 0))))
+                            :client))))
+
 (define-modal-test (remote typed-at-the-client)
   ;; a session whose only screen is a client's: keys typed there edit the buffer, which shows there
   (let ((local (make-instance 'queued-fake-frontend :width 40 :height 8)))
@@ -1026,6 +1065,19 @@ read and let go of."
              (is equal "kiwi" (tuatara.frontend.fake:fake-screen-line local 0))))
       (dolist (name made) (remhash name tuatara.display:*faces*))
       (incf tuatara.display:*face-generation*))))
+
+(define-test (remote answer-taken-within-bounds)
+  ;; a number answered past a font's steps is taken as the most there are, whatever a client sends
+  (let ((box (tuatara.frontend::make-outbox)))
+    (let ((at (tuatara.frontend::begin-message box :answer)))
+      (tuatara.frontend::put-number box 1 4)
+      (tuatara.frontend::put-number box 2 1)
+      (tuatara.frontend::put-number box 30000 2)
+      (tuatara.frontend::end-message box at))
+    (let* ((octets (subseq (tuatara.frontend::outbox-octets box) 0 (tuatara.frontend::outbox-fill box)))
+           (inbox (tuatara.frontend::make-inbox nil :editor :octets octets :end (length octets))))
+      (tuatara.frontend::read-message inbox)
+      (is = tuatara.frontend::+most-font-steps+ (nth-value 1 (tuatara.frontend::take-answer inbox))))))
 
 (define-test (remote dropped-names-refused)
   ;; a file dropped whose name is empty or holds a control character: a client never sends it, and the editor

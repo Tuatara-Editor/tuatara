@@ -172,14 +172,15 @@ job, or :QUEUED when another job runs or waits in BUFFER."
                      commenting (and column (notevery (lambda (entry) (or (null (car entry)) (cdr entry))) found))))))
       (start-line-job
        buffer from to
-       (lambda (function line)
-         (when column
-           (multiple-value-bind (octets at end) (slice-octets line)
-             (let ((indent (comment-line-facts octets at end marker-octets)))
-               (when indent
-                 (multiple-value-bind (from to)
-                     (comment-line-span (line-slice-start line) octets at end indent commenting column marker)
-                   (funcall function from to (if commenting insert-octets none))))))))
+       (constantly
+        (lambda (function line)
+          (when column
+            (multiple-value-bind (octets at end) (slice-octets line)
+              (let ((indent (comment-line-facts octets at end marker-octets)))
+                (when indent
+                  (multiple-value-bind (from to)
+                      (comment-line-span (line-slice-start line) octets at end indent commenting column marker)
+                    (funcall function from to (if commenting insert-octets none)))))))))
        :doing "Commenting" :what "Commenting or uncommenting the lines"
        :verb "comment the lines" :leaves "the lines are as they were"
        :prepare #'prepare

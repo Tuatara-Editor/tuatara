@@ -268,3 +268,15 @@ Returns the frontend and the editor."
                        #'string<)))
         (sb-int:unencapsulate 'tuatara.defaults::file-sha256 'count-sums))
       (is equal '("c-again.bin" "c.bin") (sort sums #'string<)))))
+
+(define-test (rimu-found text-search-leaves-links-to-files-out)
+  ;; a search for files by their text never reads a link in the tree to a file outside it
+  (with-test-directory (outside)
+    (with-test-directory (dir)
+      (let ((directory (namestring dir))
+            (secret (put-file (merge-pathnames "secret.txt" outside) (format nil "kiwi from outside~%"))))
+        (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%"))
+        (sb-posix:symlink (namestring secret) (concatenate 'string directory "notes.txt"))
+        (let ((listing (tuatara.defaults::rimu-search-found
+                        (tuatara.defaults::make-rimu-search nil (list :kind :text :directory directory :text "kiwi")))))
+          (is equal '("a.txt") (map 'list #'tuatara.io:listed-name (tuatara.defaults::rimu-listing-entries listing))))))))

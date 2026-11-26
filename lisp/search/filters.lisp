@@ -234,8 +234,8 @@ a JSON Lines file and the others *LINE-RECORD-MODES* names
 
 (defun say-not-records (command &optional instead)
   "Say that COMMAND, a command's name, was not run because the buffer is no
-file of records (RECORDS-FILE-P), and INSTEAD, words naming what may serve,
-when given; NIL."
+file of records (RECORDS-FILE-P), as SAY-NOT-RUN says it, and INSTEAD, words
+naming what may serve, when given; NIL."
   (message "Not a file of records (a CSV, a log): ~(~a~) was not run~@[; ~a~]" command instead)
   nil)
 
@@ -251,10 +251,10 @@ lines whose CITY holds."
 they leave out (RECORDS-FILE-P)."
   (or (search-filters-list-p buffer) (records-file-p buffer)))
 
-(defun say-unfilterable (outcome)
-  "Say that only a list or a file of records takes a filter, and OUTCOME, what
-came of the command asked for."
-  (message "Only a list or a file of records (a CSV, a log) can be narrowed by a filter: ~a" outcome))
+(defun say-unfilterable (command)
+  "Say that COMMAND, a command's name, was not run because only a list or a
+file of records takes a filter (SAY-NOT-RUN); NIL."
+  (say-not-run command "Not a list or a file of records (a CSV, a log)"))
 
 (defun filters-lines-p (buffer)
   "True when search filters narrow BUFFER by hiding its lines."

@@ -99,8 +99,8 @@ deleted. In a file of records cut into columns, a CSV, a log, JSON Lines and the
 others \\[search-filter-show-records] names, a column is asked for first
 \(nothing for the whole line), the pattern tried on its value alone, and a
 header line always stays. A column of a line longer than *REWRITE-LINE-LIMIT*
-octets (16 MiB as shipped) would be tried on its first part alone, so then
-nothing is deleted, and that is said. Without a selection, does nothing and
+octets would be tried on its first part alone, so then nothing is deleted, and
+that is said. Without a selection, does nothing and
 says so; a large selection is handled in the background."
   (filter-lines 'flush-lines nil))
 
@@ -108,8 +108,8 @@ says so; a large selection is handled in the background."
   "Delete the lines the selection touches in which a regular expression, asked
 for in the minibuffer, finds no match, keeping those it matches. The pattern is
 found as for flush-lines, in a file of records on the column asked for, nothing
-deleted when a line is longer than *REWRITE-LINE-LIMIT* octets (16 MiB as
-shipped). Says how many were deleted. Without a selection, does nothing and
+deleted when a line is longer than *REWRITE-LINE-LIMIT* octets. Says how many
+were deleted. Without a selection, does nothing and
 says so; a large selection is handled in the background."
   (filter-lines 'keep-lines t))
 
@@ -171,7 +171,7 @@ files of records \\[list-toggle-header] makes it one first.
   (let ((buffer (current-buffer)))
     (cond ((not (records-file-p buffer)) (say-not-records 'list-toggle-header-lock))
           ((not (list-header-p buffer))
-           (message (substitute-command-keys "No header: \\[list-toggle-header] makes the first line one")))
+           (message "No header: \\[list-toggle-header] makes the first line one"))
           (t (let ((on (switched-by-count (tuatara.display:buffer-header-line buffer))))
                (set-header-lock buffer on)
                (message "Header ~:[scrolls with the rest~;kept at the top~]" on))))))

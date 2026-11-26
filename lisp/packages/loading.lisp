@@ -230,8 +230,8 @@ whose function is theirs. The keys bound to their commands go, with their
 labels. The places they gave commands to run in (COMMANDS-FOR-MODE) go,
 Tuatara's own among them. Their ways of showing text (DEFINE-DISPLAY-TOGGLE)
 go. Their functions on the lists of functions Tuatara calls (*FILE-VIEWS*,
-*TICK-FUNCTIONS* and the rest) go, and so do their methods of Tuatara's
-generic functions. Their settings are settings no more, their values kept for
+*TICK-FUNCTIONS* and the rest) go, and so do the hooks they added to modes
+(ADD-MODE-HOOK) and their methods of Tuatara's generic functions. Their settings are settings no more, their values kept for
 when they load again. Their faces stay, doing nothing. A function is theirs
 when one of their symbols names it, or it was made in one of their functions
 or by a file of DIRECTORY."
@@ -264,7 +264,9 @@ or by a file of DIRECTORY."
               (setf (gethash command *mode-commands*) kept)
               (remhash command *mode-commands*))))
       (dolist (mode (mode-names))
-        (unbind-commands-if #'theirs-p (mode-keymap mode)))
+        (unbind-commands-if #'theirs-p (mode-keymap mode))
+        (let ((info (find-mode mode)))
+          (setf (mode-info-hooks info) (remove-if #'theirs-p (mode-info-hooks info)))))
       (when *global-keymap* (unbind-commands-if #'theirs-p *global-keymap*))
       (setf *display-toggles* (remove-if #'theirs-p *display-toggles* :key #'display-toggle-name))
       (do-external-symbols (name :tuatara)
@@ -692,7 +694,7 @@ loaded, and what it returns returned (LOADING-PACKAGE)."
 (defun package-question (name where directory then &optional signer)
   "Ask whether to compile and load the package NAME from WHERE, kept in
 DIRECTORY, SIGNER saying who signed it when given, answered by one key pressed
-once the question is shown (READ-ANSWER-KEY), where it is from and what each
+once the question is shown (READ-KEY-CHOICE), where it is from and what each
 key does are its details: y calls THEN, v lists its
 directory, opened safely, n leaves it, as \\`C-g' does (\"not now\"), asked again
 at the next start. Any other key says which keys answer and asks again.
@@ -700,13 +702,14 @@ THEN at once with *PACKAGE-ASK-BEFORE-LOADING* NIL."
   (if (not *package-ask-before-loading*)
       (funcall then)
       (case (handler-case
-                (read-answer-key (format nil "Compile and load the package ~a? (y, n or v) " name)
-                                 '(#\y #\n #\v)
-                                 :fresh t
-                                 :details (format nil "The package ~a, from ~a~@[, ~a~].~%~%y  compiles and loads ~
-                                                       it now~%n  leaves it, asked about again at the next start~%~
-                                                       v  shows its source, opened safely~%"
-                                                  name (abbreviated-path where) signer))
+                (char (read-key-choice (format nil "Compile and load the package ~a?" name)
+                                       '(("y" . "compiles and loads it now")
+                                         ("n" . "leaves it, asked about again at the next start")
+                                         ("v" . "shows its source, opened safely"))
+                                       :fresh t :fold-case t
+                                       :details (format nil "The package ~a, from ~a~@[, ~a~]."
+                                                        name (abbreviated-path where) signer))
+                      0)
               (quit () nil))
         (#\y (funcall then))
         (#\v (rimu-show-directory (tuatara.io:native directory)

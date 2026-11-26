@@ -679,9 +679,12 @@ positive, off when it is zero or less."
         (message "Conflict markers off"))))
 
 (defun install-conflicts (editor)
-  "Look through the files EDITOR's windows show for conflicts, follow the
-edits of those holding some, paint them, and name them in the mode line."
+  "Look through the files EDITOR's windows show for conflicts, after each
+command and after work taken in from the background (a file read again),
+follow the edits of those holding some, paint them, and name them in the mode
+line."
   (pushnew 'conflict-look-at-shown (editor-post-command-functions editor))
+  (pushnew 'conflict-look-at-shown *after-tick-functions*)
   (pushnew 'conflict-pause-tick *tick-functions*)
   (pushnew 'conflict-highlights tuatara.command:*text-highlight-functions*)
   (pushnew 'conflict-mode-line *mode-line-functions*))

@@ -687,7 +687,7 @@
                 (multiple-value-bind (held back left) (tuatara.syntax:helper-memory helper)
                   (declare (ignore held back))
                   (true (and left (<= 0 left (* 64 1024 1024))) "~s left" left)))
-              (when tree (tuatara.syntax:delete-tree tree))))))
+              (when tree (tuatara.syntax:free-tree tree))))))
        (true (< (- (sb-kernel:dynamic-usage) editor-before) (* 256 1024 1024)))
        (true (parses-elsewhere))))))
 
@@ -777,7 +777,7 @@
           (let ((parser (tuatara.syntax:make-parser grammar helper)))
             (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope (format nil "abc !w~a def" path)))))
               (true tree)
-              (when tree (tuatara.syntax:delete-tree tree))))))
+              (when tree (tuatara.syntax:free-tree tree))))))
        ;; without the sandbox the program is only a process of its own, and may write
        (is eq (not (eq :ready (tuatara.io:sandbox-status-now))) (and (probe-file path) t))))))
 
@@ -813,7 +813,7 @@
                            (unwind-protect
                                 (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "[1, 2]"))))
                                   (true tree)
-                                  (when tree (tuatara.syntax:delete-tree tree)))
+                                  (when tree (tuatara.syntax:free-tree tree)))
                              (tuatara.syntax:delete-parser parser))))
                     (tuatara.syntax:detach-syntax buffer)
                     (tuatara.buffer:kill-buffer buffer))))

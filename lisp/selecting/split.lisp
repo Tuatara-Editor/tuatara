@@ -869,8 +869,7 @@ text by, as (OFFSET . BIAS) for anchors to follow while a job over it waits."
 (defun scope-shade (buffer scope &key matcher)
   "The SHADE of a job over SCOPE of BUFFER waiting its turn: a block's columns
 row by row, or its stretches; with MATCHER, only the matches of it in them as
-the text stands now (CHANGES-IN-VIEW), the whole stretch when the pattern is
-too slow on this text to light them."
+the text stands now (MATCHER-SHADING)."
   (cond ((block-scope-p scope)
          (let ((rows (block-shade buffer (block-scope-left scope) (block-scope-right scope)
                                   :tab-width (block-scope-tab-width scope) :wide (block-scope-wide scope))))
@@ -879,18 +878,9 @@ too slow on this text to light them."
              (funcall rows (list (first positions) (max (first positions) (1- (second positions)))) from to))))
         (matcher
          (lambda (positions from to)
-           (let ((rope (tuatara.buffer:buffer-text buffer))
-                 (stretches (loop for (start end) in (ranges-shade positions from to) collect (cons start end))))
+           (let ((stretches (loop for (start end) in (ranges-shade positions from to) collect (cons start end))))
              (when stretches
-               (multiple-value-bind (ranges slow)
-                   (changes-in-view rope (lambda (function from to)
-                                           (stretch-matches (lambda (a z m g)
-                                                              (declare (ignore m g))
-                                                              (funcall function a z)
-                                                              nil)
-                                                            rope matcher from to nil nil nil))
-                                    stretches t)
-                 (if slow (loop for (start . end) in stretches collect (list start end)) ranges))))))
+               (matcher-shading (tuatara.buffer:buffer-text buffer) matcher stretches t)))))
         (t #'ranges-shade)))
 
 (defun scope-groups (rope scope)

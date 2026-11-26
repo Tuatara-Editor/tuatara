@@ -144,8 +144,8 @@ the same pass."
                                            (tuatara.text:byte->line rope (tuatara.syntax:tree-node-end node)))))
                       (what (cddr entry))
                       ;; every rule that captured the node counts, each with its own scope
-                      (indents (remove :indent what :key #'first :test-not #'eq))
-                      (indents-always (remove :indent-always what :key #'first :test-not #'eq))
+                      (indents (remove-if-not (lambda (w) (eq (first w) :indent)) what))
+                      (indents-always (remove-if-not (lambda (w) (eq (first w) :indent-always)) what))
                       (outdent (assoc :outdent what))
                       (outdent-always (assoc :outdent-always what))
                       (aligning (assoc :align what))

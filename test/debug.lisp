@@ -239,8 +239,26 @@ reports not yet shown."
         (put-file elsewhere "")
         (sb-posix:symlink elsewhere link)
         (fail (tuatara.runtime:open-rotated-log link))
-        (false (tuatara.runtime::log-in-use-p link))
+        (false (tuatara.runtime:lock-held-p link :shared t))
         (is = 0 (sb-posix:stat-size (sb-posix:stat elsewhere)))))))
+
+(define-test (debug-reports named-pipe-at-the-log-never-waited-on)
+  ;; a named pipe where a log goes is put aside when the log is begun anew, never opened and waited on
+  (with-test-directory (dir)
+    (let* ((log (tuatara.io:native (merge-pathnames "stderr.log" dir)))
+           (opening (progn (sb-posix:mkfifo log #o600)
+                           (sb-thread:make-thread (lambda () (tuatara.runtime:open-rotated-log log :rotate t))
+                                                  :name "opening a log")))
+           (fd (sb-thread:join-thread opening :timeout 5 :default nil)))
+      (unless fd
+        ;; opened both ways, the pipe lets a waiting open go on, so that the thread ends
+        (ignore-errors (sb-posix:close (sb-posix:open log sb-posix:o-rdwr)))
+        (let ((late (sb-thread:join-thread opening :timeout 5 :default nil)))
+          (when late (sb-posix:close late))))
+      (true fd "the log was opened")
+      (when fd
+        (unwind-protect (true (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:fstat fd))))
+          (sb-posix:close fd))))))
 
 (define-test (debug-reports busy-editor-leaves-a-trace)
   ;; a thread busy past *hang-report-seconds* writes the calls under way in it, once

@@ -12,33 +12,21 @@ Lisp package uses this one; TUATARA-USER, which init files are read in, does too
 
 (defpackage #:tuatara-user
   (:use #:cl #:tuatara)
-  ;; Emacs's names, counting characters, in place of the API's of these names, counting octets
-  (:shadow #:buffer-name #:buffer-string #:buffer-size
-           ;; the API's octet bounds of a narrowed buffer's part: point-min and point-max here
-           #:buffer-start #:buffer-end)
   (:documentation "The package user configuration files are read in: BIND-KEY and UNBIND-KEY are
 available unqualified, and the public API of TUATARA is used.")
   (:export #:bind-key #:unbind-key #:define-recorded-keys #:set-face #:load-theme #:load-package #:define-theme
            #:define-named-pattern
            #:package-source #:load-package-file #:package-file #:*package-ask-before-loading*
            #:*package-check-signatures* #:*package-sources* #:*light-theme* #:*dark-theme* #:*startup-buffer*
-           #:*auto-scratch-buffers*
+           #:*auto-scratch-buffers* #:*scratch-text-kept*
            #:set-colouring #:set-indentation
-           ;; for Lisp typed at M-:, in *lisp-scratch* and in the init file, the basics of
-           ;; working on buffers and their text; positions are characters counted from 1
-           #:message #:current-buffer #:point #:point-min #:point-max #:goto-char #:insert
-           #:delete-region #:erase-buffer #:buffer-substring #:buffer-string #:buffer-size
-           #:buffer-name #:buffer-file-name #:set-buffer #:with-current-buffer #:save-excursion #:save-restriction
-           #:widen #:narrow-to-region
-           #:get-buffer #:get-buffer-create #:buffer-list #:switch-to-buffer #:find-file
-           #:bobp #:eobp #:bolp #:eolp #:char-after #:char-before
-           #:line-beginning-position #:line-end-position #:forward-line #:forward-char #:backward-char
-           #:count-lines #:count-words #:line-number-at-pos #:kill-new
+           ;; the API's names of the editor's message and current buffer
+           #:message #:current-buffer
            ;; options an init file sets by these names, defined where they are used
-           #:*message-log-max* #:*mode-line-name-limit* #:*sort-fold-case* #:*reload-changed-files*
+           #:*messages-kept* #:*mode-line-name-limit* #:*sort-ignores-case* #:*reload-changed-files*
            #:*line-numbers-default*
-           #:*indent-new-lines* #:*tab-width* #:*indent-tabs-mode* #:set-tab-width #:set-indent-tabs-mode
-           #:*show-paren-mode* #:*debug-on-error* #:*tab-always-indent* #:*blink-matching-paren*
+           #:*indent-new-lines* #:*tab-width* #:*indent-with-tabs* #:*tab-width-modes* #:*indent-with-tabs-modes*
+           #:*show-matching-bracket* #:*backtrace-on-error* #:*tab-key-action* #:*say-matching-bracket*
            #:*debug-mode* #:*debug-log-limit* #:*idle-collection-seconds* #:*csv-separator* #:*list-header-lock*
            #:*csv-header*
            ;; saving work and the session
@@ -71,7 +59,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*rimu-directories-first* #:*rimu-ignored-extensions*
            #:*rimu-reuse-lists* #:*rimu-preview* #:*rimu-preview-delay* #:*rimu-preview-size* #:*rimu-follow-changes*
            ;; the directory of a buffer with no file, and what makes a project
-           #:*default-directory* #:*project-root-markers* #:*compile-command* #:*compile-output-limit*
+           #:*no-file-directory* #:*project-root-markers* #:*compile-command* #:*compile-output-limit*
            #:*last-used-first* #:*path-delete-by-branches* #:*complete-paths* #:*complete-paths-modes*
            ;; completing a word from the words in the buffers
            #:*word-completion-keep-case*
@@ -94,6 +82,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*org-agenda-custom-commands* #:*org-tags-column* #:*org-agenda-autosave-files*
            #:*org-agenda-refresh-minutes*
            #:*org-notify-tag* #:*org-notify-before* #:*org-notify-day-time* #:*notify-program*
+           #:*org-notify-alarms*
            #:*org-toc-on-save* #:*org-read-date-popup-calendar* #:*org-read-date-in-calendar* #:*org-toc-max-depth*
            #:*org-toc-style* #:*org-depth-limit* #:*org-formula-depth-limit*
            #:define-dblock-writer #:define-clocktable-formatter
@@ -109,8 +98,8 @@ available unqualified, and the public API of TUATARA is used.")
            #:*terminal-compress-after* #:*terminal-picture-memory* #:*terminal-place* #:*terminal-size*
            #:*terminal-width* #:*terminal-program* #:*terminal-scrollback*
            ;; marks, places kept, input methods, help windows and Escape
-           #:*help-window-select* #:*insert-file-limit* #:*escape-quits* #:*remember-places*
-           #:*remembered-places-limit* #:*default-input-method* #:*input-method-keys* #:*mark-ring-max*
+           #:*help-window-select* #:*note-template-file-limit* #:*escape-quits* #:*remember-places*
+           #:*remembered-places-limit* #:*default-input-method* #:turn-on-input-method #:*mark-ring-length*
            #:*set-mark-command-repeat-pop*
            ;; the sandbox programs decoding files run in
            #:*sandbox* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-memory-copy-limit*
@@ -140,14 +129,14 @@ available unqualified, and the public API of TUATARA is used.")
            #:*preview-file-search* #:*preview-buffers* #:*search-results-save-files*
            #:*search-files-lines-limit* #:*typing-pause* #:*line-record-modes*
            ;; the kill ring and the system clipboard
-           #:*kill-ring-max* #:*kill-ring-max-size* #:*undo-limit* #:*use-system-clipboard* #:*clipboard-size-limit*
+           #:*kill-ring-length* #:*kill-ring-octets* #:*undo-limit* #:*use-system-clipboard* #:*clipboard-size-limit*
            #:*show-completion-count* #:*prompt-above-candidates* #:*key-hint-rows* #:*fill-column* #:*comment-column* #:*leader-key*
            #:*sentence-end-double-space* #:*extra-sentence-abbreviations* #:*removed-sentence-abbreviations*
-           #:*git-commit-fill-column* #:*fill-paragraph-limit* #:*fill-ask-column* #:*global-hl-line-mode*
+           #:*git-commit-fill-column* #:*fill-paragraph-limit* #:*fill-ask-column* #:*global-current-line-mode*
            #:*global-soft-wrap-mode* #:*soft-wrap-modes* #:*centred-text-width* #:*centred-text-modes*
            #:*soft-wrap-at-fill-column* #:*soft-wrap-indicator* #:*global-display-fill-column-mode*
            #:*display-fill-column-modes*
-           #:*hl-line-modes* #:*global-cursor-column-mode* #:*cursor-column-modes* #:*global-spellcheck-mode*
+           #:*current-line-modes* #:*global-current-column-mode* #:*current-column-modes* #:*global-spellcheck-mode*
            #:*spellcheck-modes* #:*spellcheck-languages* #:*spellcheck-excluded-faces* #:*spellcheck-comment-faces*
            #:*spellcheck-string-faces* #:*global-centred-text-mode* #:*line-numbers-modes*
            #:*global-inline-pictures-mode* #:*inline-pictures-modes* #:*inline-picture-width* #:*formula-preamble*
@@ -156,7 +145,7 @@ available unqualified, and the public API of TUATARA is used.")
            ;; files visited lately
            #:*remember-recent-files* #:*recent-files-limit* #:*recent-files-auto-cleanup* #:*relative-age-limit*
            ;; pairs of delimiters
-           #:*pair-delimiters* #:*electric-pair-mode* #:*electric-pair-typing* #:*electric-pair-safe-exclusions*
+           #:*pair-delimiters* #:*auto-close-mode* #:*auto-close-delimiters* #:*auto-close-safe-exclusions*
            ;; cursors
            #:*cursors-limit* #:*modal-editing* #:*insert-escape-keys* #:*mode-line-tuatara* #:*rectangle-cursors-limit*
            #:*split-limit-ask* #:*split-limit* #:*tuatara-normal-tab-modes*

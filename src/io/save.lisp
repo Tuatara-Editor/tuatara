@@ -477,19 +477,16 @@ touches the disk. It may signal an error to refuse the save.")
       rope))
 
 (defun save-buffer-file (buffer &key (path (tuatara.buffer:buffer-file buffer)) force)
-  "Save BUFFER as PATH (its file by default) now, safely (WRITE-TEXT-FILE); a file
-changed on disk since the buffer read or saved it signals FILE-CHANGED-ON-DISK
-unless FORCE. Returns the file written."
-  (check-savable buffer path)
-  (let* ((path (expand-path path))
-         (version (tuatara.buffer:buffer-version buffer))
-         (content (tuatara.buffer:buffer-content-number buffer))
-         (written (transformed-text (host-save-transform tuatara.runtime:*host* buffer path)
-                                    (tuatara.text:version-rope version))))
-    (multiple-value-bind (stamp target in-place)
-        (write-text-file written path :expected (save-expected buffer path force) :mappings (protected-mappings buffer))
-      (record-save buffer path stamp content written in-place)
-      target)))
+  "Save BUFFER as PATH (its file by default) now, safely (WRITE-TEXT-FILE),
+checked first as every save is (BEGIN-SAVE): a file changed on disk since the
+buffer read or saved it signals FILE-CHANGED-ON-DISK unless FORCE. Returns the
+file written."
+  (multiple-value-bind (path expected version transform mappings) (begin-save buffer path force)
+    (let ((content (tuatara.buffer:buffer-content-number buffer))
+          (written (transformed-text transform (tuatara.text:version-rope version))))
+      (multiple-value-bind (stamp target in-place) (write-text-file written path :expected expected :mappings mappings)
+        (record-save buffer path stamp content written in-place)
+        target))))
 
 ;;; Saving in the background
 
@@ -566,26 +563,38 @@ file on disk is then the editor's own doing."
                  (or (save-job-written job) (tuatara.text:version-rope (save-job-version job)))
                  (save-job-in-place job))))
 
-(defun start-save (buffer &key (path (tuatara.buffer:buffer-file buffer)) force)
-  "Save BUFFER as PATH in the background: its text as it is now is written while
-the buffer stays usable, edits included. Checks the file on disk first as
-SAVE-BUFFER-FILE does. Returns the job; FINISH-SAVES takes it in."
+(defun begin-save (buffer path force)
+  "Begin a save of BUFFER as PATH, on the editor's thread, as every save
+begins: refused when BUFFER cannot be saved there (CHECK-SAVABLE) or is being
+saved already, and with FILE-CHANGED-ON-DISK when the file there is not as the
+buffer last read or saved it, unless FORCE; a file with the journal of a save
+in place cut short beside it is put right first and checked then, as it is
+written (WRITE-TEXT-FILE). Five values: PATH in full, the
+stamp the file is expected to have (SAVE-EXPECTED), BUFFER's version now, the
+transform of its text (HOST-SAVE-TRANSFORM) and the mappings the writing must
+leave whole."
   (check-savable buffer path)
   (when (save-of buffer)
     (refuse "Buffer ~a is already being saved." (tuatara.buffer:buffer-name buffer)))
   (let* ((path (expand-path path))
          (expected (save-expected buffer path force)))
     (unless (or (eq expected :any) (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))
-      (let ((existing (tuatara.runtime:ignoring-errors-reported ("examining ~a" path)
-                        (path-stamp (resolve-links path)))))
-        (unless (or (null existing) (and expected (same-content-p expected existing)))
+      (let* ((target (resolve-links path))
+             (existing (tuatara.runtime:ignoring-errors-reported ("examining ~a" path)
+                         (path-stamp target))))
+        (unless (or (null existing) (and expected (same-content-p expected existing)) (journal-there-p target))
           (error 'file-changed-on-disk :path path))))
-    (let* ((version (tuatara.buffer:buffer-version buffer))
-           (transform (host-save-transform tuatara.runtime:*host* buffer path))
-           (job (%make-save-job :buffer buffer :path path :version version
-                                :content (tuatara.buffer:buffer-content-number buffer)
-                                :total (tuatara.text:rope-octet-length (tuatara.text:version-rope version))))
-           (mappings (protected-mappings buffer)))
+    (values path expected (tuatara.buffer:buffer-version buffer)
+            (host-save-transform tuatara.runtime:*host* buffer path) (protected-mappings buffer))))
+
+(defun start-save (buffer &key (path (tuatara.buffer:buffer-file buffer)) force)
+  "Save BUFFER as PATH in the background: its text as it is now is written while
+the buffer stays usable, edits included. Checked first as every save is
+\(BEGIN-SAVE). Returns the job; FINISH-SAVES takes it in."
+  (multiple-value-bind (path expected version transform mappings) (begin-save buffer path force)
+    (let ((job (%make-save-job :buffer buffer :path path :version version
+                               :content (tuatara.buffer:buffer-content-number buffer)
+                               :total (tuatara.text:rope-octet-length (tuatara.text:version-rope version)))))
       (tuatara.runtime:start-job-thread
        job (lambda (job)
              (setf (save-job-written job) (transformed-text transform (tuatara.text:version-rope version)))

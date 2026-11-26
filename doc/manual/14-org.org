@@ -101,7 +101,9 @@ three levels:
 #+end_example
 
 Lines like =#+STARTUP:= are read when the file is opened. After you change
-one, kill the buffer with ~C-x k~ and open the file again.
+one, kill the buffer with ~C-x k~ and open the file again. Such a line inside a
+block, between =#+begin_example= and =#+end_example= say, is only shown, and
+so is a =#+TODO:= line there.
 
 With the indented view or =*org-bullets*=, the stars before the last one of
 a heading are hidden, and that is =*org-hide-leading-stars*=, =t= as
@@ -256,7 +258,7 @@ item that has sub-items or more lines folds it, as on a heading: folded,
 then its sub-items, then all. At =nil= ~TAB~ on an item indents it, as in a
 plain text file, and an item is folded only as part of its heading.
 
-#+table: commands org-cycle org-global-cycle org-meta-return org-insert-todo-heading org-metadown org-metaup org-metaleft org-metaright org-shiftmetaleft org-shiftmetaright org-move-subtree-down org-move-subtree-up org-do-promote org-do-demote org-promote-subtree org-demote-subtree
+#+table: commands org-cycle org-global-cycle org-meta-return org-insert-todo-heading org-move-down org-move-up org-promote org-demote org-promote-subtree org-demote-subtree org-move-subtree-down org-move-subtree-up
 
 #+table: settings *org-cycle-hide-drawers* *org-fold-metadata* *org-cycle-include-plain-lists*
 
@@ -400,7 +402,7 @@ the list of the shopping note reads:
  + [-] milk            ◦ ◐ milk
 #+end_example
 
-#+table: commands org-ctrl-c-ctrl-c org-ctrl-c-minus org-cycle-list-bullet org-return
+#+table: commands org-act-here org-rule-or-bullet org-cycle-list-bullet org-return
 
 #+table: settings *org-complete-checkboxes* *org-return-cycles-checkboxes* *org-log-checkboxes* *org-todo-follows-checkboxes* *org-list-bullets* *org-checkbox-signs*
 
@@ -537,7 +539,7 @@ A task can carry a priority, written by hand after its keyword as =[#A]=,
 =[#B]= or =[#C]=. It is shown in its own colour, here and in the agenda, so
 that the important tasks stand out.
 
-#+table: commands org-todo org-shiftright org-shiftleft org-cancel-task org-add-note
+#+table: commands org-todo org-next-state org-previous-state org-cancel-task org-add-note
 
 #+table: settings *org-standard-todo-keywords* *org-todo-keywords-not-cycled* *org-todo-keyword-faces* *org-return-cycles-todo* *org-log-done* *org-log-into-drawer* *org-log-repeat* *org-log-reschedule* *org-log-redeadline*
 
@@ -607,6 +609,24 @@ A date in the text is for an event such as a flight, a birthday or a meeting.
 ~C-c .~ puts one where the cursor is. The agenda shows it on its day and
 nowhere else.
 
+~C-c C-s~ and ~C-c C-d~ start their question from the date the entry
+already has: its =SCHEDULED:= or =DEADLINE:=, and for a reminder with no
+=SCHEDULED:= the date in its text. The calendar opens on that day, ~RET~ with
+nothing typed keeps it, and a day typed with no time keeps the time: =fri=
+turns =<2026-11-25 Wed 18:00>= into =<2026-11-27 Fri 18:00>=. ~C-c .~ on a
+date starts from that date.
+
+A reminder has one time, so scheduling it moves the date in its text into
+=SCHEDULED:=. With =* Ring the plumber :reminder:notify:= and =<2026-11-25 Wed
+18:00>= in its text, ~C-c C-s~ and =sun= give =SCHEDULED: <2026-11-29 Sun
+18:00>=, and the date leaves the text. Only the first date of the text moves,
+a range =<a>--<b>= as one; other dates in the text stay, and a reminder
+scheduled already keeps its text as it is. A task keeps the date in its text,
+since an event's time is not a plan. ~C-c C-s~ on an event (no keyword, not a
+reminder, nothing scheduled, a date in its text) schedules nothing and
+says =An event, at <...>: C-c . on that time changes it or makes it
+repeat=.
+
 ~C-c !~ writes a date in square brackets, as =[2026-12-24 Thu]=. Such a date
 is only a record. The agenda leaves it out. Use it to note when something
 happened.
@@ -651,10 +671,19 @@ is shown as you type, so you can see that it is right before you press
 | =24=                     | The 24th of this month, or of the next once it is past |
 | =dec 24=, =2026-12-24=   | That date                                      |
 | =fri 9am=, =+2d 14:00=   | A day with a time                              |
+| =50m=, =1h3m=, =2h=, =10s= | A time from now, as the timestamp it comes to |
 | =10:00-11:30=            | Today, from then until then                    |
 | =every week 10:00=       | Each week at that time, starting today         |
 | =every second day=       | Every other day                                |
 | =first monday every month= | That day of each month                       |
+
+A time from now is a number with a unit: =50m=, =1h3m=, =90m=, =2h=, =10s=
+or =1d=. It is written as the timestamp it comes to, rounded up to the next
+minute: at 22:37, =50m= gives =<2026-11-25 Wed 23:28>=. Here =m= is minutes,
+while =+1m= is still a month on. Org timestamps hold minutes, so seconds round
+up to the minute. Every date question takes it: ~C-c C-s~, ~C-c C-d~,
+~C-c .~, the =%^T= of a capture template and the date prompt of the calendar.
+For a reminder, press ~C-x a c r~, type a title, then =50m=.
 
 *** Things that come round again
 
@@ -663,7 +692,9 @@ written with a mark after it, as in =<2026-10-13 Tue +1w>= for every week.
 When you mark a repeating task =DONE=, it is not closed. Its date moves on to
 the next time, it becomes =TODO= again, and a note of when you last did it is
 kept under it. This is the way to keep track of the rubbish day, the rent
-and watering the lemon tree.
+and watering the lemon tree. A task done late goes on to its first date still
+to come; the weeks missed are not owed. =++1w= is read as =+1w=, and =.+1w=
+counts the week from the day you mark it done.
 
 Tuatara can also keep a record of each time a task is moved on. These
 settings take =:time= or =nil=. =*org-log-repeat*= is =:time= as it comes: a
@@ -697,7 +728,12 @@ If you cannot remember how to say a repeat in words, press ~C-r~ at the date
 prompt; the lines shown under the prompt say so. A menu opens
 where you choose the start, the time, how often and when it ends, and it
 shows in plain words what your choices come to. ~RET~ writes it. The menu
-opens only from a date prompt, so ~M-x~ does not offer it.
+opens only from a date prompt, so ~M-x~ does not offer it. With nothing
+typed, ~C-r~ opens the menu on the entry's own day and time, so that
+=Weekly on= names that day. In the agenda, ~C-c C-s C-r~ writes the entry on
+the line: the file is saved at once when it is one of
+=*org-agenda-autosave-files*=, the agenda is drawn again, and ~u~ in the
+agenda undoes the change.
 
 *** Being told on the desktop
 
@@ -714,6 +750,31 @@ and no time is never announced. The tag itself is
 =*org-notify-tag*=: with =(setf *org-notify-tag* "remind")= it is the tag
 =remind= that Tuatara watches for, and =nil= turns the notifications off. The notification is shown by the program
 =notify-send=, which chapter 8 mentions with the other notifications.
+
+Alarms are off as standard. =*org-notify-alarms*= is a list of the ones you
+want; they sound for entries with the =notify= tag as they are told, and for
+no other notification:
+
+- =:flash= is for people who cannot hear a sound. It flashes every mode line
+  in the face =:mode-line-alarm= twice, then keeps it lit until you press a
+  key. A flash is a quarter second lit and a quarter dark. The face takes the
+  theme's error colour unless you set it.
+- =:bell= rings the bell of every screen Tuatara shows on: the terminal's, also
+  over ssh (the terminal may show it as a flash or a mark on the tab; set that
+  in the terminal), the desktop's error bell for the GTK window (the =visual
+  alerts= of GNOME can turn it into a flash of the screen), and the bell of
+  each client of the daemon. A daemon with no client has no screen and so no
+  bell.
+- A sound file is played on the computer Tuatara runs on, apart from the
+  editor, by the first of =pw-play= (PipeWire), =paplay= and =aplay= found on
+  the =PATH=. A missing player or file is said once in a session. ~M-x
+  check-health~ says how the sound plays when one is set.
+
+#+begin_example
+(setf *org-notify-alarms*
+      (list :flash :bell "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"))
+(set-face :mode-line-alarm :bg "#d70000" :fg "#ffffff")
+#+end_example
 
 #+begin_try Try it, with a holiday plan
 1. Open =~/holiday.org= with ~C-x C-f~. Press ~i~ and type these four lines,
@@ -748,9 +809,9 @@ call them by name, but they are what the keys above run.
 
 #+table: commands org-calendar-forward-day org-calendar-backward-day org-calendar-forward-week org-calendar-backward-week org-calendar-forward-month org-calendar-backward-month org-calendar-forward-year org-calendar-backward-year org-calendar-goto-today org-date-choose-mark org-date-choose-unmark org-date-choose-write
 
-#+table: settings *org-read-date-in-calendar* *org-read-date-popup-calendar* *org-deadline-warning-days* *org-notify-tag* *org-notify-before* *org-notify-day-time*
+#+table: settings *org-read-date-in-calendar* *org-read-date-popup-calendar* *org-deadline-warning-days* *org-notify-tag* *org-notify-before* *org-notify-day-time* *org-notify-alarms*
 
-#+table: faces :org-date :org-scheduled-keyword :org-deadline-keyword :calendar-chosen
+#+table: faces :org-date :org-scheduled-keyword :org-deadline-keyword :calendar-chosen :mode-line-alarm
 
 ** The agenda
 
@@ -1286,14 +1347,15 @@ column the table does not have.
    The total becomes 745. Save with ~C-x C-s~.
 #+end_try
 
-A formula can contain brackets inside brackets, signs and powers.
+A formula can contain brackets inside brackets, signs and powers, and each
+operator of a chain such as =1+2+3= nests the part before it one deeper.
 =*org-formula-depth-limit*= is how deep they may nest, 200 as standard. A
 formula nested deeper is refused and its field shows =#ERROR=, rather than
 the editor following it down without end. You will not meet it in a budget;
 lowering it, =(setf *org-formula-depth-limit* 20)=, only matters for tables
 from people you do not trust.
 
-#+table: commands org-table-align org-table-insert-hline org-shiftmetadown org-shiftmetaup org-table-recalculate org-table-eval-formula
+#+table: commands org-table-align org-table-insert-hline org-insert-row org-delete-row org-table-recalculate org-table-eval-formula
 
 #+table: settings *org-formula-depth-limit*
 
@@ -1830,7 +1892,7 @@ again, the PDF on the screen is read again at the page you were on.
 
 Two more commands do the same and differ only in what happens afterwards.
 ~M-x org-export-latex-pdf-enhanced~ makes the PDF and shows nothing. ~M-x
-org-export-latex-pdf-enhanced-xdg~ opens it in your desktop's PDF reader.
+org-export-latex-pdf-enhanced-externally~ opens it in your desktop's PDF reader.
 
 The export takes the note as the buffer has it, saved or not. To export only
 part of a note, select the lines first.
@@ -1892,8 +1954,8 @@ document could make to lead to any file of yours, is never followed.
 
 *** Making a Word document
 
-~M-x org-export-docx~ writes the note as a Word document beside it, and
-~M-x org-export-docx-xdg~ also opens it in your desktop's word processor. The
+~M-x org-export-docx~ writes the note as a Word document beside it, and ~M-x
+org-export-docx-externally~ also opens it in your desktop's word processor. The
 document is laid out as the enhanced PDF is, with the same numbering and the
 same tables, so you can send whichever the other person prefers.
 
@@ -1942,12 +2004,12 @@ templates that give a document your own look, and a way to black out names.
 Each family also has a command that stops at the LaTeX file and makes no
 PDF, ~M-x org-export-latex~ and ~M-x org-export-latex-enhanced~, for people
 who want to work on the LaTeX themselves. If you have a LaTeX file of your
-own, ~M-x export-latex-compile-pdf~ and its two companions make a PDF from
+own, ~M-x latex-export-pdf~ and its two companions make a PDF from
 it in the same three ways.
 
 *** From a line to the PDF and back
 
-A PDF made by ~M-x export-latex-compile-pdf-buffer~ or one of its companions
+A PDF made by ~M-x latex-export-pdf-buffer~ or one of its companions
 comes with a note of where each line of the LaTeX went on the pages. In the
 LaTeX file, ~C-c C-v~ shows the line the cursor is on in the PDF: the PDF
 opens beside the file if it is not shown, turns to the page the line is on,
@@ -2010,7 +2072,7 @@ A template gives a document its look: the fonts, the margins, a header with
 a logo. A note chooses one with a line at the top, =#+template:= and the
 template's name. Templates are kept in your configuration directory.
 
-The simplest start is ~M-x export-latex-template-copy~. It copies one of the
+The simplest start is ~M-x export-template-copy-latex~. It copies one of the
 built-in templates to your directory and opens it for you to change. If someone
 gives you a Word or LaTeX document and asks for reports that look like it,
 ~M-x export-template-from-docx~ and ~M-x export-template-from-latex~ make a
@@ -2069,14 +2131,18 @@ a black box stands where the name was, and the name is nowhere in the file.
 The mark is =R= for a name. In your own LaTeX files the commands that hide
 their argument are those in =*latex-redaction-commands*=, ="R"=, ="D"= and
 ="redact"= as standard, written without the backslash, so that =\R{John
-Otago}= is hidden text. =export-check-redactions= and the PDF export look
-for them in a LaTeX file just as they do for the marks of a note. If your
+Otago}= is hidden text. An argument with braces of its own, such as
+=\R{John \textbf{Otago}}=, is hidden text as a whole, looked for as the
+words it shows, =John Otago=. A call never closed hides the rest of its
+paragraph. =export-check-redactions= and the PDF export look for them in a
+LaTeX file just as they do for the marks of a note. If your
 templates call it =\hide{...}=, add it:
 =(setf *latex-redaction-commands* '("R" "D" "redact" "hide"))=.
 
 A box is of little use if the same name stands in plain text two pages
 later. ~M-x export-check-redactions~ looks for every hidden text that also
-appears unhidden and lists the places. The export runs the same check in
+appears unhidden and lists the places. It looks in the background, so you can
+go on writing; the list comes when it is done. The export runs the same check in
 the background before it writes anything, and when it finds such a place
 it lists them and asks whether to go on. Only the enhanced export hides
 text. The plain export refuses a note that asks for it.
@@ -2104,13 +2170,13 @@ them over and over. Bibliography files are held to the same directories, and
 one named without an ending is looked for with =.bib= added, as BibTeX looks
 for it.
 
-#+table: commands org-export-latex-pdf-enhanced org-export-latex-pdf-enhanced-buffer org-export-latex-pdf-enhanced-xdg org-export-latex-enhanced org-export-docx org-export-docx-xdg org-export-html
+#+table: commands org-export-latex-pdf-enhanced org-export-latex-pdf-enhanced-buffer org-export-latex-pdf-enhanced-externally org-export-latex-enhanced org-export-docx org-export-docx-externally org-export-html org-export-html-externally
 
-#+table: commands org-export-latex-pdf org-export-latex-pdf-buffer org-export-latex-pdf-xdg org-export-latex export-latex-compile-pdf export-latex-compile-pdf-buffer export-latex-compile-pdf-xdg
+#+table: commands org-export-latex-pdf org-export-latex-pdf-buffer org-export-latex-pdf-externally org-export-latex latex-export-pdf latex-export-pdf-buffer latex-export-pdf-externally
 
 #+table: commands show-line-in-pdf pdf-view-show-source pdf-view-show-source-at-click
 
-#+table: commands org-insert-export-drawer describe-export-settings describe-org-keyword-settings export-latex-template-copy export-template-from-docx export-template-from-latex insert-formatted-note-template org-macro-wrap org-macro-unwrap export-check-redactions
+#+table: commands org-insert-export-drawer describe-export-settings describe-org-keyword-settings export-template-copy-latex export-template-from-docx export-template-from-latex insert-formatted-note-template org-macro-wrap org-macro-unwrap export-check-redactions
 
 #+table: settings *latex-engines* *latex-main-font* *latex-sans-font* *latex-mono-font* *logos-directory* *latex-redaction-commands*
 

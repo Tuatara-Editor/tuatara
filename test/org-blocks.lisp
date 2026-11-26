@@ -114,7 +114,7 @@
   ;; read in that directory, the agenda the files of multi/ there
   (let* ((dir (merge-pathnames "test/org/dblock/" (asdf:system-source-directory :tuatara)))
          (tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
-         (tuatara-user:*default-directory* (tuatara.io:native dir))
+         (tuatara-user:*no-file-directory* (tuatara.io:native dir))
          (tuatara-user:*org-agenda-files* (list (concatenate 'string (tuatara.io:native dir) "multi/"))))
     (true (directory (merge-pathnames "test/org/dblock/*.org" (asdf:system-source-directory :tuatara))))
     (dolist (path (directory (merge-pathnames "test/org/dblock/*.org" (asdf:system-source-directory :tuatara))))
@@ -260,7 +260,7 @@
 (define-modal-test (org clocktable-archives-and-returns)
   (let* ((directory (tuatara.io:native (merge-pathnames "test/org/dblock/" (asdf:system-source-directory :tuatara))))
          (tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
-         (tuatara-user:*default-directory* directory)
+         (tuatara-user:*no-file-directory* directory)
          (tuatara-user:*org-agenda-files* (list (concatenate 'string directory "multi/")))
          (a (concatenate 'string directory "multi/a.org")))
     ;; an agenda file's archive, found as Org finds it: NAME_archive beside it, or what #+ARCHIVE: names; beside it only

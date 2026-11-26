@@ -334,6 +334,22 @@ workbook, Impress for a presentation)."
         (true (last-images f))))
     (rimu-forget)))
 
+(define-test (office-view package-preview-told-its-list)
+  ;; a package giving a file's preview text is told the rimu list it is shown from, to ask READ-HERE-P of it
+  (with-rimu-tree (dir)
+    (let* ((given :none)
+           (package (lambda (fd path size kind octets &optional list)
+                      (declare (ignore fd size kind octets))
+                      (when (search "told.dat" path) (setf given list))
+                      nil)))
+      (put-file (merge-pathnames "told.dat" dir) "words")
+      ;; a hook the preview's thread sees: set, not bound
+      (push package tuatara.defaults::*preview-text-functions*)
+      (unwind-protect (rimu-session dir (format nil "g f ~a RET" (rimu-typed "told.dat")) :preview t :width 250)
+        (setf tuatara.defaults::*preview-text-functions* (remove package tuatara.defaults::*preview-text-functions*)))
+      (true (and (typep given (quote tuatara.buffer:buffer)) (tuatara:rimu-list-p given)) "~s" given)
+      (rimu-forget))))
+
 (define-test (office-view untrusted-read-only-in-the-sandbox)
   ;; a document from outside is never read by Tuatara's own reader: not in rimu's preview, which asks no
   ;; package for its text either, and not by its view of pages, even when LibreOffice makes none
@@ -367,6 +383,65 @@ workbook, Impress for a presentation)."
                 (true (tuatara.buffer:buffer-local buffer :reading-withheld)))
               (tuatara.buffer:kill-buffer buffer))))
         (pdf-forget)))))
+
+(define-test (office-view office-not-read-from-a-safe-list)
+  ;; an Office document opened from a list opened safely is never read as text by Tuatara's own reader, as
+  ;; one from outside is not; from a list opened as usual it is
+  (with-test-directory (dir)
+    (let ((xlsx (write-office-test-file (merge-pathnames "birds.xlsx" dir) *xlsx-test-parts*))
+          (list (tuatara.buffer:make-buffer "*safe list*" :text ""))
+          (tuatara.defaults::*office-view-pages* nil)
+          (tuatara.defaults::*file-view-said* nil))
+      (setf (tuatara.io:safe-visit-p list) t)
+      (unwind-protect
+           (let ((tuatara.command::*current-buffer* list))
+             (false (tuatara.defaults::office-view-visit xlsx #'identity))
+             (true (search "read outside the sandbox" (or tuatara.defaults::*file-view-said* "")))
+             (false (tuatara.buffer:find-buffer "birds.xlsx (text)")))
+        (tuatara.buffer:kill-buffer list)))))
+
+(define-test (office-view read-as-usual-once-a-safe-visit-ends)
+  ;; an Office document opened safely on asking, then M-x end-safe-visit: read as text by Tuatara's own reader
+  ;; in the buffer's place, as C-x C-f reads it, the buffer it was shown in no longer counting as opened safely
+  (with-test-directory (dir)
+    (let ((xlsx (write-office-test-file (merge-pathnames "birds.xlsx" dir) *xlsx-test-parts*))
+          (tuatara.defaults::*office-view-pages* nil))
+      (flet ((read-buffer ()
+               (find-if (lambda (b) (search "Sheet 1: Birds" (tuatara.buffer:buffer-string b)))
+                        tuatara.buffer:*buffers*)))
+        (unwind-protect
+             (let ((f (auto-save-session (list (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed (namestring xlsx)))
+                                               "M-x e n d - s a f e - v i s i t RET"
+                                               (list :until #'read-buffer 20))
+                                         :width 200)))
+               (true (read-buffer))
+               (false (tuatara.frontend.fake:fake-frame-showing f "read outside the sandbox")))
+          (dolist (b (copy-list tuatara.buffer:*buffers*))
+            (when (search "birds.xlsx" (tuatara.buffer:buffer-name b))
+              (tuatara.buffer:kill-buffer b))))))))
+
+(define-test (office-view office-reading-refuses-a-file-put-in-place)
+  ;; the document read as text is the one its visit judged: one put in its place meanwhile is not read
+  (with-test-directory (dir)
+    (let* ((xlsx (write-office-test-file (merge-pathnames "birds.xlsx" dir) *xlsx-test-parts*))
+           (pages (tuatara.buffer:make-buffer "*pages*" :text ""))
+           (reading nil))
+      (setf (tuatara.buffer:buffer-local pages :viewed-stamp) (tuatara.io:path-stamp xlsx))
+      (rename-file xlsx (merge-pathnames "kept.xlsx" dir))
+      (write-office-test-file xlsx *xlsx-test-parts*)
+      (unwind-protect
+           (progn
+             (setf reading (tuatara.defaults::office-reading-buffer
+                            xlsx (tuatara.defaults::office-file-format xlsx) pages))
+             (let ((job (find-if (lambda (job) (and (tuatara.defaults::office-read-job-p job)
+                                                    (eq reading (tuatara.runtime:job-buffer job))))
+                                 tuatara.runtime:*jobs*)))
+               (true job)
+               (when job
+                 (loop repeat 1000 while (tuatara.runtime:job-running-p job) do (sleep 0.01))
+                 (false (tuatara.defaults::office-read-job-text job)))))
+        (when reading (tuatara.buffer:kill-buffer reading))
+        (tuatara.buffer:kill-buffer pages)))))
 
 (define-test (office-view office-older-pages)
   ;; a Word document of before 2007, test/office-view/survey.doc (saved by LibreOffice from the test's
@@ -859,3 +934,47 @@ manifest's entries for its text when given."
       (note-has note "- Inserted by Ana :: kea 1")
       (false (search ":: kea 2" note) "~a" note)
       (note-has note "- And 3 more (*office-most-listed*)"))))
+
+(define-test (rimu safe-list-previews-nothing-read-here)
+  ;; in a list opened safely no preview is read by Tuatara's own readers: not an Office document's text,
+  ;; which shows no Org note either, and not a mail a package would read
+  (with-rimu-tree (dir)
+    (write-office-test-file (merge-pathnames "kea.docx" dir) *docx-test-parts*)
+    (put-file (merge-pathnames "note.eml" dir) (format nil "From: a@example.org~%Subject: hi~%~%words~%"))
+    (let* ((taken '()) (kea-mode nil)
+           (package (lambda (fd path &rest arguments)
+                      (declare (ignore fd arguments))
+                      (push path taken)
+                      "Said by a package")))
+      (flet ((preview-of (name)
+               (lambda () (find-if (lambda (b) (search (format nil "~a (preview" name) (tuatara.buffer:buffer-name b)))
+                                   tuatara.buffer:*buffers*))))
+        (rimu-forget)
+        (sb-int:encapsulate 'tuatara.defaults::docx-read-note 'noted
+                            (lambda (function path &rest arguments)
+                              (push path taken)
+                              (apply function path arguments)))
+        ;; a hook the preview's thread sees: set, not bound
+        (push package tuatara.defaults::*preview-text-functions*)
+        (unwind-protect
+             (let ((tuatara-user:*rimu-preview* t) (tuatara-user:*rimu-preview-delay* 0)
+                   (tuatara-user:*modal-editing* nil))
+               (auto-save-session (list (format nil "M-x f i n d - f i l e - s a f e l y RET C-a C-k ~a C-j"
+                                                (rimu-typed (namestring dir)))
+                                        "g f k e a . d o c x RET"
+                                        (list :until (lambda ()
+                                                       (let ((preview (funcall (preview-of "kea.docx"))))
+                                                         (and preview
+                                                              (setf kea-mode
+                                                                    (symbol-name
+                                                                     (type-of (tuatara.defaults::buffer-major-mode
+                                                                               preview)))))))
+                                              30)
+                                        "g f n o t e . e m l RET" (list :until (preview-of "note.eml") 30))
+                                  :width 120)
+               (true kea-mode "previewed")
+               (false (equal "ORG-MODE" kea-mode) "no Org note"))
+          (setf tuatara.defaults::*preview-text-functions* (remove package tuatara.defaults::*preview-text-functions*))
+          (sb-int:unencapsulate 'tuatara.defaults::docx-read-note 'noted)
+          (rimu-forget))
+        (is equal '() taken "nothing read in the editor")))))

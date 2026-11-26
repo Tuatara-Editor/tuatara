@@ -307,6 +307,11 @@ was asked: an answer to a question no longer standing is let go."
                      (apply then values)))))
       (apply then answer more)))
 
+(defun editor-frontends (editor)
+  "The screens EDITOR's frames show on, each once: frames taking turns on one
+display share its frontend."
+  (remove-duplicates (mapcar #'frame-frontend (editor-frames editor))))
+
 (defun wake-editor (editor)
   "Wake EDITOR, from any thread, to show what work in the background has for
 it: its frames share one source of events, which is woken once, through the
@@ -479,13 +484,30 @@ WIDTH): its lines broken for ROOM columns, the box WIDTH wide
 
 (defvar *current-buffer* nil
   "The buffer commands and the Lisp one types act on when it is not the selected
-window's: made so by SET-BUFFER until the command ends, or by
-WITH-CURRENT-BUFFER for its body.")
+window's: made so by WITH-BUFFER-CURRENT for its body.")
 
 (defun current-buffer ()
   "Return the current buffer: the one commands act on, the selected window's
-unless SET-BUFFER or WITH-CURRENT-BUFFER made another current."
+unless WITH-BUFFER-CURRENT made another current."
   (or *current-buffer* (selected-window-buffer *editor*)))
+
+(defun call-with-buffer-current (buffer function)
+  "Call FUNCTION with BUFFER current, as WITH-BUFFER-CURRENT says, and return
+what it returns."
+  (unless (and (typep buffer 'tuatara.buffer:buffer) (live-buffer-p buffer))
+    (refuse "~s is not a live buffer" buffer))
+  (let ((*current-buffer* buffer))
+    (funcall function)))
+
+(defmacro with-buffer-current ((buffer) &body body)
+  "Run BODY with BUFFER, a live buffer, as the current buffer (CURRENT-BUFFER),
+without showing it, and return the value of BODY's last form; the buffer
+current before is current again afterwards."
+  `(call-with-buffer-current ,buffer (lambda () ,@body)))
+
+(defun buffer-list ()
+  "Return a list of the live buffers, most recently made first."
+  (copy-list tuatara.buffer:*buffers*))
 
 (defun abbreviated-path (path)
   "PATH, a file's or a directory's (a pathname or a native name), as a
@@ -512,7 +534,7 @@ for its file's."
 (defun buffer-directory (buffer)
   "The native name, ending in /, of the directory BUFFER stands in: the one it
 lists, for a list of a directory (\\[rimu]); else that of its file; else the one
-*DEFAULT-DIRECTORY* names. Files asked for from BUFFER are looked for there."
+*NO-FILE-DIRECTORY* names. Files asked for from BUFFER are looked for there."
   (let ((listed (buffer-given-directory buffer))
         (file (tuatara.buffer:buffer-file buffer)))
     (cond (listed)
@@ -537,7 +559,7 @@ pasted since.
 - nil: killed text stays with the editor."
   :values boolean)
 
-(define-setting *message-log-max* 1000
+(define-setting *messages-kept* 1000
   "The lines the *Messages* buffer keeps of the messages shown.
 The oldest go first. Raise it to look back further, at the cost of the
 memory of those lines.
@@ -604,12 +626,12 @@ shown but never kept in *Messages* (LOG-MESSAGE).")
 (defun log-message (text)
   "Add TEXT, a message just shown, to the *Messages* buffer (made when there is
 none): a line of its own, or the last line counted up when it says the same
-(\"Saved [2 times]\"). The buffer keeps *MESSAGE-LOG-MAX* lines (ADD-TO-LOG).
+(\"Saved [2 times]\"). The buffer keeps *MESSAGES-KEPT* lines (ADD-TO-LOG).
 A message said while a secret is, or was, at hand is not kept: its words may
 hold the secret."
-  (when (and *message-log-max* (plusp (length text))
+  (when (and *messages-kept* (plusp (length text))
              (not tuatara.runtime:*secret-at-hand*) (not (gethash text *secret-messages*)))
-    (add-to-log (messages-buffer) *message-log-max*
+    (add-to-log (messages-buffer) *messages-kept*
                 (lambda (buffer)
                   (let* ((size (tuatara.buffer:buffer-size buffer))
                          (last-start (if (zerop size) 0 (tuatara.buffer:buffer-line-start buffer (1- size))))
@@ -621,7 +643,7 @@ hold the secret."
                                                          (format nil "~a [~d times]" text (1+ count)))
                           (tuatara.buffer:buffer-insert buffer size (format nil "~a~%" text)))))))))
 
-(defvar *messages-kept* nil
+(defvar *messages-gathered* nil
   "While work runs on a thread away from the editor's: a list cell whose first
 element gathers the messages it says, the newest first, for the editor to
 show once the work is taken in; NIL, as on the editor's own thread, for
@@ -735,7 +757,7 @@ case, when TEXT does not hold it already."
 it in the *Messages* buffer (LOG-MESSAGE). The keys CONTROL names as
 \\=\\[COMMAND] and the rest (SUBSTITUTE-COMMAND-KEYS) are those bound now, shown
 in :help-key-binding. Said by work away from the editor's thread, while
-*MESSAGES-KEPT* holds a cell, it is kept there to be shown later; said there
+*MESSAGES-GATHERED* holds a cell, it is kept there to be shown later; said there
 otherwise, it is handed to the editor's thread, which shows it as soon as it
 is woken. What the command running said too (SAY-WITH-COMMAND-MESSAGES) is
 shown after it. Said while a secret is at hand, it is shown but not kept.
@@ -746,8 +768,8 @@ nothing."
                                                    arguments)))))
     (when tuatara.runtime:*secret-at-hand*
       (setf (gethash text *secret-messages*) t))
-    (cond (*messages-kept*
-           (push text (car *messages-kept*)))
+    (cond (*messages-gathered*
+           (push text (car *messages-gathered*)))
           ((away-from-editor-p)
            (hand-to-editor-thread text *messages-from-threads*))
           (t
@@ -800,3 +822,26 @@ debug mode's log.")
   "The text typed in EDITOR's minibuffer as it is shown: as stars while it reads a secret."
   (let ((text (editor-minibuffer-text editor)))
     (if *minibuffer-hidden* (make-string (length text) :initial-element #\*) text)))
+
+(defun wait-for-clipboard-text (kept)
+  "The clipboard's text as KEPT (TUATARA.FRONTEND:CLIPBOARD-KEPT) has it, once
+the reads of a change under way are in, waited for a second at most while
+the editor reads keys: \"Waiting for the clipboard...\" shows after a moment,
+and \\`C-g' gives up. The second gone, the text kept before the change. Two
+values: the text and true; NIL and true when \\`C-g' gave up; NIL and NIL
+when KEPT keeps nothing (nothing read yet, or kept no more), for the frontend
+to read the clipboard itself."
+  (let ((deadline (tuatara.runtime:deadline-in 1))
+        (lock (tuatara.frontend:clipboard-kept-lock kept)))
+    (if (wait-until-interruptibly (lambda ()
+                                    (sb-thread:with-mutex (lock)
+                                      (or (zerop (tuatara.frontend:clipboard-kept-reads kept))
+                                          (tuatara.frontend:clipboard-kept-ended kept)
+                                          (not (plusp (tuatara.runtime:seconds-left deadline))))))
+                                  :message "Waiting for the clipboard..." :grace 1/5
+                                  :wake (tuatara.frontend:clipboard-kept-wake kept))
+        (sb-thread:with-mutex (lock)
+          (if (and (tuatara.frontend:clipboard-kept-known kept) (not (tuatara.frontend:clipboard-kept-ended kept)))
+              (values (tuatara.frontend:clipboard-kept-text kept) t)
+              (values nil nil)))
+        (values nil t))))

@@ -255,10 +255,11 @@ It interrupts again a thread still in a stoppable call of work asked to stop.
 It waits while no thread is in a stoppable call, until one of work given
 seconds begins (CALL-STOPPABLE) or work is asked to stop."
   (loop
-    ;; told of every call begun from here on; what it was told before, it looks at now
+    ;; what it was told before, it looks at now; told of every call begun from here on, the wake-up
+    ;; left standing, so that a call begun and ended before the look cannot have eaten the next one's
+    (loop while (sb-thread:try-semaphore **stop-watch-wake**))
     (setf **stop-watch-waiting** t)
     (sb-thread:barrier (:memory))
-    (loop while (sb-thread:try-semaphore **stop-watch-wake**))
     (let ((slow '()) (stopped '()) (calling nil) (looked '()) (now (get-internal-real-time)))
       (sb-thread:with-mutex (**stop-lock**)
         (maphash (lambda (cancel entry)

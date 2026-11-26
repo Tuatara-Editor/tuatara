@@ -86,31 +86,31 @@ cdr to T once it has run."
   "True when enchant is loaded, loading it the first time (FOREIGN-LIBRARY-P)."
   (and *enchant-library* (foreign-library-p *enchant-library*)))
 
-(tuatara.io:define-c-function ("enchant_broker_init" %enchant-broker-init) :pointer
+(tuatara.runtime:define-c-function ("enchant_broker_init" %enchant-broker-init) :pointer
   "A new enchant broker, which finds the dictionaries.")
 
-(tuatara.io:define-c-function ("enchant_broker_request_dict" %enchant-request-dictionary) :pointer
+(tuatara.runtime:define-c-function ("enchant_broker_request_dict" %enchant-request-dictionary) :pointer
   "BROKER's dictionary for the language named TAG (en_NZ), or a null pointer."
   (broker :pointer) (tag :string))
 
-(tuatara.io:define-c-function ("enchant_dict_check" %enchant-check) :int
+(tuatara.runtime:define-c-function ("enchant_dict_check" %enchant-check) :int
   "0 when DICTIONARY takes WORD as spelt right; LENGTH -1 for the whole of WORD."
   (dictionary :pointer) (word :string) (length sb-alien:long))
 
-(tuatara.io:define-c-function ("enchant_dict_suggest" %enchant-suggest) :pointer
+(tuatara.runtime:define-c-function ("enchant_dict_suggest" %enchant-suggest) :pointer
   "DICTIONARY's suggestions for WORD, a list of strings whose length goes
 where COUNT points; LENGTH -1 for the whole of WORD."
   (dictionary :pointer) (word :string) (length sb-alien:long) (count :pointer))
 
-(tuatara.io:define-c-function ("enchant_dict_free_string_list" %enchant-free-list) :void
+(tuatara.runtime:define-c-function ("enchant_dict_free_string_list" %enchant-free-list) :void
   "Free LIST, suggestions DICTIONARY gave."
   (dictionary :pointer) (list :pointer))
 
-(tuatara.io:define-c-function ("enchant_dict_add_to_session" %enchant-add-to-session) :void
+(tuatara.runtime:define-c-function ("enchant_dict_add_to_session" %enchant-add-to-session) :void
   "Have DICTIONARY take WORD as right while the editor runs; LENGTH -1 for the whole of WORD."
   (dictionary :pointer) (word :string) (length sb-alien:long))
 
-(tuatara.io:define-c-function ("enchant_dict_add" %enchant-add) :void
+(tuatara.runtime:define-c-function ("enchant_dict_add" %enchant-add) :void
   "Have DICTIONARY take WORD as right from now on, in its personal word list;
 LENGTH -1 for the whole of WORD."
   (dictionary :pointer) (word :string) (length sb-alien:long))
@@ -123,7 +123,7 @@ time it is wanted; NIL when enchant has none for it."
   (let ((dictionary (or (gethash language *enchant-dictionaries*)
                         (setf (gethash language *enchant-dictionaries*)
                               (let ((pointer (%enchant-request-dictionary *enchant-broker* language)))
-                                (if (tuatara.io:null-pointer-p pointer) :missing pointer))))))
+                                (if (tuatara.runtime:null-pointer-p pointer) :missing pointer))))))
     (and (not (eq dictionary :missing)) dictionary)))
 
 (defun enchant-right-p (dictionary word)
@@ -134,7 +134,7 @@ time it is wanted; NIL when enchant has none for it."
   "On the speller thread: what DICTIONARY suggests for WORD, best first, as strings."
   (sb-alien:with-alien ((count sb-alien:unsigned-long 0))
     (let ((list (%enchant-suggest dictionary word -1 (sb-alien:alien-sap (sb-alien:addr count)))))
-      (unless (tuatara.io:null-pointer-p list)
+      (unless (tuatara.runtime:null-pointer-p list)
         (prog1 (loop with strings = (sb-alien:sap-alien list (* (sb-alien:c-string :external-format :utf-8)))
                      for i below count
                      collect (sb-alien:deref strings i))

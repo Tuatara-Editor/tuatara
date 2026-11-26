@@ -282,40 +282,43 @@ org-mode. NIL and T name no mode."
                       (string-equal "-mode" mode :start2 n)))))))
 
 (defun mode-setting (mode settings)
-  "What SETTINGS says of major mode MODE (an instance), as two values: the
-value and T; NIL and NIL when it says nothing of MODE or the modes MODE is
-made from. The nearest mode decides: what is said of org-mode counts before
-what is said of text-mode, which Org is made from. SETTINGS is a hash table
-keyed by modes' names, or a list whose entries are (NAME . VALUE) or a bare
-NAME, which means T; a NAME is matched as NAMES-MODE-P has it, and the first
-entry for a mode counts. Linear in the modes MODE is made from times the
-entries."
-  (if (not (and mode (if (hash-table-p settings) (plusp (hash-table-count settings)) settings)))
-      (values nil nil)
-      (dolist (class (sb-mop:class-precedence-list (class-of mode)) (values nil nil))
+  "What SETTINGS says of major mode MODE (an instance, or a mode's name), as
+two values: the value and T; NIL and NIL when it says nothing of MODE or the
+modes MODE is made from. The nearest mode decides: what is said of org-mode
+counts before what is said of text-mode, which Org is made from. SETTINGS is a
+list whose entries are (NAME . VALUE) or a bare NAME, which means T; a NAME is
+matched as NAMES-MODE-P has it, and the first entry for a mode counts. Linear
+in the modes MODE is made from times the entries."
+  (let ((class (and mode settings (if (symbolp mode) (find-class mode nil) (class-of mode)))))
+    (when class
+      (unless (sb-mop:class-finalized-p class) (sb-mop:finalize-inheritance class))
+      (dolist (class (sb-mop:class-precedence-list class))
         (let ((name (class-name class)))
           (when (find-mode name)
-            (if (hash-table-p settings)
-                (multiple-value-bind (value found) (gethash name settings)
-                  (when found (return (values value t))))
-                (dolist (entry settings)
-                  (when (names-mode-p (if (consp entry) (car entry) entry) name)
-                    (return-from mode-setting (values (if (consp entry) (cdr entry) t) t))))))))))
+            (dolist (entry settings)
+              (when (names-mode-p (if (consp entry) (car entry) entry) name)
+                (return-from mode-setting (values (if (consp entry) (cdr entry) t) t))))))))
+    (values nil nil)))
+
+(defun mode-value (mode settings global &optional defaults)
+  "The value of a setting chosen by major mode that MODE (an instance, or a
+mode's name) has: what SETTINGS says of it or the nearest mode it is made from
+\(MODE-SETTING), else what DEFAULTS, a list of the same kind, says; else
+GLOBAL."
+  (multiple-value-bind (value found) (mode-setting mode settings)
+    (if found
+        value
+        (multiple-value-bind (value found) (mode-setting mode defaults)
+          (if found value global)))))
 
 (defun buffer-setting (buffer key settings global &optional defaults)
   "BUFFER's value of a setting it may choose for itself: its own, the
-buffer-local KEY, when it has one; else what SETTINGS says of its major mode
-or the nearest mode that mode is made from (MODE-SETTING), else what DEFAULTS,
-a list of the same kind, says; else GLOBAL."
+buffer-local KEY, when it has one; else what its major mode has (MODE-VALUE of
+SETTINGS, GLOBAL and DEFAULTS)."
   (let ((own (tuatara.buffer:buffer-local buffer key '%unset)))
-    (if (not (eq own '%unset))
-        own
-        (let ((mode (buffer-major-mode buffer)))
-          (multiple-value-bind (value found) (mode-setting mode settings)
-            (if found
-                value
-                (multiple-value-bind (value found) (mode-setting mode defaults)
-                  (if found value global))))))))
+    (if (eq own '%unset)
+        (mode-value (buffer-major-mode buffer) settings global defaults)
+        own)))
 
 (defun mode-modal-class (mode)
   "The modal class MODE gives its buffers: the nearest modal class set along

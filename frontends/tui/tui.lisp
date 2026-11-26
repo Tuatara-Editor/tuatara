@@ -3,8 +3,7 @@
 
 (defpackage #:tuatara.frontend.tui
   (:use #:cl)
-  (:import-from #:tuatara.io #:define-c-function #:null-pointer #:null-pointer-p)
-  (:import-from #:tuatara.runtime #:define-record #:define-setting)
+  (:import-from #:tuatara.runtime #:define-record #:define-setting #:define-c-function #:null-pointer #:null-pointer-p)
   (:import-from #:tuatara-user #:*tui-padding* #:*tui-pictures* #:*tui-mouse* #:*tui-colours* #:*kitty-keyboard*
                 #:*altgr-as-meta*)
   (:documentation "The ncurses frontend: paints rows into the terminal and turns key presses into events.")
@@ -87,6 +86,9 @@ C-m.
 (define-c-function ("setupterm" %setupterm) :int (term :string) (fd :int) (error :pointer))
 (define-c-function ("tigetnum" %tigetnum) :int (name :string))
 (define-c-function ("del_curterm" %del-curterm) :int (terminal :pointer))
+(define-c-function ("tigetstr" %tigetstr) :pointer (name :string))
+(define-c-function ("define_key" %define-key) :int (definition :string) (code :int))
+(define-c-function ("key_defined" %key-defined) :int (definition :string))
 (define-c-function ("endwin" %endwin) :int)
 (define-c-function ("resizeterm" %resizeterm) :int (rows :int) (columns :int))
 (define-c-function ("raw" %raw) :int)
@@ -223,15 +225,62 @@ for none), or NIL when there is none installed."
         (prog1 (max 0 (%tigetnum "colors"))
           (%del-curterm (c-variable "cur_term" sb-sys:system-area-pointer)))))))
 
-(defun wanted-colours (&key (setting *tui-colours*) (no-color (tuatara.io:own-variable "NO_COLOR")))
+;; ncurses' own names of the key capabilities, then the modified keys xterm
+;; added (kUP5 is C-up), which a description holds as extended names
+(defun key-capability-names ()
+  "The names of the terminfo capabilities that are keys: those ncurses knows
+(khome, kf1 ...) and the modified cursor and editing keys (kHOM3, kUP5 ...)."
+  (append (loop with names = (sb-alien:extern-alien "strnames" (array sb-alien:c-string 1000))
+                for i from 0
+                for name = (sb-alien:deref names i)
+                while name
+                when (and (char= (char name 0) #\k) (string/= name "kmous"))
+                  collect name)
+          '("kUP" "kDN")
+          (loop for key in '("DC" "DN" "END" "HOM" "IC" "LFT" "NXT" "PRV" "RIT" "UP")
+                append (loop for modifiers from 3 to 7
+                             collect (format nil "k~a~d" key modifiers)))))
+
+(defun capability-string (name)
+  "The string capability NAME of the terminal description in force, or NIL
+when it has none."
+  (let ((pointer (%tigetstr name)))
+    (unless (member (sb-sys:sap-int pointer) (list 0 (ldb (byte 64 0) -1)))
+      (tuatara.runtime:sap-string pointer))))
+
+(defun terminal-key-strings (term)
+  "What the terminal TERM sends for each of its keys, by its installed
+description: a list of (NAME . STRING), NAME a key capability's name; NIL when
+no description of TERM is installed."
+  (when (plusp (length term))
+    (sb-alien:with-alien ((failure sb-alien:int 0))
+      (when (zerop (%setupterm term 1 (sb-alien:alien-sap (sb-alien:addr failure))))
+        (prog1 (loop for name in (key-capability-names)
+                     for string = (capability-string name)
+                     when (plusp (length string))
+                       collect (cons name string))
+          (%del-curterm (c-variable "cur_term" sb-sys:system-area-pointer)))))))
+
+(defun define-terminal-keys (keys)
+  "Let the screen in force read each string of KEYS, from
+TERMINAL-KEY-STRINGS, as the key of its name, where its own description has
+another string for that key. With a screen started for 24-bit colour, the
+keys the terminal sends its own way (Home in tmux, ESC [ 1 ~) are read too."
+  (loop for (name . string) in keys
+        for own = (capability-string name)
+        for code = (and own (string/= own string) (%key-defined own))
+        when (and code (plusp code) (/= (%key-defined string) code))
+          do (%define-key string code)))
+
+(defun wanted-colours (&key (setting *tui-colours*) (no-color (tuatara.runtime:own-variable "NO_COLOR")))
   "The colours asked for: *TUI-COLOURS* when it says (:24-BIT, 256, 16, 8 or
 NIL), else NIL where NO_COLOR is set (not empty), else :AUTO."
   (cond ((not (eq setting :auto)) setting)
         ((plusp (length no-color)) nil)
         (t :auto)))
 
-(defun direct-terminal-type (&key (term (tuatara.io:own-variable "TERM"))
-                                  (colorterm (tuatara.io:own-variable "COLORTERM"))
+(defun direct-terminal-type (&key (term (tuatara.runtime:own-variable "TERM"))
+                                  (colorterm (tuatara.runtime:own-variable "COLORTERM"))
                                   (wanted (wanted-colours)) (term-colours (terminfo-colours term)))
   "The terminal type to start ncurses with for 24-bit colour, or NIL to go on
 with TERM. The type is xterm-direct256 (xterm-256color with 24-bit colour,
@@ -431,7 +480,7 @@ sessions before are kept beside it (TUATARA.IO:SESSION-LOG)."
   (unless *saved-stderr*
     (let ((fd (tuatara.io:session-log "the terminal")))
       (when fd
-        (setf *saved-stderr* (tuatara.io:duplicate-fd 2 :lowest 10))
+        (setf *saved-stderr* (tuatara.runtime:duplicate-fd 2 :lowest 10))
         (sb-posix:dup2 fd 2)
         (tuatara.runtime:close-fd-quietly fd "the session log")))))
 
@@ -475,7 +524,7 @@ sends such a terminal its text in the order it is stored.")
 
 (defmethod tuatara.frontend:frontend-reorders-text-p ((f tui-frontend))
   "True when the terminal is one of *REORDERING-TERMINALS*."
-  (and (find-if (lambda (name) (let ((value (tuatara.io:own-variable name))) (and value (plusp (length value)))))
+  (and (find-if (lambda (name) (let ((value (tuatara.runtime:own-variable name))) (and value (plusp (length value)))))
                 *reordering-terminals*)
        t))
 
@@ -532,24 +581,22 @@ in place of ncurses' own handler, so that the wait needs no timeout."
 (defun start-screen (f)
   "Start ncurses on the terminal for the colours asked for (WANTED-COLOURS):
 the first time, or again in place of the screen before, which has ended."
-  ;; for 24-bit colour ncurses needs a terminal description that has it; TERM
-  ;; says which only while ncurses starts, so that programs run later see TERM
-  ;; as it was
+  ;; for 24-bit colour ncurses needs a terminal description that has it, named
+  ;; to it alone: the environment, which programs started meanwhile read, keeps
+  ;; TERM as it is
   (let* ((wanted (wanted-colours))
          (direct (direct-terminal-type :wanted wanted))
-         (term (tuatara.io:own-variable "TERM"))
+         (term (tuatara.runtime:own-variable "TERM"))
+         (keys (and direct (terminal-key-strings term)))
          (before *screen*)
-         (screen (progn (when direct (sb-posix:setenv "TERM" direct 1))
-                        (unwind-protect
-                             (%newterm (or direct term) (c-variable "stdout" sb-sys:system-area-pointer)
-                                       (c-variable "stdin" sb-sys:system-area-pointer))
-                          (when direct
-                            (if term
-                                (sb-posix:setenv "TERM" term 1)
-                                (sb-posix:unsetenv "TERM")))))))
+         (screen (%newterm (or direct term) (c-variable "stdout" sb-sys:system-area-pointer)
+                           (c-variable "stdin" sb-sys:system-area-pointer))))
     (when (null-pointer-p screen)
       (error "The terminal ~a is not known (TERM)" (or term "not set")))
     (%set-term screen)
+    ;; ncurses reads the keys of its description once keypad mode is on
+    (%keypad (stdscr) t)
+    (define-terminal-keys keys)
     (when before (%delscreen before))
     (setf *screen* screen *colours-wanted* wanted)
     (setf *colours* (and wanted (%has-colors) (zerop (%start-color))))
@@ -567,7 +614,6 @@ the first time, or again in place of the screen before, which has ended."
           *next-pair* 1)
     (clrhash *pairs*)
     (clrhash (tuatara.display:face-cache-table *spec-cache*)))
-  (%keypad (tui-window f) t)
   ;; frames painted whole, keys waiting or not: the editor decides when to skip one
   (%typeahead -1)
   (%set-escdelay 25)
@@ -618,6 +664,7 @@ characters shown in the order sent, and the screen painted whole, as what was dr
   (%wrefresh (tui-window f)))
 
 (defmethod tuatara.frontend:frontend-stop ((f tui-frontend))
+  (finish-clipboard-writing 1)
   (stop-clipboard-watch)
   (forget-shared-pictures)
   (sb-sys:enable-interrupt sb-unix:sigwinch :default)
@@ -650,9 +697,9 @@ characters shown in the order sent, and the screen painted whole, as what was dr
 (defun terminal-name ()
   "The terminal Tuatara runs in, as far as its environment says: kitty, the
 TERM_PROGRAM a terminal sets, else TERM."
-  (cond ((tuatara.io:own-variable "KITTY_WINDOW_ID") "kitty")
-        ((let ((program (tuatara.io:own-variable "TERM_PROGRAM"))) (and program (plusp (length program)) program)))
-        (t (or (tuatara.io:own-variable "TERM") "a terminal"))))
+  (cond ((tuatara.runtime:own-variable "KITTY_WINDOW_ID") "kitty")
+        ((let ((program (tuatara.runtime:own-variable "TERM_PROGRAM"))) (and program (plusp (length program)) program)))
+        (t (or (tuatara.runtime:own-variable "TERM") "a terminal"))))
 
 (defmethod tuatara.frontend:frontend-description ((f tui-frontend))
   (format nil "in the terminal (~a)" (terminal-name)))
@@ -661,7 +708,7 @@ TERM_PROGRAM a terminal sets, else TERM."
   (let ((colours (tuatara.frontend:frontend-colour-count f))
         (programs (clipboard-programs)))
     (list (cons "Display" (format nil "this terminal (TERM ~a), ~a (~a), ~a"
-                                  (or (tuatara.io:own-variable "TERM") "not set")
+                                  (or (tuatara.runtime:own-variable "TERM") "not set")
                                   (cond ((>= colours 16777216) "24-bit colour")
                                         ((plusp colours) (format nil "~d colours" colours))
                                         (t "no colours"))
@@ -820,8 +867,8 @@ answers as TERMINAL-ANSWERS-IN reads them."
   "True when Tuatara runs inside tmux or screen, which take a picture's
 commands for something else (the window's title), so that pictures are asked
 about and shown there only when *TUI-PICTURES* is T."
-  (let ((term (or (tuatara.io:own-variable "TERM") "")))
-    (or (tuatara.io:own-variable "TMUX") (tuatara.io:own-variable "STY")
+  (let ((term (or (tuatara.runtime:own-variable "TERM") "")))
+    (or (tuatara.runtime:own-variable "TMUX") (tuatara.runtime:own-variable "STY")
         (uiop:string-prefix-p "screen" term) (uiop:string-prefix-p "tmux" term))))
 
 (defun shared-probe ()
@@ -1254,13 +1301,15 @@ prefix when another key follows at once, or a lone escape. By kitty's protocol
 a lone ESC is never a key (Escape is CSI 27 u): the rest of its sequence is
 waited for, never taken for keys typed. After ESC [ the rest is waited for in
 every mode, as a sequence may come in two parts (over a network), and a paste
-is never read as keys. NIL for a sequence of no use here (KEY-EVENT)."
+is never read as keys. A late answer to a picture's command (ESC _ G ... ESC \\)
+is read to its end and is no key. NIL for a sequence of no use here
+\(KEY-EVENT)."
   (%nodelay window t)
   (multiple-value-bind (status value status-after value-after)
       (multiple-value-bind (status value) (if *kitty-keyboard-on*
                                               (read-wide-char-soon window 1/10)
                                               (read-wide-char window))
-        (if (and (= status 0) (= value (char-code #\[)))
+        (if (and (= status 0) (or (= value (char-code #\[)) (= value (char-code #\_))))
             (multiple-value-bind (status-after value-after) (read-wide-char-soon window 1/10)
               (values status value status-after value-after))
             (values status value -1 0)))
@@ -1274,9 +1323,30 @@ is never read as keys. NIL for a sequence of no use here (KEY-EVENT)."
                    (t (key-event f (if (and (plusp (length parameters)) (char= (char parameters 0) #\<))
                                        (mouse-key f parameters final)
                                        (csi-key parameters final)))))))
+          ((and (= status 0) (= value (char-code #\_)) (= status-after 0) (= value-after (char-code #\G)))
+           (skip-terminal-string window)
+           nil)
           ((= status 0)
+           ;; M-_ typed, and the key after it read already: given after it
+           (when (and (= value (char-code #\_)) (or (= status-after 0) (= status-after +key-code-yes+)))
+             (let ((after (wide-char-event f window status-after value-after)))
+               (when after (setf (tui-pending f) (append (tui-pending f) (list after))))))
            (tuatara.frontend:make-event :key :key (char-key value :meta t)))
           (t (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key :escape))))))
+
+(defun skip-terminal-string (window)
+  "Read from WINDOW the rest of a string a terminal sends (an answer to a
+picture's command, after its ESC _), to its end (ESC \\), and let it go:
+each character waited for at most 1/10 s, 64 KB at most."
+  (%nodelay window t)
+  (unwind-protect
+       (loop repeat 65536
+             do (multiple-value-bind (status value) (read-wide-char-soon window 1/10)
+                  (cond ((/= status 0) (return))
+                        ((= value 27)
+                         (multiple-value-bind (status value) (read-wide-char-soon window 1/10)
+                           (when (or (/= status 0) (= value (char-code #\\))) (return)))))))
+    (%nodelay window nil)))
 
 (defun wide-char-event (f window status value)
   "The event for what wget_wch read from F's WINDOW: STATUS 0 and a character
@@ -1390,7 +1460,7 @@ A key of no use (a key let go) is no event: the wait goes on."
           (flet ((put (text start end attrs)
                    (when (< start end)
                      (when (plusp attrs) (attributes-on window attrs))
-                     (tuatara.io:with-c-string (octets text :start start :end end)
+                     (tuatara.runtime:with-c-string (octets text :start start :end end)
                        (%waddstr-octets window octets))
                      (when (plusp attrs) (attributes-off window)))))
             (%wmove window (+ row top) left)
@@ -1433,10 +1503,10 @@ wl-paste under Wayland, else xclip or xsel under X; NIL when there are none.")
           (flet ((found (write read)
                    (let ((w (tuatara.io:find-program (first write))) (r (tuatara.io:find-program (first read))))
                      (and w r (list (cons w (rest write)) (cons r (rest read)))))))
-            (or (and (tuatara.io:own-variable "WAYLAND_DISPLAY")
+            (or (and (tuatara.runtime:own-variable "WAYLAND_DISPLAY")
                      (found '("wl-copy" "--type" "text/plain;charset=utf-8")
                             '("wl-paste" "--no-newline" "--type" "text")))
-                (and (tuatara.io:own-variable "DISPLAY")
+                (and (tuatara.runtime:own-variable "DISPLAY")
                      (or (found '("xclip" "-selection" "clipboard" "-in")
                                 '("xclip" "-selection" "clipboard" "-out" "-target" "UTF8_STRING"))
                          (found '("xsel" "--clipboard" "--input") '("xsel" "--clipboard" "--output"))))))))
@@ -1445,20 +1515,13 @@ wl-paste under Wayland, else xclip or xsel under X; NIL when there are none.")
 (define-record (clipboard-watch (:copier nil))
   "The clipboard kept up to date in the background: PROCESS, wl-paste --watch,
 writes a line each time the clipboard changes, which THREAD reads and then
-reads the clipboard's text into TEXT; STATE is :READING from a change until its
-text is in, then :FRESH, and :ENDED once THREAD has ended; LOCK guards them,
-CHANGED is told when they change."
+reads the clipboard's text into KEPT."
   (process nil
            :documentation "The wl-paste process CLIPBOARD-WATCH runs, which writes a line each time the clipboard
 changes.")
   (thread nil :documentation "The thread reading CLIPBOARD-WATCH's process and the clipboard's text.")
-  (text nil :documentation "The clipboard's text as CLIPBOARD-WATCH last read it, or NIL when it could not be read.")
-  (state :reading
-         :documentation "What CLIPBOARD-WATCH is doing: :READING from a change until the text is in, then :FRESH, and
-:ENDED once its thread has ended.")
-  (lock (sb-thread:make-mutex :name "clipboard") :documentation "The mutex guarding CLIPBOARD-WATCH's text and state.")
-  (changed (sb-thread:make-waitqueue)
-           :documentation "The wait queue signalled when CLIPBOARD-WATCH's text or state change."))
+  (kept (tuatara.frontend:make-clipboard-kept)
+        :documentation "The clipboard's text as CLIPBOARD-WATCH keeps it (TUATARA.FRONTEND:CLIPBOARD-KEPT)."))
 
 (defvar *clipboard-watch* nil
   "The clipboard watched in the background (CLIPBOARD-WATCH), once the first
@@ -1476,27 +1539,25 @@ cannot say when it changes)."
                        (tuatara.io:start-program (list (first read) "--watch" echo "changed")
                                                  :output :stream :external-format :utf-8))))
         (when process
-          (let ((watch (make-clipboard-watch :process process)))
+          (let* ((watch (make-clipboard-watch :process process))
+                 (kept (clipboard-watch-kept watch)))
+            ;; wl-paste says the clipboard changed once as it starts: a paste waits for that read too
+            (tuatara.frontend:clipboard-read-begun kept)
             (setf (clipboard-watch-thread watch)
                   (tuatara.runtime:make-guarded-thread
                    (lambda ()
-                       (unwind-protect
-                            (loop for line = (tuatara.runtime:ignoring-errors-reported ("reading the clipboard watch")
-                                               (read-line (sb-ext:process-output process) nil))
-                                  while line
-                                  do (sb-thread:with-mutex ((clipboard-watch-lock watch))
-                                       (setf (clipboard-watch-state watch) :reading))
-                                     (multiple-value-bind (text ok) (tuatara.io:program-output read)
-                                       (sb-thread:with-mutex ((clipboard-watch-lock watch))
-                                         ;; a change noted meanwhile is read again, by its own line
-                                         (setf (clipboard-watch-text watch) (and ok text)
-                                               (clipboard-watch-state watch) :fresh)
-                                         (sb-thread:condition-broadcast (clipboard-watch-changed watch)))))
-                         (sb-thread:with-mutex ((clipboard-watch-lock watch))
-                           (setf (clipboard-watch-state watch) :ended)
-                           (sb-thread:condition-broadcast (clipboard-watch-changed watch)))
-                         (tuatara.runtime:ignoring-errors-reported ("closing the clipboard watch")
-                           (sb-ext:process-close process))))
+                     (unwind-protect
+                          (loop for first = t then nil
+                                for line = (tuatara.runtime:ignoring-errors-reported ("reading the clipboard watch")
+                                             (read-line (sb-ext:process-output process) nil))
+                                while line
+                                do (unless first (tuatara.frontend:clipboard-read-begun kept))
+                                   ;; a change noted meanwhile is read again, by its own line
+                                   (multiple-value-bind (text ok) (tuatara.io:program-output read)
+                                     (tuatara.frontend:clipboard-read-done kept (and ok text))))
+                       (tuatara.frontend:clipboard-kept-end kept)
+                       (tuatara.runtime:ignoring-errors-reported ("closing the clipboard watch")
+                         (sb-ext:process-close process))))
                    :name "clipboard watch"))
             watch))))))
 
@@ -1508,18 +1569,15 @@ cannot say when it changes)."
         (sb-ext:process-kill (clipboard-watch-process watch) 15)))))
 
 (defun watched-clipboard ()
-  "The clipboard's text as the watch has it, waiting a moment for a change
-being read; two values, the text and true, or NIL and NIL when there is no
-watch to ask (the clipboard is then read at once)."
+  "The clipboard's text as the watch keeps it (TUATARA.COMMAND:WAIT-FOR-CLIPBOARD-TEXT),
+the watch started the first time; two values, the text and true, NIL and
+true when \\`C-g' gave up waiting, or NIL and NIL when the watch has nothing
+to give (the clipboard is then read at once)."
   (when (null *clipboard-watch*)
     (setf *clipboard-watch* (or (start-clipboard-watch) :none)))
   (let ((watch *clipboard-watch*))
     (when (clipboard-watch-p watch)
-      (sb-thread:with-mutex ((clipboard-watch-lock watch))
-        (tuatara.runtime:wait-on-until (clipboard-watch-changed watch) (clipboard-watch-lock watch)
-                                       (lambda () (not (eq (clipboard-watch-state watch) :reading))) 1)
-        (when (eq (clipboard-watch-state watch) :fresh)
-          (values (clipboard-watch-text watch) t))))))
+      (tuatara.command:wait-for-clipboard-text (clipboard-watch-kept watch)))))
 
 (defun clipboard-program-output (command)
   "The text COMMAND, a clipboard program and its arguments, writes, and true when
@@ -1530,18 +1588,98 @@ it ended well: waited for as long as a second while keys are still read, so that
                     (tuatara.command:wait-interruptibly thread :message "Waiting for the clipboard..."
                                                               :seconds seconds))))
 
+(define-record (clipboard-writer (:constructor make-clipboard-writer ()) (:copier nil))
+  "What gives the system clipboard its text in the background, one program at
+a time: WANTED, the newest text to give it with the program to write it,
+waiting while THREAD runs the program for the one before; PENDING, the newest
+text given that is not yet written; LOCK guards both, told through READY when
+there is text to give and through WRITTEN when the clipboard has it."
+  (wanted nil :documentation "The newest text to give the clipboard, the program writing it and whether the text is
+a secret (TUATARA.RUNTIME:*SECRET-AT-HAND* where it was given), as (COMMAND TEXT SECRET), or NIL when it has been
+given.")
+  (pending nil :documentation "The newest text given to the clipboard and the program writing it, as (COMMAND
+. TEXT), while it is still to be written or being written, or NIL once the clipboard has it.")
+  (thread nil :documentation "The thread running the clipboard's program for each text in turn.")
+  (lock (sb-thread:make-mutex :name "clipboard writer") :documentation "The mutex guarding what is wanted.")
+  (ready (sb-thread:make-waitqueue) :documentation "The wait queue told when there is text to give.")
+  (written (sb-thread:make-waitqueue) :documentation "The wait queue told when the clipboard has every text given."))
+
+(defvar *clipboard-writer* nil
+  "The clipboard's writer (CLIPBOARD-WRITER), made the first time text is copied.")
+
+(defun write-clipboard-texts (writer)
+  "Give the clipboard each text WRITER is given, in turn, for as long as the
+program runs: the newest text wanted, written by its program with
+*SECRET-AT-HAND* as it stood where the text was given. A round that goes
+wrong is reported and the next text waited for; either way PENDING is
+cleared once nothing newer waits. Waits at no cost between copies."
+  (loop
+    (destructuring-bind (command text secret)
+        (sb-thread:with-mutex ((clipboard-writer-lock writer))
+          (loop until (clipboard-writer-wanted writer)
+                do (sb-thread:condition-wait (clipboard-writer-ready writer) (clipboard-writer-lock writer)))
+          (shiftf (clipboard-writer-wanted writer) nil))
+      (let ((tuatara.runtime:*secret-at-hand* secret))
+        (unwind-protect
+             (tuatara.runtime:ignoring-errors-reported ("writing the clipboard with ~a" (first command))
+               (tuatara.io:program-output command :input text :capture nil :seconds 5))
+          (sb-thread:with-mutex ((clipboard-writer-lock writer))
+            (unless (clipboard-writer-wanted writer)
+              (setf (clipboard-writer-pending writer) nil)
+              (sb-thread:condition-broadcast (clipboard-writer-written writer)))))))))
+
+(defun give-clipboard-text (command text)
+  "Have COMMAND, the clipboard's program and its arguments, write TEXT to the
+clipboard in the background, on a thread of its own made the first time
+\(WRITE-CLIPBOARD-TEXTS). A text given while the one before is still being
+written takes the place of any waiting: the newest wins. TEXT is kept out of
+the debug log when a secret is at hand here (*SECRET-AT-HAND*). Returns at
+once; PENDING-CLIPBOARD-TEXT has TEXT until it is written."
+  (let ((writer (or *clipboard-writer* (setf *clipboard-writer* (make-clipboard-writer)))))
+    (sb-thread:with-mutex ((clipboard-writer-lock writer))
+      (setf (clipboard-writer-wanted writer) (list command text (and tuatara.runtime:*secret-at-hand* t))
+            (clipboard-writer-pending writer) (cons command text))
+      (unless (clipboard-writer-thread writer)
+        (setf (clipboard-writer-thread writer)
+              (tuatara.runtime:make-guarded-thread (lambda () (write-clipboard-texts writer))
+                                                   :name "clipboard writer" :secret nil)))
+      (sb-thread:condition-notify (clipboard-writer-ready writer)))))
+
+(defun finish-clipboard-writing (seconds)
+  "Wait at most SECONDS for the clipboard to have every text given to it
+\(GIVE-CLIPBOARD-TEXT), as the program stops: true when it has."
+  (let ((writer *clipboard-writer*))
+    (or (null writer)
+        (sb-thread:with-mutex ((clipboard-writer-lock writer))
+          (tuatara.runtime:wait-on-until (clipboard-writer-written writer) (clipboard-writer-lock writer)
+                                         (lambda () (null (clipboard-writer-pending writer)))
+                                         seconds)))))
+
+(defun pending-clipboard-text (command)
+  "The newest text given to COMMAND, the clipboard's program and its arguments,
+that it has not yet written (GIVE-CLIPBOARD-TEXT), which a read answers with,
+or NIL when the clipboard has every text given."
+  (let ((writer *clipboard-writer*))
+    (when writer
+      (sb-thread:with-mutex ((clipboard-writer-lock writer))
+        (let ((pending (clipboard-writer-pending writer)))
+          (and pending (equal (car pending) command) (cdr pending)))))))
+
 (defmethod tuatara.frontend:frontend-set-clipboard ((f tui-frontend) text)
   (let ((programs (clipboard-programs)))
-    (and programs (nth-value 1 (tuatara.io:program-output (first programs) :input text :capture nil)))))
+    (when programs
+      (give-clipboard-text (first programs) text)
+      t)))
 
 (defmethod tuatara.frontend:frontend-clipboard ((f tui-frontend))
-  (multiple-value-bind (text watched) (watched-clipboard)
-    (if watched
-        text
-        (let ((programs (clipboard-programs)))
-          (when programs
-            (multiple-value-bind (text ok) (clipboard-program-output (second programs))
-              (and ok text)))))))
+  (or (pending-clipboard-text (first (clipboard-programs)))
+      (multiple-value-bind (text watched) (watched-clipboard)
+        (if watched
+            text
+            (let ((programs (clipboard-programs)))
+              (when programs
+                (multiple-value-bind (text ok) (clipboard-program-output (second programs))
+                  (and ok text))))))))
 
 (defmethod tuatara.frontend:frontend-primary-selection ((f tui-frontend))
   (let ((read (second (clipboard-programs))))
@@ -1572,6 +1710,10 @@ it ended well: waited for as long as a second while keys are still read, so that
 its #rrggbb, for NIL the :cursor face's (TUATARA.DISPLAY:CURSOR-COLOUR), and
 :DEFAULT when that is the terminal's own."
   (or (tuatara.display:colour-hex (tuatara.display:cursor-colour colour)) :default))
+
+(defmethod tuatara.frontend:frontend-bell ((f tui-frontend))
+  (write-char (code-char 7) *standard-output*)
+  (finish-output))
 
 (defun terminal-control (control &rest arguments)
   "Send the terminal an escape sequence now: ESC, then CONTROL, a format string
@@ -1666,8 +1808,8 @@ there, with the cursor's shape and colour when they changed."
   "True when the terminal draws a picture in place of the characters standing
 for it (U+10EEEE): kitty and Ghostty. Not WezTerm or Konsole, as their
 environment says, which draw a picture only where it is put (PLACE-PICTURES)."
-  (not (or (equal (tuatara.io:own-variable "TERM_PROGRAM") "WezTerm")
-           (tuatara.io:own-variable "KONSOLE_VERSION"))))
+  (not (or (equal (tuatara.runtime:own-variable "TERM_PROGRAM") "WezTerm")
+           (tuatara.runtime:own-variable "KONSOLE_VERSION"))))
 
 (defmethod tuatara.frontend:frontend-images-p ((f tui-frontend))
   (and (tui-window f)
@@ -1692,8 +1834,8 @@ have read (and so not removed) yet, removed when the terminal is let go of.")
 (defun local-terminal-p ()
   "True when the terminal may run on this machine, not at the other end of SSH,
 so that it is worth asking whether it reads what is put in shared memory here."
-  (not (or (tuatara.io:own-variable "SSH_CONNECTION") (tuatara.io:own-variable "SSH_TTY")
-           (tuatara.io:own-variable "SSH_CLIENT"))))
+  (not (or (tuatara.runtime:own-variable "SSH_CONNECTION") (tuatara.runtime:own-variable "SSH_TTY")
+           (tuatara.runtime:own-variable "SSH_CLIENT"))))
 
 (defun send-image-shared (image number)
   "Send the terminal IMAGE's pixels, as its picture NUMBER, through shared

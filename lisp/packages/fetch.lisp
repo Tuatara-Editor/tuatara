@@ -189,7 +189,7 @@ THUNK has ended by then."
                                        (let ((process (and job (tuatara.runtime:job-process job))))
                                          (when process
                                            (ignoring-errors-reported ("ending the fetching of ~a" where)
-                                                                     (sb-ext:process-kill process 15))))))
+                                             (sb-ext:process-kill process sb-posix:sigterm))))))
                                    :thread t)))
     (flet ((too-large () (error 'package-too-large :where where)))
       (sb-ext:schedule-timer timer 1 :repeat-interval 1)

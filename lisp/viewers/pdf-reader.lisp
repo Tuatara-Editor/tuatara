@@ -253,7 +253,9 @@ where it ends; at least one octet long."
   "The PDF object in OCTETS from AT, and where it ends: a dictionary as an
 alist of (NAME . VALUE), an array as a list, a string as text, a name as
 :NAME's string with a /, a number, (:REF N G) for a reference; NIL for what
-is not one. Nested no deeper than 32."
+is not one. Nested no deeper than 32. The lists, strings and numbers it
+returns are the contract: callers outside Tuatara may rely on this shape, and
+it changes only in a new major version."
   (let ((n (length octets))
         (i (pdf-skip-space octets at)))
     (when (or (>= i n) (> depth 32)) (return-from pdf-object-at (values nil i)))

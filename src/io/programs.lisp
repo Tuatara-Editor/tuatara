@@ -82,60 +82,75 @@ while one of them is there to take it."
   (handler-case (progn (sb-posix:kill (- group) signal) t)
     (sb-posix:syscall-error (condition) (/= (sb-posix:syscall-errno condition) sb-posix:esrch))))
 
-(defun end-unwanted-program (process &key (close t))
+(defun end-unwanted-program (process &key (close t) (signal sb-unix:sigterm) session then wait)
   "End PROCESS, a program started and no longer wanted, with every program in
 its process group and in the sessions its children lead (as the program
-SESSION-COMMAND starts leads one): asked to end (SIGTERM), then those not
-ended within *PROGRAM-END-GRACE* seconds killed (SIGKILL), PROCESS waited for
-and closed, or with CLOSE NIL left for whoever reads its pipes to close.
-PROCESS itself is signalled too, for one started in the editor's own group
-to keep its terminal (SB-EXT:RUN-PROGRAM's :INPUT T). Returns at once the
-thread doing the waiting, which kills what is left if it is itself ended
-first."
-  (let* ((groups (list (sb-ext:process-pid process)))
+SESSION-COMMAND starts leads one), and in SESSION, the number of one known
+to be its own, which a program it started may still be in after it ended:
+asked to end with SIGNAL (SIGTERM; a terminal's programs are told it is gone
+with SIGHUP) and woken if stopped (SIGCONT), then those not ended within
+*PROGRAM-END-GRACE* seconds killed (SIGKILL), PROCESS waited for and closed,
+or with CLOSE NIL left for whoever reads its pipes to close, and THEN, a
+function of no arguments, called. PROCESS itself is signalled too, for one
+started in the editor's own group to keep its terminal (SB-EXT:RUN-PROGRAM's
+:INPUT T). Returns the thread doing the waiting, which kills what is left if
+it is itself ended first: at once, or with WAIT once that thread is done, two
+seconds past the grace at most."
+  (let* ((groups (and (process-unreaped-p process) (list (sb-ext:process-pid process))))
          (buffer (make-array 1024 :element-type '(unsigned-byte 8)))
          (sessions (loop for child in (process-children process)
                          when (eql child (nth-value 1 (process-group-and-session child buffer)))
                            collect child)))
+    (when (and session (not (member session sessions)))
+      (push session sessions))
     ;; its group's number is its own while it is not reaped
-    (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
-      (sb-ext:process-kill process sb-unix:sigterm :process-group))
-    (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
-      (when (sb-ext:process-alive-p process)
-        (sb-ext:process-kill process sb-unix:sigterm :pid)))
-    (tuatara.runtime:make-guarded-thread
-     (lambda ()
-       (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))) (group-gone nil))
-         (labels ((group-signalled-p (signal)
-                    ;; its group alone, told by the system: true while a process of it is there; once it
-                    ;; is found empty it is never signalled again, its number then free for another group
-                    (unless group-gone
-                      (or (signal-group (first groups) signal)
-                          (progn (setf group-gone t) nil))))
-                  (left-p ()
-                    (if sessions (processes-in groups sessions buffer) (group-signalled-p 0)))
-                  (signal-all (signal)
-                    (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
-                      (when (sb-ext:process-alive-p process)
-                        (sb-ext:process-kill process signal :pid)))
-                    (if sessions
-                        (dolist (pid (processes-in groups sessions buffer))
-                          (signal-process-if pid (lambda ()
-                                                   (multiple-value-bind (group session)
-                                                       (process-group-and-session pid buffer)
-                                                     (and group (or (member group groups) (member session sessions)))))
-                                             signal))
-                        (group-signalled-p signal))))
-           (unwind-protect
-                (progn
-                  (when sessions (signal-all sb-unix:sigterm))
-                  (tuatara.runtime:wait-until (lambda () (and (not (sb-ext:process-alive-p process)) (not (left-p))))
-                                              *program-end-grace* :interval 1/20))
-             (signal-all sb-unix:sigkill)
-             (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process) (sb-ext:process-wait process))
-             (when close
-               (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process)))))))
-     :name "program ending")))
+    (when (process-unreaped-p process)
+      (dolist (signal (list signal sb-unix:sigcont))
+        (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+          (sb-ext:process-kill process signal :process-group))
+        (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+          (sb-ext:process-kill process signal :pid))))
+    (flet ((end-what-is-left ()
+             (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
+                   (group-gone (null groups)))
+               (labels ((group-signalled-p (signal)
+                          ;; its group alone, told by the system: true while a process of it is there; once it
+                          ;; is found empty it is never signalled again, its number then free for another group
+                          (unless group-gone
+                            (or (signal-group (first groups) signal)
+                                (progn (setf group-gone t) nil))))
+                        (left-p ()
+                          (if sessions (processes-in groups sessions buffer) (group-signalled-p 0)))
+                        (ours-p (pid)
+                          (multiple-value-bind (group session) (process-group-and-session pid buffer)
+                            (and group (or (member group groups) (member session sessions)))))
+                        (signal-all (signal)
+                          (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+                            (when (sb-ext:process-alive-p process)
+                              (sb-ext:process-kill process signal :pid)))
+                          (if sessions
+                              (dolist (pid (processes-in groups sessions buffer))
+                                (signal-process-if pid (lambda () (ours-p pid)) signal))
+                              (group-signalled-p signal))))
+                 (unwind-protect
+                      (progn
+                        (when sessions
+                          (signal-all signal)
+                          (signal-all sb-unix:sigcont))
+                        (tuatara.runtime:wait-until (lambda ()
+                                                      (and (not (sb-ext:process-alive-p process)) (not (left-p))))
+                                                    *program-end-grace* :interval 1/20))
+                   (signal-all sb-unix:sigkill)
+                   (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process)
+                     (sb-ext:process-wait process))
+                   (when close
+                     (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process)))
+                   (when then
+                     (tuatara.runtime:ignoring-errors-reported ("ending ~a" process) (funcall then))))))))
+      (let ((thread (tuatara.runtime:make-guarded-thread #'end-what-is-left :name "program ending")))
+        (when wait
+          (sb-thread:join-thread thread :timeout (+ *program-end-grace* 2) :default nil))
+        thread))))
 
 (defmethod tuatara.runtime:host-end-program ((host tuatara.runtime:host) process)
   "End a job's PROCESS as any program no longer wanted is ended
@@ -512,11 +527,14 @@ starts. COMMAND as it is when setsid is not there."
 (defun program-output (command &key input (capture t) (seconds 1) wait (environment nil environment-p) directory
                                     (most *program-output-limit*))
   "Run COMMAND, a program's full name and its arguments (never through a
-shell), giving it INPUT (a string, through a pipe: never written to a file).
+shell), giving it INPUT (a string, through a pipe: never written to a file;
+written while what it writes is read, so that a program answering as it reads
+never waits on its own output).
 With CAPTURE, it takes what the program writes, as UTF-8 text (an octet that
 is not UTF-8 as its raw byte's character), MOST octets of it at most (a
 program writing more is stopped, its output not taken). SECONDS is the most it
-may take, then it is stopped. WAIT, when given, does the waiting instead of
+may take, then it is stopped; one still being started then is ended as it
+starts. WAIT, when given, does the waiting instead of
 this thread blocking: a function of the thread doing the work and SECONDS (the
 editor's interruptible wait, say). ENVIRONMENT, when given, is all the program
 sees of one. DIRECTORY is where it runs.
@@ -528,32 +546,48 @@ one started."
          (environment (if environment-p environment (program-environment)))
          (worker (tuatara.runtime:make-guarded-thread
                   (lambda ()
-                    (tuatara.runtime:ignoring-errors-reported ("running ~a" (first command))
-                      (call-with-program
-                       command
-                       (lambda (process)
-                         (setf (car started) process)
-                         (when input
-                           (tuatara.runtime:ignoring-errors-reported ("giving ~a its input" (first command))
-                             (write-string input (sb-ext:process-input process)))
-                           (tuatara.runtime:ignoring-errors-reported ("closing the input of ~a" (first command))
-                             (close (sb-ext:process-input process))))
-                         (multiple-value-bind (octets too-much)
-                             (and capture
-                                  (tuatara.runtime:ignoring-errors-reported ("reading what ~a writes" (first command))
-                                    (read-stream-octets (sb-ext:process-output process) :limit most)))
-                           (unless too-much (sb-ext:process-wait process))
-                           (list (and octets (tuatara.text:octets-string octets))
-                                 (and (not too-much) (eql 0 (sb-ext:process-exit-code process))))))
-                       :input (and input :stream) :output (and capture :stream)
-                       :directory directory
-                       :environment environment)))
+                    (block program-worker
+                      (tuatara.runtime:ignoring-errors-reported ("running ~a" (first command))
+                       (call-with-program
+                        command
+                        (lambda (process)
+                          ;; one started after the caller stopped waiting is ended at once
+                          (when (eq (sb-ext:compare-and-swap (car started) nil process) :abandoned)
+                            (return-from program-worker nil))
+                          (let ((writer
+                                  (and input
+                                       (flet ((give ()
+                                                (tuatara.runtime:ignoring-errors-reported
+                                                    ("giving ~a its input" (first command))
+                                                  (write-string input (sb-ext:process-input process)))
+                                                (tuatara.runtime:ignoring-errors-reported
+                                                    ("closing the input of ~a" (first command))
+                                                  (close (sb-ext:process-input process)))))
+                                         ;; written beside the reading, so that neither waits on the other
+                                         (if capture
+                                             (tuatara.runtime:make-guarded-thread #'give :name "program input")
+                                             (progn (give) nil))))))
+                            (multiple-value-bind (octets too-much)
+                                (and capture
+                                     (tuatara.runtime:ignoring-errors-reported
+                                         ("reading what ~a writes" (first command))
+                                       (read-stream-octets (sb-ext:process-output process) :limit most)))
+                              (unless too-much (sb-ext:process-wait process))
+                              ;; once it has ended, its input is written or refused at once
+                              (when (and writer (not too-much))
+                                (sb-thread:join-thread writer :timeout 1 :default nil))
+                              (list (and octets (tuatara.text:octets-string octets))
+                                    (and (not too-much) (eql 0 (sb-ext:process-exit-code process)))))))
+                        :input (and input :stream) :output (and capture :stream)
+                        :directory directory
+                        :environment environment))))
                   :name "program")))
     (if wait
         (funcall wait worker seconds)
         (sb-thread:join-thread worker :timeout seconds :default nil))
     (if (sb-thread:thread-alive-p worker)
-        (let ((process (car started)))
+        ;; a program not yet started when the time is up is ended as it starts
+        (let ((process (sb-ext:compare-and-swap (car started) nil :abandoned)))
           (when process (end-unwanted-program process :close nil))
           (values nil nil))
         (values-list (sb-thread:join-thread worker :default nil)))))

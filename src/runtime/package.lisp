@@ -17,10 +17,10 @@ the reports of debug mode.")
            #:*task-wrappers* #:*around-long-work* #:wait-on #:wait-on-until
            #:*debug-on* #:*debug-start* #:*debug-reports* #:debug-report #:with-thread-guard #:make-guarded-thread
            #:bisect #:first-index-at-or-after #:with-depth-limit #:carry-settings #:queue-debug-report #:*stop-wait*
-           #:join-within
+           #:join-within #:counting-pending-work #:pending-work-p
            #:thread-result #:left-running
            #:set-debug #:milliseconds-since #:seconds-since #:deadline-in #:deadline-passed-p #:seconds-left
-           #:wait-until #:*debug-log-path* #:log-in-use-p #:debug-report-line #:backtrace-lines
+           #:wait-until #:*debug-log-path* #:lock-held-p #:debug-report-line #:backtrace-lines
            #:reporting-errors #:handling-errors-reported #:ignoring-errors-reported
            #:close-fd-quietly #:with-fd-closed-on-error
            #:+o-cloexec+ #:duplicate-fd #:fd-for-program
@@ -30,7 +30,7 @@ the reports of debug mode.")
            #:host-say-problem #:*hook-failures-said*
            #:*secret-at-hand* #:refusal #:refuse
            ;; settings and the values they take
-           #:define-setting #:setting-values #:setting-values-words #:setting-value-fault #:set-setting
+           #:define-setting #:seconds-in-words #:setting-values #:setting-values-words #:setting-value-fault #:set-setting
            #:setting-standard-value #:setting-in-force #:settings-snapshot #:put-back-misfit-settings
            #:settings-watch #:make-settings-watch #:settings-moved-p
            #:host-secret-buffer-p #:secret-buffer-p #:failure-words #:note-editor-busy

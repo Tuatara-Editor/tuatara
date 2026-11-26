@@ -1081,14 +1081,16 @@ no line looks anything up in the text."
       (unless (car cancel)
         (finish-piece piece writer changes lines)))))
 
-(defun start-line-job (buffer from to per-line &key doing what verb leaves report announce prepare goal)
-  "Rewrite the lines of BUFFER from the one starting at FROM to the one ending
-at TO, in the background on all but two cores, as PER-LINE says, a line at a
-time. PER-LINE is a function of (FUNCTION SLICE) called for each line, SLICE a
-LINE-SLICE giving the line's start, its end (before the line's end, that is its
-newline, or with carriage return and line feed (CRLF) the carriage return),
-the next line's start, and the octets read around the line (SLICE-OCTET,
-SLICE-OCTETS read them). It calls FUNCTION with (START END OCTETS) for each
+(defun start-line-job (buffer from to make-per-line &key doing what verb leaves report announce prepare goal)
+  "Rewrite the lines of BUFFER from the one holding FROM to the one holding
+TO, in the background on all but two cores, a line at a time, as the function
+MAKE-PER-LINE gives says. MAKE-PER-LINE is called as the job begins with the
+text it changes (a rope) and FROM and TO on that text, where they stand when
+its turn comes. What it gives, PER-LINE, is a function of (FUNCTION SLICE)
+called for each line, SLICE a LINE-SLICE giving the line's start, its end
+\(before the line's end, that is its newline, or with carriage return and
+line feed (CRLF) the carriage return), the next line's start, and the octets
+read around the line (SLICE-OCTET, SLICE-OCTETS read them). It calls FUNCTION with (START END OCTETS) for each
 change it makes, in order, within the line and its line end. DOING names the
 work in a word and WHAT names it in full, for the list of jobs. VERB names it
 as a verb, for when it fails, and LEAVES says what stopping it leaves
@@ -1101,14 +1103,16 @@ when another job runs or waits in BUFFER, or its lines are still being
 counted: it then waits its turn, FROM and TO followed meanwhile."
   (when (queue-if-busy buffer what (list (cons from :before) (cons to :after))
                        (lambda (from to)
-                         (start-line-job buffer from to per-line :doing doing :what what :verb verb :leaves leaves
+                         (start-line-job buffer from to make-per-line :doing doing :what what :verb verb :leaves leaves
                                                                  :report report :announce announce
                                                                  :prepare prepare :goal goal))
                        :counted t)
     (return-from start-line-job :queued))
   (tuatara.buffer:ensure-indexed buffer)
-  (multiple-value-bind (rope from to since made) (job-begins-where-given buffer from to)
-    (let* ((total (tuatara.text:rope-octet-length rope))
+  (multiple-value-bind (rope given to since made) (job-begins-where-given buffer from to)
+    (let* ((per-line (funcall make-per-line rope given to))
+           (from (tuatara.text:rope-line-start rope given))
+           (total (tuatara.text:rope-octet-length rope))
            (crlf (buffer-crlf-p buffer))
            (high (min total (1+ (tuatara.text:rope-line-end rope to))))
            (job (%make-line-rewrite

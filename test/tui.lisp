@@ -170,7 +170,7 @@
                               (tuatara.display:combine-faces (lambda (face base) (declare (ignore base)) face))
                               (tuatara.frontend.tui::%waddstr-octets
                                (lambda (window octets) (declare (ignore window))
-                                 (when recording (write-string (tuatara.io:sap-string octets) written))
+                                 (when recording (write-string (tuatara.runtime:sap-string octets) written))
                                  0)))
       (let ((f (tuatara.frontend.tui:make-tui-frontend))
             (text (make-string 200 :initial-element #\x)))
@@ -310,3 +310,159 @@
     (isnt = (hash :highlight) (hash :warning))
     (isnt = (tuatara.frontend.tui::frame-row-hash 0 0 "words" '(:a :b :c :d :highlight) '())
         (tuatara.frontend.tui::frame-row-hash 0 0 "words" '(:a :b :c :d :warning) '()))))
+
+(defun tui-read-typed (text)
+  "The events the terminal frontend makes of TEXT read after an ESC, as if the
+terminal sent it, each character at once, then nothing."
+  (tuatara.frontend.tui::load-ncurses)
+  (let ((left (coerce text 'list))
+        (f (make-instance 'tuatara.frontend.tui::tui-frontend))
+        (window (sb-sys:int-sap 0)))
+    (sb-int:encapsulate 'tuatara.frontend.tui::read-wide-char 'typed
+                        (lambda (function window)
+                          (declare (ignore function window))
+                          (if left (values 0 (char-code (pop left))) (values -1 0))))
+    (unwind-protect
+         (let ((first (let ((tuatara.frontend.tui::*kitty-keyboard-on* nil))
+                        (tuatara.frontend.tui::read-escape-sequence f window))))
+           (values (remove nil (cons first (tuatara.frontend.tui::tui-pending f))) left))
+      (sb-int:unencapsulate 'tuatara.frontend.tui::read-wide-char 'typed))))
+
+(define-test (tui late-picture-answer-is-no-key)
+  ;; a picture's answer coming late (ESC _ G ... ESC \) is read whole and is no key; M-_ typed is still a key
+  (multiple-value-bind (events left) (tui-read-typed (format nil "_Gi=31;OK~c\\" #\Escape))
+    (is equal '() events)
+    (is equal '() left))
+  (let ((events (tui-read-typed "_x")))
+    (is = 2 (length events))
+    (is equal '("M-_" "x") (mapcar (lambda (event) (tuatara.frontend:key-description
+                                                   (tuatara.frontend:key-spec (tuatara.frontend:event-key event))))
+                                   events))))
+
+(define-test (tui clipboard-wait-given-up-on-c-g)
+  ;; a paste waiting for a change of the clipboard being read is given up on with C-g, at once
+  (let ((kept (tuatara.frontend:make-clipboard-kept))
+        (answer :none)
+        (seconds nil))
+    (tuatara.frontend:clipboard-read-done kept "before")
+    (tuatara.frontend:clipboard-read-begun kept)
+    (run-keys (list (lambda ()
+                      ;; the C-g queued after this counts as typed while it waits
+                      (setf (tuatara.frontend.fake:fake-pending
+                             (tuatara.command:editor-frontend tuatara.command:*editor*))
+                            (lambda (f) (tuatara.frontend.fake::fake-events f)))
+                      (let ((start (get-internal-real-time)))
+                        (setf answer (multiple-value-list (tuatara.command:wait-for-clipboard-text kept))
+                              seconds (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
+                    "C-g"))
+    (is equal '(nil t) answer)
+    (true (and seconds (< seconds 1/2)) "waited ~a s" seconds)))
+
+(define-test (tui clipboard-written-in-the-background)
+  ;; a copy hands the text to the clipboard's program and returns at once; the newest text given meanwhile
+  ;; is the one written
+  (with-test-directory (dir)
+    (let* ((out (tuatara.io:native (merge-pathnames "clipboard" dir)))
+           (writer (put-program (merge-pathnames "copy.sh" dir) (format nil "#!/bin/sh~%sleep 1~%cat > ~a~%" out)))
+           (tuatara.frontend.tui::*clipboard-programs* (list (list writer) (list writer)))
+           (tuatara.frontend.tui::*clipboard-writer* nil)
+           (f (make-instance 'tuatara.frontend.tui::tui-frontend)))
+      (let ((start (get-internal-real-time)))
+        (true (tuatara.frontend:frontend-set-clipboard f "first"))
+        (true (tuatara.frontend:frontend-set-clipboard f "second"))
+        (true (tuatara.frontend:frontend-set-clipboard f "third"))
+        (true (< (- (get-internal-real-time) start) (* 1/2 internal-time-units-per-second))))
+      (loop repeat 100 until (equal (ignore-errors (file-text out)) "third") do (sleep 0.1))
+      (is equal "third" (ignore-errors (file-text out))))))
+
+(define-test (tui clipboard-read-after-a-copy)
+  ;; the clipboard read straight after a copy gives the text copied, while its program is still writing it
+  (with-test-directory (dir)
+    (let* ((out (tuatara.io:native (merge-pathnames "clipboard" dir)))
+           (writer (put-program (merge-pathnames "copy.sh" dir) (format nil "#!/bin/sh~%sleep 1~%cat > ~a~%" out)))
+           (reader (put-program (merge-pathnames "paste.sh" dir) (format nil "#!/bin/sh~%cat ~a~%" out)))
+           (tuatara.frontend.tui::*clipboard-programs* (list (list writer) (list reader)))
+           (tuatara.frontend.tui::*clipboard-writer* nil)
+           (f (make-instance 'tuatara.frontend.tui::tui-frontend)))
+      (alexandria:write-string-into-file "old" out)
+      (true (tuatara.frontend:frontend-set-clipboard f "new"))
+      (is equal "new" (tuatara.frontend:frontend-clipboard f))
+      (loop repeat 100 until (equal (ignore-errors (file-text out)) "new") do (sleep 0.1))
+      (is equal "new" (tuatara.frontend:frontend-clipboard f)))))
+
+(define-test (tui clipboard-writer-goes-on-after-an-error)
+  ;; a copy whose writing goes wrong is let go: a read asks the clipboard again, and the next copy is written
+  (with-test-directory (dir)
+    (let* ((out (tuatara.io:native (merge-pathnames "clipboard" dir)))
+           (writer (put-program (merge-pathnames "copy.sh" dir) (format nil "#!/bin/sh~%cat > ~a~%" out)))
+           (tuatara.frontend.tui::*clipboard-programs* (list (list writer) (list writer)))
+           (tuatara.frontend.tui::*clipboard-writer* nil)
+           (f (make-instance 'tuatara.frontend.tui::tui-frontend)))
+      (sb-int:encapsulate 'tuatara.io:program-output 'failing
+                          (lambda (function command &rest keys)
+                            (if (equal (getf keys :input) "goes wrong")
+                                (error "a stand-in failure")
+                                (apply function command keys))))
+      (unwind-protect
+           (progn
+             (true (tuatara.frontend:frontend-set-clipboard f "goes wrong"))
+             (true (tuatara.runtime:wait-until
+                    (lambda () (null (tuatara.frontend.tui::pending-clipboard-text (list writer))))
+                    10))
+             (true (tuatara.frontend:frontend-set-clipboard f "written"))
+             (true (tuatara.runtime:wait-until (lambda () (equal (ignore-errors (file-text out)) "written")) 10))
+             (is equal "written" (ignore-errors (file-text out))))
+        (sb-int:unencapsulate 'tuatara.io:program-output 'failing)))))
+
+(define-test (tui clipboard-secret-kept-from-debug-log)
+  ;; a secret copied while a copy that was no secret came first stays out of the debug log when the clipboard's
+  ;; program does not take it
+  (drain-debug-reports)
+  (with-test-directory (dir)
+    (let* ((takes (put-program (merge-pathnames "takes.sh" dir) (format nil "#!/bin/sh~%cat > /dev/null~%")))
+           (quits (put-program (merge-pathnames "quits.sh" dir) (format nil "#!/bin/sh~%exit 0~%")))
+           (tuatara.frontend.tui::*clipboard-writer* nil)
+           (secret (concatenate 'string "tuatara-secret-marker " (make-string 300000 :initial-element #\x))))
+      ;; the calls of a failure are written the first time it comes from its place: as if it never came before
+      (sb-thread:with-mutex (tuatara.runtime::*error-report-lock*)
+        (let ((places tuatara.runtime::*error-report-places*))
+          (loop for key being the hash-keys of places
+                when (equal (car key) "giving ~a its input") do (remhash key places))))
+      (unwind-protect
+           (progn
+             (tuatara.runtime:set-debug t)
+             (tuatara.frontend.tui::give-clipboard-text (list takes) "no secret")
+             (true (tuatara.runtime:wait-until
+                    (lambda () (null (tuatara.frontend.tui::pending-clipboard-text (list takes))))
+                    10))
+             (let ((tuatara.runtime:*secret-at-hand* t))
+               (tuatara.frontend.tui::give-clipboard-text (list quits) secret))
+             (true (tuatara.runtime:wait-until
+                    (lambda () (null (tuatara.frontend.tui::pending-clipboard-text (list quits))))
+                    10))
+             (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                while report collect (princ-to-string (fourth report)))))
+               (true (find-if (lambda (text) (search "its input failed" text)) texts) "~s" texts)
+               (false (find-if (lambda (text) (search "tuatara-secret-marker" text)) texts))))
+        (drain-debug-reports)))))
+
+(define-test (tui clipboard-written-before-stop)
+  ;; quitting just after a copy waits for the clipboard's program to write it, a second at most
+  (with-test-directory (dir)
+    (flet ((stop-after-copy (pause)
+             (let* ((out (tuatara.io:native (merge-pathnames (format nil "clipboard-~a" pause) dir)))
+                    (writer (put-program (merge-pathnames (format nil "copy-~a.sh" pause) dir)
+                                         (format nil "#!/bin/sh~%sleep ~a~%cat > ~a~%" pause out)))
+                    (tuatara.frontend.tui::*clipboard-programs* (list (list writer) (list writer)))
+                    (tuatara.frontend.tui::*clipboard-writer* nil)
+                    (tuatara.frontend.tui::*clipboard-watch* nil)
+                    (f (make-instance 'tuatara.frontend.tui::tui-frontend))
+                    (start (get-internal-real-time)))
+               (true (tuatara.frontend:frontend-set-clipboard f "copied"))
+               (tuatara.frontend:frontend-stop f)
+               (values (ignore-errors (file-text out))
+                       (/ (- (get-internal-real-time) start) internal-time-units-per-second)))))
+      (is equal "copied" (stop-after-copy "0.2"))
+      (multiple-value-bind (text seconds) (stop-after-copy "4")
+        (false text)
+        (true (< seconds 3) "stopping took ~,1f s" seconds)))))

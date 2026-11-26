@@ -232,8 +232,9 @@ export drawers in BODY to leave out of the document."
     (format s "#+template: ~a~%#+options: toc:~:[nil~;t~] num:~:[nil~;t~] redact:nil protect:nil~:[~; d:(not ~
 \"EXPORT\" \"LOGBOOK\")~]~%"
             name contents numbered drawers)
-    (format s "# redact:t covers what {{{R(...)}}} wraps, protect:t what {{{P(...)}}} wraps (C-c m wraps the text ~
-selected).~%")
+    (format s "# redact:t covers what {{{R(...)}}} wraps, protect:t what {{{P(...)}}} wraps (~a wraps the text ~
+selected).~%"
+            (substitute-command-keys "\\<org-mode>\\[org-macro-wrap]"))
     (when fields
       (format s "~%")
       (template-note-fields fields s))

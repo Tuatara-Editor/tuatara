@@ -320,33 +320,33 @@ or a daily repeat, every how many for one that comes daily, weekly, monthly or y
           ((equal argument "every=") (not (member kind '("none" "weekdays") :test #'string=)))
           (t t))))
 
-(defun read-repeat-start (prompt &optional current)
+(defun read-repeat-start (prompt &key initial)
   "Ask PROMPT for the day a repeat starts, and a time with it, as dates are
 asked for, the calendar below (READ-ORG-DATE); 2026-11-02, or 2026-11-02 10:00,
-or CURRENT when nothing is read."
+or INITIAL when nothing is read."
   (let ((ts (read-org-date prompt)))
     (if (org-ts-p ts)
         (format nil "~a~@[ ~a~]" (format-day "%F" (org-ts-day-number ts)) (org-ts-time-text ts))
-        (or current ""))))
+        (or initial ""))))
 
-(defun read-repeat-time (prompt &optional current)
-  "Ask PROMPT for a time of day, 10:00 or 10:00-11:00, CURRENT offered; an
+(defun read-repeat-time (prompt &key initial)
+  "Ask PROMPT for a time of day, 10:00 or 10:00-11:00, INITIAL offered; an
 empty answer takes it away."
-  (read-string prompt :initial (or current "") :select-initial t :trim t
+  (read-string prompt :initial initial :select-initial t :trim t
                       :details "A time, 10:00, or a time it begins and ends, 10:00-11:00; nothing takes it away."))
 
-(defun read-repeat-kind (prompt &optional current)
-  "Ask PROMPT how a repeat goes, the ways named from its start (REPEAT-KINDS); CURRENT the one it had."
-  (declare (ignore current))
+(defun read-repeat-kind (prompt &key initial)
+  "Ask PROMPT how a repeat goes, the ways named from its start (REPEAT-KINDS); INITIAL the one it had."
+  (declare (ignore initial))
   (completing-read prompt (mapcar (lambda (kind) (make-candidate (second kind) :value (first kind)))
                                   (repeat-kinds (repeat-start (menu-arguments))))
                    :require-match t :keep-order t))
 
-(defun read-repeat-every (prompt &optional current)
+(defun read-repeat-every (prompt &key initial)
   "Ask PROMPT every how many days, weeks, months or years a repeat comes,
-CURRENT offered; for a custom repeat, the unit after it (2 weeks), asked
+INITIAL offered; for a custom repeat, the unit after it (2 weeks), asked
 next."
-  (let* ((number (and current (cl-ppcre:scan-to-strings "^\\d+" current)))
+  (let* ((number (and initial (cl-ppcre:scan-to-strings "^\\d+" initial)))
          (typed (read-string prompt :initial (or number "2") :select-initial t :trim t)))
     (cond ((not (cl-ppcre:scan "^\\d{1,3}$" typed)) "")
           ((repeat-custom-p (menu-arguments))
@@ -355,11 +355,11 @@ next."
              (format nil "~a ~a~:[s~;~]" typed unit (string= typed "1"))))
           (t typed))))
 
-(defun read-repeat-end (prompt &optional current)
+(defun read-repeat-end (prompt &key initial)
   "Ask PROMPT when a repeat ends: never, on a day (asked as dates are), or after
 a number of times; the day (2026-12-21), the times (8x), or empty for never.
-CURRENT, what it said."
-  (declare (ignore current))
+INITIAL, what it said."
+  (declare (ignore initial))
   (let ((how (completing-read prompt (list (make-candidate "Never" :value :never)
                                            (make-candidate "On a day" :value :day)
                                            (make-candidate "After a number of times" :value :times))
@@ -446,25 +446,54 @@ calendar's day."
       keymap)
   "The keys of the date prompt that takes repeats, those of every Org date prompt and the minibuffer's besides.")
 
-(defun org-ask-date (prompt then &key several)
+(defvar *org-after-date-written* nil
+  "While a command asks a date for an entry from the agenda, a function of no
+arguments that the repeat menu calls once it has written the date, after the
+command has returned: the agenda notes the change, saves its file when it is
+one of *ORG-AGENDA-AUTOSAVE-FILES*, and is drawn again.")
+
+(defun org-call-where (buffer position function)
+  "Call FUNCTION in BUFFER, point at POSITION, in the whole buffer, the place
+being perhaps outside the part shown; nothing when BUFFER is gone."
+  (when (live-buffer-p buffer)
+    (let ((*current-buffer* buffer))
+      (tuatara.buffer:with-narrowing-lifted (buffer)
+        (setf (tuatara.buffer:buffer-point buffer) (min position (tuatara.buffer:buffer-size buffer)))
+        (funcall function)))))
+
+(defun org-ask-date (prompt then &key several current)
   "Ask PROMPT (Schedule, with no colon) for a date, a repeat in words too, with
 SEVERAL several days (READ-ORG-DATE), the key of the repeat menu named beside
 it, and call THEN with what it read (an ORG-TS, the text of a
 timestamp by rule or of several timestamps, or NIL);
 or, when \\[org-date-repeat-menu] is typed, open the repeat menu from what
-was typed, or the calendar's day, THEN called when it writes."
+was typed, else from CURRENT on the calendar's day, THEN called when it
+writes, in the buffer and at the place the question was asked for. CURRENT,
+an ORG-TS or NIL, is the date the question starts from (READ-ORG-DATE)."
   (let* ((asked (list nil nil nil))
          (value (let ((*org-date-repeat-asked* asked))
                   (read-org-date (format nil "~a: " prompt)
                                  :repeating t :several several :keymap **org-repeat-date-prompt-keymap**
+                                 :current current
                                  :details (substitute-command-keys "\\[org-date-repeat-menu] opens the menu of a repeat"
                                                                    :keymap **org-repeat-date-prompt-keymap**)))))
     (if (first asked)
-        (let ((text (let ((typed (string-trim " " (or (second asked) "")))) (and (plusp (length typed)) typed)))
-              (day (or (third asked) (org-today))))
-          (setf *repeat-menu-target* then)
+        (let* ((text (let ((typed (string-trim " " (or (second asked) "")))) (and (plusp (length typed)) typed)))
+               (day (or (third asked) (and current (org-ts-day-number current)) (org-today)))
+               (buffer (current-buffer))
+               (position (tuatara.buffer:buffer-point buffer))
+               (after *org-after-date-written*)
+               (occurrence *org-agenda-occurrence*))
+          (setf *repeat-menu-target*
+                (lambda (value)
+                  (org-call-where buffer position (lambda ()
+                                                    (let ((*org-agenda-occurrence* occurrence))
+                                                      (funcall then value))))
+                  (when after (funcall after))))
           (open-menu (menu-named 'repeat-menu)
-                     :arguments (repeat-arguments-of (and text (or (org-read-date-text text (org-now))
-                                                                   (org-words-repeat text (org-now))))
+                     :arguments (repeat-arguments-of (cond (text (or (org-read-date-text text (org-now))
+                                                                     (org-words-repeat text (org-now))))
+                                                           ;; nothing typed: the date it has, on the calendar's day
+                                                           (current (org-ts-set-day (copy-org-ts current) day)))
                                                      day)))
         (funcall then value))))

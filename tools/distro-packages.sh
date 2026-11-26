@@ -15,7 +15,7 @@
 # (Tuatara, and Tuatara (client), which opens files in a window of the daemon),
 # written by the program itself, and the icons; each is made by its system's own tools (rpmbuild, dpkg-deb,
 # makepkg) in a container of the system's image pinned in tools/containers.sh,
-# kept between runs. They are for Fedora 40, Ubuntu 24.04 and later, and Arch
+# kept between runs. They are for Fedora 44, Ubuntu 26.04 and later, and Arch
 # as it is.
 #
 # The version is Tuatara's (tuatara.asd) with the day and commit it is made
@@ -177,7 +177,7 @@ Version: $deb_version
 Architecture: amd64
 Maintainer: $packager
 Installed-Size: $(du -sk "$stage" | cut -f1)
-Depends: libc6 (>= 2.39), libgtk-4-1, libncursesw6, libssl3t64 | libssl3, libzstd1, libstdc++6
+Depends: libc6 (>= 2.43), libgtk-4-1, libncursesw6, libssl3t64 | libssl3, libzstd1, libstdc++6
 Recommends: libenchant-2-2, bubblewrap, imagemagick, poppler-utils, git, man-db, groff-base, libnotify-bin, libarchive-tools, 7zip
 Suggests: gnupg, xdg-utils, libreoffice-writer, libreoffice-calc, libreoffice-impress, texlive-xetex, texlive-luatex
 Section: editors

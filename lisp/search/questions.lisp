@@ -67,8 +67,8 @@ tells which."
 (defun pattern-prompt (regex words &optional note)
   "The prompt of a question that takes a pattern, its kind first, as REGEX
 says (PATTERN-KIND-WORDS), then WORDS saying what is done with it, and NOTE
-in brackets when given, why the pattern cannot be used, as in Regex keep lines
-[incomplete]: ."
+in brackets when given. The note says why the pattern cannot be used, as in
+Regex keep lines [incomplete]: , or what else there is to know of the answer."
   (format nil "~a ~a~@[ [~a]~]: " (string-capitalize (pattern-kind-words regex) :end 1) words note))
 
 (defun pattern-problem (text regex)

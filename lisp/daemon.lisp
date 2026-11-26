@@ -121,7 +121,7 @@ for the one $XDG_RUNTIME_DIR names, as the system sets it.")
 is not there, and checked each time (RUNTIME-DIRECTORY-REFUSAL). Refused, saying
 why, when XDG_RUNTIME_DIR is not set or the directory is not safe: there is no
 other place for it."
-  (let ((runtime (or *runtime-directory* (tuatara.io:own-variable "XDG_RUNTIME_DIR")))
+  (let ((runtime (or *runtime-directory* (tuatara.runtime:own-variable "XDG_RUNTIME_DIR")))
         (uid (sb-posix:geteuid)))
     (unless (and runtime (plusp (length runtime)) (char= (char runtime 0) #\/))
       (refuse "XDG_RUNTIME_DIR is not set to a directory, and a daemon's socket goes nowhere else"))
@@ -160,7 +160,7 @@ each is a new client's or (:WINDOW REMOTE WHAT) for a window asked of a
 client. NAMESPACE is the mount namespace it runs in. ENDING is true once it
 was asked to end with no one to ask (ASK-DAEMON-TO-END). LEAVING is a
 semaphore signalled once it has ended while GUARD-DAEMON-LEAVING watches it,
-NIL before."
+NIL before. STARTED is the universal time it started."
   (name nil :documentation "The name of DAEMON.")
   (lock nil :documentation "The descriptor of DAEMON's lock file, its lock held.")
   (listener nil :documentation "The socket DAEMON takes connections on.")
@@ -174,7 +174,8 @@ NIL before."
   (namespace (tuatara.io:mount-namespace (sb-posix:getpid))
              :documentation "The mount namespace DAEMON runs in, as TUATARA.IO:MOUNT-NAMESPACE gives it.")
   (ending nil :documentation "True once DAEMON was asked to end with no one to ask.")
-  (leaving nil :documentation "The semaphore signalled once DAEMON has ended, NIL before."))
+  (leaving nil :documentation "The semaphore signalled once DAEMON has ended, NIL before.")
+  (started (get-universal-time) :documentation "The universal time DAEMON started."))
 
 (defun open-daemon (name)
   "Make this process the daemon NAME: take its lock, so that no other daemon
@@ -293,6 +294,14 @@ a client on another machine may then be taken."
                  (tuatara.runtime:make-guarded-thread (lambda () (greet daemon editor fd pid elsewhere))
                                                       :name "tuatara daemon greeting"))))))
 
+(defun daemon-status (daemon editor)
+  "How DAEMON, whose editor is EDITOR, stands, for tuatara --daemons, as
+TUATARA.FRONTEND:PUT-STATUS takes it: its process id, when it started, how
+many clients show it and how many buffers hold changes not saved (UNSAVED-P).
+Read on the thread greeting a connection; it changes nothing."
+  (list :pid (sb-posix:getpid) :started (daemon-started daemon) :clients (live-client-count editor)
+        :unsaved (count-if #'unsaved-p tuatara.buffer:*buffers*)))
+
 (defun greet (daemon editor fd pid &optional elsewhere)
   "Greet the new connection FD to DAEMON, whose editor is EDITOR, from the
 process PID (TUATARA.FRONTEND:MAKE-REMOTE-FRONTEND), and hand its frontend to
@@ -305,16 +314,21 @@ window of a client, asked for by the editor from that client's process, is
 handed on as that window (TUATARA.FRONTEND:TAKE-WINDOW-ASKED-FOR); it brings
 nothing to open, the terminal it names is kept only when it may be lent
 \(CHECKED-TERMINAL), and it is let go when no such window is waited for.
-A new client is let go when as many show the editor as may (*MOST-CLIENTS*)."
+A new client is let go when as many show the editor as may (*MOST-CLIENTS*).
+A connection asking only how the daemon stands is told (DAEMON-STATUS) and
+closed."
   (unwind-protect
        (handler-case
-           (let* ((remote (tuatara.frontend:make-remote-frontend
-                           fd :queue (daemon-queue daemon)
-                              :admit (lambda (request)
-                                       (and elsewhere
-                                            (not (tuatara.frontend:request-far request))
-                                            (not (tuatara.frontend:request-joins request))
-                                            elsewhere))))
+           (let* ((remote (or (tuatara.frontend:make-remote-frontend
+                               fd :queue (daemon-queue daemon)
+                                  :admit (lambda (request)
+                                           (and elsewhere
+                                                (not (tuatara.frontend:request-far request))
+                                                (not (tuatara.frontend:request-joins request))
+                                                elsewhere))
+                                  :status (lambda () (daemon-status daemon editor)))
+                              (progn (tuatara.frontend:shut-and-close fd)
+                                     (return-from greet))))
                   (request (tuatara.frontend:remote-request remote))
                   (word (tuatara.frontend:request-joins request)))
              (flet ((let-go (words)
@@ -494,7 +508,7 @@ when the editor starts with it."
          (input nil))
     (when (tuatara.frontend:request-stop request)
       (close-standard-input request)
-      (return-from start-client (stop-from-client editor client request)))
+      (return-from start-client (stop-from-client editor client)))
     (setf input (take-standard-input request))
     (when input
       (setf entries (append entries (list (list :standard-input input)))))
@@ -564,11 +578,12 @@ Its other buffers stay, unsaved ones too, in a group of their own in
     (dolist (buffer (client-encrypted-buffers client))
       (when (tuatara.buffer:buffer-modified-p buffer)
         (let ((*buffers-asked-about* (list buffer)))
-          (case (read-answer-key "Encrypted buffer has changes not saved (s or l) "
-                                 '(#\s #\l)
-                                 :details (format nil "~a is encrypted.~%~%s    saves it, then closes it~%~
-                                                       l    closes it without saving~%C-g  keeps this client"
-                                                  (tuatara.buffer:buffer-name buffer)))
+          (case (char (read-key-choice "Encrypted buffer has changes not saved"
+                                       '(("s" . "saves it, then closes it") ("l" . "closes it without saving"))
+                                       :fold-case t
+                                       :details (format nil "~a is encrypted. C-g keeps this client."
+                                                        (tuatara.buffer:buffer-name buffer)))
+                      0)
             (#\s (save-buffer-with-care buffer :then #'tuatara.buffer:kill-buffer))
             (#\l (tuatara.buffer:kill-buffer buffer))))))
     (end-client editor client)))
@@ -636,30 +651,6 @@ that is kept (CLIENT-KEPT-P); the daemon and the other clients go on."
 
 ;;; Stopping the daemon
 
-(defun unsaved-by-group (editor)
-  "The buffers of EDITOR with changes leaving it would lose (UNSAVED-P), in
-the groups of the buffer list (BUFFER-LIST-GROUP), each (GROUP . BUFFERS), the
-group of the client working in the frame first."
-  (let ((client (current-client editor)))
-    (group-sections (remove-if-not #'unsaved-p tuatara.buffer:*buffers*)
-                    (lambda (b) (buffer-list-group b client))
-                    :first client :last :everyone)))
-
-(defun ask-about-unsaved-by-group (editor)
-  "Ask about the changes not saved in EDITOR's buffers, group by group
-\(UNSAVED-BY-GROUP): s saves those of the group, l leaves them unsaved,
-\\`C-g' gives the question up, as it does any. Their saves are begun."
-  (loop for (group . buffers) in (unsaved-by-group editor)
-        do (let ((*buffers-asked-about* buffers))
-             (when (char= #\s (read-answer-key
-                               (format nil "~d buffer~:p with changes not saved (s or l) " (length buffers))
-                               '(#\s #\l)
-                               :details (format nil "~a: ~{~a~^, ~}~%~%s    saves them~%l    leaves them unsaved~%~
-                                                     C-g  keeps the daemon running"
-                                                (buffer-section-title group)
-                                                (mapcar #'tuatara.buffer:buffer-name buffers))))
-               (save-buffers-saying buffers "Saved ~d file~:p")))))
-
 (defparameter *leaving-seconds* 60
   "The seconds a daemon told to stop has to end. Everything it does as it
 stops takes less; one still at work then is ended, so that a daemon of its
@@ -703,9 +694,11 @@ written in its log (STUCK-DAEMON-WORDS) and the process ends, by
              (funcall *end-stuck-daemon*))))
        :name "tuatara daemon leaving"))))
 
-(defun stop-daemon (editor &key (words "The daemon was stopped (M-x daemon-quit)") (here (current-client editor)))
+(defun stop-daemon (editor &key (words (substitute-command-keys "The daemon was stopped (\\[daemon-quit])"))
+                              (here (current-client editor)))
   "Stop EDITOR, a daemon's: every client but HERE, by default the one working
-in the frame, is told the daemon ends, with WORDS, and exits 1; HERE exits
+in the frame, is told the daemon ends, with WORDS, by default that
+\\[daemon-quit] stopped it, and exits 1; HERE exits
 0; then the editor ends, writing what it keeps as an editor does, at once
 wherever this is called from (it is woken), within *LEAVING-SECONDS*
 (GUARD-DAEMON-LEAVING)."
@@ -719,12 +712,12 @@ wherever this is called from (it is woken), within *LEAVING-SECONDS*
 
 (define-command daemon-quit ()
   "Stop the editor running in the background (tuatara --daemon), from any of
-its clients, asked first about every change not saved in it, the clients
-that ended included, group by group: s saves those of a group, l leaves
-them unsaved, \\`C-g' keeps the daemon running; the saves begun are waited
-for (\\`C-g' there keeps it running too). Then every other client is told the
-daemon ends, gives its terminal back and exits 1, and the daemon writes what
-it keeps (the files visited lately, the places) and ends.
+its clients, asked first, once, about every change not saved in it, the
+clients that ended included, as \\[save-buffers-kill-editor] asks before
+leaving an editor of its own (SAVE-BEFORE-GOING): y saves them, n leaves them
+in auto-saved copies, \\`C-g' keeps the daemon running. Then every other
+client is told the daemon ends, gives its terminal back and exits 1, and the
+daemon writes what it keeps (the files visited lately, the places) and ends.
 \\[save-buffers-kill-editor] in a client closes that client alone."
   (let ((editor *editor*))
     (unless *daemon*
@@ -732,10 +725,9 @@ it keeps (the files visited lately, the places) and ends.
               (substitute-command-keys "\\[save-buffers-kill-editor]")))
     (let ((answers (ask-quit-queries "stop the daemon")))
       (unless (eq answers :stay)
-        (ask-about-unsaved-by-group editor)
-        ;; the saves just begun end before the daemon does, never cut short by its exit
-        (unless (wait-for-saving (running-jobs))
-          (refuse "Not stopped: saves are still running"))
+        (multiple-value-bind (go why) (save-before-going tuatara.buffer:*buffers* "stopping the daemon")
+          (unless go
+            (refuse "Not stopped: ~a" why)))
         (settle-quit answers)
         (stop-daemon editor)))))
 
@@ -764,16 +756,11 @@ it."
 
 (defun auto-save-unsaved ()
   "Write the changes not saved of the editor's buffers as auto-saved copies,
-for \\[recover-file] and \\[auto-saves-manager] to offer on the next visit:
-each that may be auto-saved (AUTO-SAVE-WANTED-P). Said in *Messages* and the
-daemon's log (SAY-IN-DAEMON-LOG)."
-  (let ((written 0))
-    (dolist (buffer tuatara.buffer:*buffers*)
-      (when (and (tuatara.buffer:buffer-modified-p buffer) (auto-save-wanted-p buffer))
-        (ignoring-errors-reported ("auto-saving ~a" (tuatara.buffer:buffer-name buffer))
-          (auto-save-now buffer)
-          (incf written))))
-    (say-in-daemon-log "The daemon stopped with no one to ask: ~d buffer~:p with changes auto-saved" written)))
+for \\[recover-file] and \\[auto-saves-manager] to offer on the next visit
+\(AUTO-SAVE-EVERY-CHANGE). Said in *Messages* and the daemon's log
+\(SAY-IN-DAEMON-LOG)."
+  (say-in-daemon-log "The daemon stopped with no one to ask: ~d buffer~:p with changes auto-saved"
+                     (auto-save-every-change)))
 
 (defun lost-changes-count-words (lost)
   "What LOST, buffers whose changes no auto-saved copy would keep, are, in
@@ -789,9 +776,8 @@ alone, an encrypted file's name being kept to its client."
   "Why the daemon is not stopped with no one to ask, LOST being the buffers
 whose changes would be lost (LOST-CHANGES-COUNT-WORDS), and where it can be
 stopped instead."
-  (format nil "The daemon goes on: ~a; stop it from a terminal (tuatara --stop in one, or M-x daemon-quit in a ~
-               client), where they are asked about"
-          (lost-changes-count-words lost)))
+  (format nil "The daemon goes on: ~a; stop it from a client (~a), where they are asked about"
+          (lost-changes-count-words lost) (substitute-command-keys "\\[daemon-quit]")))
 
 (defun stop-with-no-one-to-ask (editor words &key keep-changes here)
   "Stop EDITOR, a daemon's, where no one can be asked. First the changes not
@@ -823,28 +809,21 @@ However it goes, the process ends in the time the saves are given and
                (stop-daemon editor :words words :here here)
                nil))))
 
-(defun stop-from-client (editor client request)
-  "Stop EDITOR as CLIENT asked as it attached (tuatara --stop), REQUEST
-saying how: asked in its terminal as \\[daemon-quit] asks. With no
-terminal, where nothing can be asked, as STOP-WITH-NO-ONE-TO-ASK stops it,
-keeping every change: when a change no auto-saved copy would keep is there,
-the daemon is not stopped, and CLIENT is told which buffers hold such
-changes. Either way not stopped, the daemon goes on and CLIENT closes,
-exiting 1; stopped, CLIENT says so as it ends."
-  (flet ((not-stopped (words)
-           (setf (client-exit-code client) 1 (client-exit-words client) words)
-           (end-client editor client)))
-    (setf (client-exit-words client) (format nil "The daemon ~a is stopped" (daemon-name *daemon*)))
-    (if (null (tuatara.frontend:request-terminal request))
-        (let ((refused (stop-with-no-one-to-ask editor "The daemon was stopped (tuatara --stop)"
-                                                :keep-changes t :here client)))
-          (when refused (not-stopped refused)))
-        (let ((stopped nil))
-          (unwind-protect
-               (progn (run-command editor 'daemon-quit)
-                      (setf stopped (not (editor-running editor))))
-            (unless stopped
-              (not-stopped "The daemon goes on: nothing was stopped")))))))
+(defun stop-from-client (editor client)
+  "Stop EDITOR as CLIENT asked as it attached (tuatara --stop), asking
+nothing, from a terminal or not, as STOP-WITH-NO-ONE-TO-ASK stops it: the
+changes not saved written as auto-saved copies first, for \\[recover-file] to
+take back. When a change no auto-saved copy would keep is there, the daemon
+is not stopped, and CLIENT is told which buffers hold such changes; the
+daemon goes on and CLIENT closes, exiting 1. Stopped, CLIENT says so as it
+ends, with the daemon's process number (pid)."
+  (setf (client-exit-words client) (format nil "The daemon ~a (pid:~d) is stopped"
+                                            (daemon-name *daemon*) (sb-posix:getpid)))
+  (let ((refused (stop-with-no-one-to-ask editor "The daemon was stopped (tuatara --stop)"
+                                          :keep-changes t :here client)))
+    (when refused
+      (setf (client-exit-code client) 1 (client-exit-words client) refused)
+      (end-client editor client))))
 
 ;;; Asked to end by the system
 

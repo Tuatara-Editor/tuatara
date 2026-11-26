@@ -9,7 +9,7 @@
 
 (load (merge-pathnames "steps.lisp" *load-truename*))
 
-(tuatara.io:define-c-function ("g_settings_set_string" g-settings-set-string) :boolean
+(tuatara.runtime:define-c-function ("g_settings_set_string" g-settings-set-string) :boolean
   (settings :pointer) (key :string) (value :string))
 
 (tuatara.frontend.gtk::define-callback on-change-desktop-font :boolean ((data :pointer))
@@ -34,7 +34,7 @@
       (see :font-before (font-in-use first))
       (type-keys first "i a b c <escape>")
       (wait-until (lambda () (search "abc" (shown-text first))) 30)
-      (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-change-desktop-font) (tuatara.io:null-pointer))
+      (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-change-desktop-font) (tuatara.runtime:null-pointer))
       (wait-until (lambda () (equal "Kiwi Mono 15" (font-in-use first))) 10)
       (see :font-after (font-in-use first)))))
 

@@ -36,6 +36,16 @@ for rimu's operations to finish. Returns the frontend and the editor."
     (multiple-value-prog1 (rimu-session directory keys :width width :height height)
       (loop repeat 200 while (find-if #'tuatara.defaults::rimu-operation-p tuatara.runtime:*jobs*) do (sleep 0.02)))))
 
+(defun laid-out-again ()
+  "A step of OPS-SESSION's keys that waits for the list laid out again on a
+thread of its own, say after I, and has the editor show it before the keys
+that follow: typed ahead, they would find the list as it was."
+  (lambda ()
+    (let ((job (tuatara.buffer:buffer-local (tuatara.command:current-buffer) 'tuatara.defaults::rimu-job)))
+      (when job
+        (sb-thread:join-thread (tuatara.defaults::rimu-job-thread job) :default nil :timeout 10))
+      (tuatara.defaults::rimu-tick tuatara.command:*editor*))))
+
 (defun asked-then (keys answer)
   "KEYS, then ANSWER typed once a job has handed the editor a question to put
 \(ASK-ON-EDITOR): a list of keys for OPS-SESSION."
@@ -116,7 +126,8 @@ for rimu's operations to finish. Returns the frontend and the editor."
       (declare (ignore f))
       (true (find-if (lambda (l) (and (uiop:string-prefix-p "> " l) (search "a.txt" l))) (rimu-lines editor))))
     (let ((f (ops-session dir "g f a . t x t RET m g f s u b RET RET g f c . t x t RET m C" :width 400)))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Copy 2 files in 2 directories to:")))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Copy 2 files to:"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "They are in 2 directories.")))
     ;; U takes away every mark, here and in the other directories, and the line saying so goes
     (multiple-value-bind (f editor)
         (ops-session dir "g f a . t x t RET m g f s u b RET RET U" :width 140)
@@ -194,7 +205,7 @@ for rimu's operations to finish. Returns the frontend and the editor."
                                                               (tuatara.command::abbreviated-path (namestring dir)))))
       (true (probe-file (here dir "b.txt"))))
     (let ((f (ops-session dir "g f b . t x t RET m g f s u b RET RET m g w n RET" :width 300)))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Wipe 2 files in 2 directories for good?")))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Wipe 2 files for good?")))
     ;; files of one name from two directories copied into one: asked first, only the first copied
     (let ((there (namestring (here dir "there/"))))
       (ensure-directories-exist there)
@@ -270,9 +281,10 @@ for rimu's operations to finish. Returns the frontend and the editor."
   (is string= "Move /e/a to the trash"
       (tuatara.defaults::rimu-question "Move" '("/e/a") :here "/d/" :after "to the trash"))
   (is string= "Copy 2 files to:" (tuatara.defaults::rimu-question "Copy" '("/d/a" "/d/b") :here "/d/" :after "to:"))
-  (true (search "Copy 2 files in /e" (tuatara.defaults::rimu-question "Copy" '("/e/a" "/e/b") :here "/d/" :after "to:")))
-  (is string= "Copy 2 files in 2 directories to:"
-      (tuatara.defaults::rimu-question "Copy" '("/d/a" "/e/b") :here "/d/" :after "to:"))
+  (true (search "They are in /e" (nth-value 1 (tuatara.defaults::rimu-question "Copy" '("/e/a" "/e/b") :here "/d/"
+                                                                                                   :after "to:"))))
+  (is equal '("Copy 2 files to:" "They are in 2 directories.")
+      (multiple-value-list (tuatara.defaults::rimu-question "Copy" '("/d/a" "/e/b") :here "/d/" :after "to:")))
   (is string= "2 files" (tuatara.defaults::rimu-question nil '("/d/a" "/e/b")))
   ;; the work is done in the order the files were chosen
   (is equal '(("/a" . 2) ("/b" . 3) ("/c" . 1))
@@ -402,7 +414,8 @@ for rimu's operations to finish. Returns the frontend and the editor."
     (true (probe-file (here dir "a.txt")))
     ;; C-u D: for good, asked twice
     (let ((f (ops-session dir "g f a . t x t RET C-u D y RET y RET")))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Really delete a.txt for good? It cannot be put back."))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Really delete a.txt for good?"))
+      (false (tuatara.frontend.fake:fake-frame-showing f "for good? It cannot") "why in the details, not the prompt")
       (true (tuatara.frontend.fake:fake-frame-showing f "Deleted for good 1 file"))
       (false (probe-file (here dir "a.txt")))
       (false (probe-file (here dir "data/Trash/files/a.txt"))))
@@ -885,7 +898,7 @@ it did."
       (let ((f (ops-session dir (format nil "g f b . t x t RET m g f s u b RET l g f c . t x t RET m c C-a C-k ~a C-j"
                                         (rimu-typed (namestring (here there "both.tar.gz"))))
                             :width 300)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "Archive 2 files in 2 directories as:"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Archive 2 files as:"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Archived 2 files to")))
       (is eq :gzip (nth-value 1 (tuatara.defaults::file-kind (namestring (here there "both.tar.gz")))))
       (false (remove-if-not (lambda (p) (search ".part" (namestring p))) (uiop:directory-files there)))
@@ -2238,11 +2251,12 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
   (with-operations-tree (dir)
     (ops-session dir "g f a . t x t RET m m D y")
     (unwind-protect
-         (loop for (keys question) in '(("R n" "Put back the 2 things (1 hidden by the filter)? (y or n)")
-                                        ("D n" "Delete the 2 things (1 hidden by the filter) for good?"))
+         (loop for (keys question) in '(("R" "Put back the 2 things? (y or n)")
+                                        ("D" "Delete the 2 things for good?"))
                do (let ((f (ops-session dir (format nil "g t C-x / r M-< C-n C-n C-n m m C-x / s a . t x t RET ~a" keys)
                                         :width (width-for dir 200))))
-                    (true (tuatara.frontend.fake:fake-frame-showing f question))))
+                    (true (tuatara.frontend.fake:fake-frame-showing f question))
+                    (true (tuatara.frontend.fake:fake-frame-showing f "1 of them is hidden by the filter."))))
       (let ((list (tuatara.buffer:find-buffer "*Trash*")))
         (when list (tuatara.buffer:kill-buffer list))))
     (false (probe-file (here dir "a.txt")))
@@ -2293,7 +2307,7 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
   ;; alone: ^b finds b.txt by its name, which the whole line, starting with its mark and
   ;; details, never begins with; with the names alone there is no column to ask for
   (with-operations-tree (dir)
-    (multiple-value-bind (f editor) (ops-session dir "I C-x / f n a m e RET ^ b RET")
+    (multiple-value-bind (f editor) (ops-session dir (list "I" (laid-out-again) "C-x / f n a m e RET ^ b RET"))
       (let ((lines (rimu-lines editor)) (list (session-buffer editor)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Filter by the column:"))
         (true (find-if (lambda (l) (search "b.txt" l)) lines))
@@ -2316,10 +2330,12 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
         (true (find-if (lambda (l) (and (uiop:string-prefix-p "> " l) (search "b.txt" l))) (rimu-lines editor)))
         (is equal (list (tuatara.io:native (here dir "a.txt")) (tuatara.io:native (here dir "b.txt")))
             (tuatara.defaults::rimu-chosen-paths list))))
-    (let ((f (ops-session dir "g f a . t x t RET m m C-x / s b RET D n" :width 200)))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Move 2 files (1 hidden by the filter) to the trash?")))
+    (let ((f (ops-session dir "g f a . t x t RET m m C-x / s b RET D" :width 200)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Move 2 files to the trash?"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "1 of them is hidden by the filter.")))
     (let ((f (ops-session dir "g f a . t x t RET m m C-x / s b RET C" :width 200)))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Copy 2 files (1 hidden by the filter) to:")))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Copy 2 files to:"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "1 of them is hidden by the filter.")))
     (true (probe-file (here dir "a.txt")))
     ;; marked while narrowed, the mark is still there once the filter is taken away; t turns only
     ;; the entries shown about
@@ -2333,7 +2349,15 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
         (true (find-if (lambda (l) (and (uiop:string-prefix-p "  " l) (search "sub" l))) lines))))
     ;; one marked in another directory is not hidden by this list's filter
     (let ((f (ops-session dir "g f a . t x t RET m g f s u b RET RET g f c . t x t RET m C-x / s z z RET C" :width 400)))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Copy 2 files (1 hidden by the filter) in 2 directories to:")))))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Copy 2 files to:"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "1 of them is hidden by the filter.")))))
+
+(define-test (rimu-operations touch-says-what-the-filter-hides)
+  ;; the prompt of the touch command shows, beside it, how many marked files the filter hides
+  (with-operations-tree (dir)
+    (let ((f (ops-session dir "g f a . t x t RET m m C-x / s b RET a" :width 200)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Touch in"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "1 of them is hidden by the filter.")))))
 
 (define-test (rimu-operations filters-and-directories)
   ;; going into a directory lists it whole, the filters dropped; going up too

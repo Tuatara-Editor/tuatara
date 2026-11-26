@@ -263,8 +263,8 @@ first). Typed again straight after, it puts in the next nearest in its place;
 when the words are out the text as typed comes back, and one more press starts
 again. One undo takes all of them back. A word is a name as the major mode
 takes names: letters, digits and _, hyphens in prose, CSS and Lisp, and every
-character of a Lisp name (LISP-NAME-PART-P) in Lisp. About 64 KiB around point
-are read here, less in other buffers; files opened safely, evidence and
+character of a Lisp name (LISP-NAME-PART-P) in Lisp. *WORD-COMPLETION-REACH*
+octets around point are read here, less in other buffers; files opened safely, evidence and
 decrypted files give words only to buffers of the same kind. \\[complete-word]
 lists the words instead. With *WORD-COMPLETION-KEEP-CASE* the case typed is
 kept."

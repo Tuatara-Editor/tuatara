@@ -687,10 +687,15 @@ without a name."
   "Give JOB, a REMOTE-READ-JOB for a file found (FIND-REMOTE-FILE) with
 ATTRIBUTES there, the entry of the cache its copy goes in: the copy kept from
 an earlier read, when it is fit to be used again (REMOTE-KEPT-COPY) and JOB
-does not read the file anew; else the entry JOB has, or a new one."
+does not read the file anew; else the entry JOB has, or a new one. A file
+opened safely, or one that is or may be evidence, is always read afresh: a
+copy kept here never stands in for it, and nothing but SFTP is asked of the
+server."
   (let* ((remote (remote-read-job-remote job))
          (key (remote-name (remote-file-host remote) (remote-read-job-path job)))
          (kept (and (eq (remote-read-job-role job) :visit)
+                    (not (remote-read-job-safe job))
+                    (not (remote-file-evidence remote))
                     (remote-kept-copy job key (remote-read-job-path job) attributes))))
     (setf (remote-read-job-kept job) kept
           (remote-read-job-directory job) (if kept
@@ -741,8 +746,9 @@ for the rest (JOB's ARRIVAL and FD). Its attributes as it was read are noted."
   "The work of JOB, a REMOTE-READ-JOB: where the file is there found
 \(FIND-REMOTE-FILE), and, for a file, read into a copy here, readable by you
 alone, in an entry of the cache (TAKE-REMOTE-COPY-ENTRY), its sum taken when
-it is small. A copy kept from an earlier read is used when the file there is
-as it was then (REMOTE-KEPT-COPY): whole, or gone on with from what came
+it is small. A copy kept from an earlier read is used, unless the file is
+opened safely or is evidence, when the file there is as it was then
+\(REMOTE-KEPT-COPY): whole, or gone on with from what came
 \(DOWNLOAD-REMOTE-COPY)."
   (let ((attributes (find-remote-file job))
         (remote (remote-read-job-remote job)))

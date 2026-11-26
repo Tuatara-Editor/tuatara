@@ -146,7 +146,8 @@ them to start, and in a window, how it draws each way it can
                (append (list (pdf-decoder-words) (office-page-words) (image-decoder-words) (external-program-words)
                              (notify-health-words) (encrypted-health-words) (git-health-words) (man-health-words)
                              (archive-health-words))
-                       (remove nil (mapcar #'call-hook-function *health-decoder-functions*)))
+                       (remove nil (cons (org-notify-sound-health-words)
+                                         (mapcar #'call-hook-function *health-decoder-functions*))))
                (health-check-exporters check)
                (remove nil (list (tuatara.export:latex-export-words) (tuatara.export:latex-language-words)))
                (health-check-tools check)
@@ -286,12 +287,9 @@ COLUMN (TUATARA.DISPLAY:FILL-WORDS)."
 (defun mode-tab-words (name)
   "How \\[indent-for-tab-command] and indentation fill in major mode NAME:
 \"4 spaces\", \"8 tabs\"."
-  (let* ((names (mode-precedence name))
-         (width (loop for n in names thereis (nth-value 0 (gethash n *mode-tab-widths*))))
-         (tabs (loop for n in names do (multiple-value-bind (value found) (gethash n *mode-indent-tabs*)
-                                         (when found (return (list value))))
-                     finally (return (list *indent-tabs-mode*)))))
-    (format nil "~d ~:[spaces~;tabs~]" (or width *tab-width*) (first tabs))))
+  (format nil "~d ~:[spaces~;tabs~]" (mode-value name (setting-in-force '*tab-width-modes*) *tab-width*)
+          (mode-value name (setting-in-force '*indent-with-tabs-modes*) *indent-with-tabs*
+                      *indent-with-tabs-default-modes*)))
 
 (defun mode-files-words (name)
   "The files major mode NAME is chosen for, as a list of words: .rs, Makefile,
@@ -385,17 +383,11 @@ numbers: (2 43) for 2.43."
   (tuatara.text:software-version-numbers
    (sb-alien:alien-funcall (sb-alien:extern-alien "gnu_get_libc_version" (function sb-alien:c-string)))))
 
-(defun appimage-words (appimage glibc)
-  "What \\[check-health] says of the AppImage APPIMAGE (TUATARA.IO:*APPIMAGE*)
-Tuatara runs from on a system with glibc of version GLIBC, a list of
-numbers: which it is and, for the legacy one, which to take next."
-  (let ((have (format nil "this system's glibc is ~{~d~^.~}" glibc)))
-    (if (equal appimage "legacy")
-        (format nil "the legacy one (Ubuntu 24.04's libraries, glibc 2.39 or later), the last of its kind; ~a~:[: ~
-later releases need glibc 2.43 or later~;: take Tuatara-x86_64.AppImage, whose window follows the ~
-desktop's light or dark style~]"
-                have (tuatara.text:software-version-at-least-p glibc '(2 43)))
-        (format nil "Ubuntu 26.04's libraries, for glibc 2.43 or later; ~a" have))))
+(defun appimage-words (glibc)
+  "What \\[check-health] says of the AppImage Tuatara runs from on a system
+with glibc of version GLIBC, a list of numbers: the libraries it brings and
+the system's own."
+  (format nil "Ubuntu 26.04's libraries, for glibc 2.43 or later; this system's glibc is ~{~d~^.~}" glibc))
 
 (defun write-health-report (check)
   "Write the report of CHECK, which is done, into *HEALTH-PIECES*."
@@ -436,7 +428,7 @@ starts (a systemd-run scope)~]"
 nothing else is parsed")
                             (t "no sandbox (see above): no text is parsed or coloured")))
       (when tuatara.io:*appimage*
-        (fact "AppImage" (appimage-words tuatara.io:*appimage* (glibc-version))))
+        (fact "AppImage" (appimage-words (glibc-version))))
       (unless tuatara-user:*package-check-signatures*
         (fact "Packages"
               "signatures are not checked (*package-check-signatures*): every version of every source is taken"

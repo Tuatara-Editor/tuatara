@@ -6,7 +6,8 @@
 ;;;; its entries tagged :notify: is told on the desktop by notify-send, some
 ;;;; minutes before its time and when the time comes, or, with a date alone,
 ;;;; once in the morning. Each is told once (NOTIFY, kept in *Notifications*
-;;;; too); a task done is told no more.
+;;;; too); a task done is told no more. Alarms may come with it, each asked
+;;;; for in the init file: the mode lines alight, the bell, a sound.
 
 (in-package #:tuatara.defaults)
 
@@ -33,6 +34,28 @@ says otherwise for it.
 - nil: such entries are never told."
   :values (or (member nil) string))
 
+(define-setting *org-notify-alarms* nil
+  "The alarms that go with an agenda entry told as its time comes.
+- a list: each of
+  - :flash: every mode line flashes twice in :mode-line-alarm, then stays lit
+    until a key is pressed, so that it is seen without being heard.
+  - :bell: the bell rings on every screen Tuatara shows on: a terminal's,
+    over ssh too, which the terminal may show as a flash or a mark on its
+    tab; or the desktop's for Tuatara's own window, which its accessibility
+    settings may show as a flash of the screen.
+  - a sound file's name, ~ standing for your home, such as
+    \"/usr/share/sounds/freedesktop/stereo/bell.oga\": played on the computer Tuatara runs on by the first of
+    pw-play, paplay and aplay found on the PATH; it runs apart from the
+    editor, which never waits for it.
+- nil: none (the standard)."
+  :values (list-of (or (member :flash :bell) string)))
+
+(defparameter *org-notify-sound-players* '("pw-play" "paplay" "aplay")
+  "The programs that may play the agenda's alarm sound, the first found on the PATH used.")
+
+(sb-ext:defglobal **org-notify-sound-said** nil
+  "True once it has been said that the sound of *ORG-NOTIFY-ALARMS* cannot be played.")
+
 (sb-ext:defglobal **org-notify-sent** (make-hash-table :test 'equal :synchronized t)
   "The notifications told so far, by what tells them apart: (FILE TITLE DAY
 KIND TIME), KIND :BEFORE, :AT or :DAY, TIME the time of day (930), or NIL.")
@@ -51,7 +74,8 @@ program changed on disk is seen.")
 
 (defparameter *org-notify-carried-settings*
   (append *org-agenda-carried-settings*
-          '(*org-notify-tag* *org-notify-before* *org-notify-day-time* *notify-program*))
+          '(*org-notify-tag* *org-notify-before* *org-notify-day-time* *notify-program*
+            *org-notify-alarms*))
   "The settings the notifications are worked out with, carried to their thread.")
 
 (defun org-notify-minutes-before (entry)
@@ -138,7 +162,46 @@ at the universal time NOW, and each notification due (ORG-NOTIFY-DUE) told
       (destructuring-bind (key title words) notification
         (setf (gethash key **org-notify-sent**) now)
         (notify title words :source "Agenda")))
+    (when (and due *org-notify-alarms*)
+      (defer-action #'org-notify-alarm :without-screen t))
     next))
+
+(defun org-notify-sound-program ()
+  "The path of the first of *ORG-NOTIFY-SOUND-PLAYERS* on the PATH, or NIL."
+  (some #'tuatara.io:find-program *org-notify-sound-players*))
+
+(defun org-notify-sound-file ()
+  "The sound file of *ORG-NOTIFY-ALARMS*, or NIL when it holds none."
+  (find-if #'stringp *org-notify-alarms*))
+
+(defun org-notify-play-sound (sound)
+  "Play the sound file SOUND by the first player found, apart from the editor;
+when no player or the file is missing, say so once in the session."
+  (let ((program (org-notify-sound-program))
+        (file (tuatara.io:native (tuatara.io:expand-path sound))))
+    (cond ((and program (eq :regular (tuatara.io:path-kind file)))
+           (ignoring-errors-reported ("playing ~a" file)
+             (start-detached program (list file) :label "agenda sound")))
+          ((not (shiftf **org-notify-sound-said** t))
+           (message "~:[None of ~{~a~^, ~} is installed~*~;~*The sound ~a is not there~]: ~
+                    the agenda's alarms play no sound"
+                    program *org-notify-sound-players* file)))))
+
+(defun org-notify-sound-health-words ()
+  "How the agenda's alarm sound is played here, as \\[check-health] says it; NIL
+when none is asked for (*ORG-NOTIFY-ALARMS*)."
+  (when (org-notify-sound-file)
+    (program-health-words "the agenda's alarm sound" (org-notify-sound-program)
+                          (format nil "install one of ~{~a~^, ~}" *org-notify-sound-players*)
+                          :how "apart from the editor")))
+
+(defun org-notify-alarm ()
+  "Set off the alarms an agenda entry told brings, as *ORG-NOTIFY-ALARMS* asks:
+the mode lines alight, the bell of every screen, a sound."
+  (when (member :flash *org-notify-alarms*) (mode-line-alarm-start))
+  (when (and (member :bell *org-notify-alarms*) *editor*) (ring-bell *editor*))
+  (let ((sound (org-notify-sound-file)))
+    (when sound (org-notify-play-sound sound))))
 
 (defun org-notify-open-key ()
   "What tells whether the Org files open changed: each Org buffer's file and
@@ -204,5 +267,6 @@ and faint once its time has passed."
             (org-ask-date "Remind" (lambda (ts) (if ts (org-plan "SCHEDULED" ts) (org-no-date))))))))))
 
 (defun install-org-notify ()
-  "Tell the agenda's entries tagged :notify: on the desktop while Tuatara runs."
+  "Tell the agenda's entries tagged :notify: on the desktop while Tuatara runs,
+with the alarms asked for."
   (pushnew 'org-notify-tick *tick-functions*))

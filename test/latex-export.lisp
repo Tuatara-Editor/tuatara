@@ -13,7 +13,7 @@
 sections, lists, tables as #+ATTR_LATEX lays them out, blocks, markup, links, footnotes and macros, what
 is tagged noexport left out, nothing run. M-x org-export-latex-pdf makes the PDF beside the file with the
 first LaTeX program that works, org-export-latex-pdf-buffer shows it beside the file or alone, read again
-on the next export, org-export-latex-pdf-xdg opens it outside; what the programs said when none works is
+on the next export, org-export-latex-pdf-externally opens it outside; what the programs said when none works is
 in *LaTeX errors*; a file opened safely, or one that is no Org or LaTeX, is refused.")
 
 (defun org-latex-of (text &rest keys)
@@ -309,8 +309,8 @@ is not offered by M-x either; NIL when it runs there."
         (alexandria:write-string-into-file "Text" file)
         (is equal "org-export-latex-pdf works in Org files only"
             (refusal-in file 'tuatara.export::org-export-latex-pdf))
-        (is equal "export-latex-compile-pdf works in LaTeX files only"
-            (refusal-in file 'tuatara.export::export-latex-compile-pdf)))
+        (is equal "latex-export-pdf works in LaTeX files only"
+            (refusal-in file 'tuatara.export::latex-export-pdf)))
       ;; a file opened safely: nothing run
       (let ((file (merge-pathnames "evidence.org" dir))
             (tuatara-user:*untrusted-directories* (list (namestring dir))))
@@ -323,7 +323,7 @@ is not offered by M-x either; NIL when it runs there."
       ;; a LaTeX file with changes: saved first, then made into a PDF from what was saved
       (let ((file (merge-pathnames "paper.tex" dir)))
         (alexandria:write-string-into-file "\\documentclass{article}" file)
-        (let ((f (export-session file (list "g e o x C-g" (export-command "export-latex-compile-pdf")))))
+        (let ((f (export-session file (list "g e o x C-g" (export-command "latex-export-pdf")))))
           (true (tuatara.frontend.fake:fake-frame-showing f "Compiling paper.tex to PDF..."))
           (true (tuatara.frontend.fake:fake-frame-showing f "paper.pdf (xelatex)"))
           (true (search "x" (alexandria:read-file-into-string file) :start2 20))
@@ -363,7 +363,7 @@ is not offered by M-x either; NIL when it runs there."
         (alexandria:write-string-into-file "\\documentclass{article}" file)
         (is equal "org-export-latex-pdf-enhanced works in Org files only"
             (refusal-in file 'tuatara.export::org-export-latex-pdf-enhanced))
-        (is equal nil (refusal-in file 'tuatara.export::export-latex-compile-pdf))
+        (is equal nil (refusal-in file 'tuatara.export::latex-export-pdf))
         (false (probe-file (merge-pathnames "paper.pdf" dir)))))))
 
 (define-test (latex-export styles)
@@ -583,7 +583,7 @@ is not offered by M-x either; NIL when it runs there."
     (true (search "\\MakeUppercase{Report}" latex))
     (true (search "Title & Report R-1" latex))
     (true (search "\\contentsline{section}{Mock Report}" latex)))
-  ;; M-x export-latex-template-copy: a built-in template copied into your own, and visited
+  ;; M-x export-template-copy-latex: a built-in template copied into your own, and visited
   (with-test-directory (dir)
     (let ((old (uiop:getenv "XDG_CONFIG_HOME"))
           (file (merge-pathnames "note.org" dir)))
@@ -593,7 +593,7 @@ is not offered by M-x either; NIL when it runs there."
              (sb-posix:setenv "XDG_CONFIG_HOME" (namestring dir) 1)
              (multiple-value-bind (f editor)
                  (export-session file
-                                 "M-x e x p o r t - l a t e x - t e m p l a t e - c o p y RET a r t i c l e RET"
+                                 "M-x e x p o r t - t e m p l a t e - c o p y - l a t e x RET a r t i c l e RET"
                                  :width 200)
                (let ((copy (merge-pathnames "tuatara/latex-templates/article.tex" dir)))
                  (true (probe-file copy))
@@ -606,7 +606,7 @@ is not offered by M-x either; NIL when it runs there."
                  (forget-file-buffers)
                  (true (tuatara.frontend.fake:fake-frame-showing
                         (export-session file
-                                        "M-x e x p o r t - l a t e x - t e m p l a t e - c o p y RET a r t i c l e RET"
+                                        "M-x e x p o r t - t e m p l a t e - c o p y - l a t e x RET a r t i c l e RET"
                                         :width 200)
                         "is yours already"))
                  (is string= "mine" (alexandria:read-file-into-string copy)))))
@@ -780,6 +780,46 @@ is not offered by M-x either; NIL when it runs there."
     ;; shown when not hidden
     (is string= "Ann Napier" (tuatara.defaults::org-export-redaction "protect" "Ann Napier"))))
 
+(defun take-in-redactions-looks ()
+  "Wait for the looks through a file for hidden text to end, at most ten
+seconds, and take them in, as the editor does."
+  (loop repeat 500
+        while (some (lambda (job) (and (tuatara.export::redactions-look-p job) (tuatara.runtime:job-running-p job)))
+                    tuatara.runtime:*jobs*)
+        do (sleep 0.02))
+  (tuatara.runtime:take-in-jobs #'tuatara.export::redactions-look-p))
+
+(define-test (latex-export redactions-looked-for-in-background)
+  ;; M-x export-check-redactions leaves the editor at once, the look a job of the note's; the places come when
+  ;; it is taken in
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "leak.org" dir))
+          (gate (sb-thread:make-semaphore))
+          (running nil))
+      (alexandria:write-string-into-file (format nil "* Survey~%Subject {{{redact(Bo Raglan)}}}.~%~
+                                                      Later Bo Raglan wrote.~%")
+                                         file)
+      (sb-int:encapsulate 'tuatara.export::hidden-spans 'held
+                          (lambda (function &rest arguments)
+                            (sb-thread:wait-on-semaphore gate :timeout 5)
+                            (apply function arguments)))
+      (unwind-protect
+           (let ((f (export-session file
+                                    (list (export-command "export-check-redactions")
+                                          (lambda ()
+                                            (setf running (find-if (lambda (job)
+                                                                     (and (tuatara.export::redactions-look-p job)
+                                                                          (tuatara.runtime:job-running-p job)))
+                                                                   tuatara.runtime:*jobs*))
+                                            (sb-thread:signal-semaphore gate))
+                                          #'take-in-redactions-looks)
+                                    :width 200)))
+             (true running)
+             (true (tuatara.frontend.fake:fake-frame-showing f "1 place in leak.org shows text hidden elsewhere"))
+             (true (search "Bo Raglan (redact), 1 place:"
+                           (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Redactions*")))))
+        (sb-int:unencapsulate 'tuatara.export::hidden-spans 'held)))))
+
 (define-test (latex-export redactions-checked)
   ;; found: the whole (any case), a word of it alone, a token a hidden part completes; never a time that only ends alike
   (let ((findings (tuatara.export::redaction-findings
@@ -799,6 +839,7 @@ is not offered by M-x either; NIL when it runs there."
       ;; M-x export-check-redactions: each place listed, n going to it, RET showing it
       (multiple-value-bind (f editor)
           (export-session file (list (export-command "export-check-redactions")
+                                     #'take-in-redactions-looks
                                      (lambda ()
                                        (tuatara.defaults::pop-to-buffer (tuatara.buffer:find-buffer "*Redactions*")))
                                      "n RET")
@@ -913,6 +954,17 @@ is not offered by M-x either; NIL when it runs there."
   "The octets of a Word document Tuatara wrote, its files stored as they are, read as text."
   (sb-ext:octets-to-string (coerce octets '(vector (unsigned-byte 8))) :external-format '(:utf-8 :replacement #\?)))
 
+(define-test (latex-export denote-link-alike-in-every-export)
+  ;; a link to a note by its identifier, with no description, shows the identifier in each export
+  (with-test-directory (dir)
+    (let* ((file (namestring (merge-pathnames "note.org" dir)))
+           (note (format nil "See [[denote:20260102T090000]] and [[nowhere]].~%"))
+           (all (docx-text (tuatara.defaults::org-docx-document note :file file))))
+      (true (search "See 20260102T090000 and" (html-body-of note :file file)))
+      (true (search "20260102T090000" all))
+      (false (search "denote:" all))
+      (true (search "nowhere" all)))))
+
 (define-test (latex-export docx-written)
   (with-test-directory (dir)
     (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8)))
@@ -978,10 +1030,11 @@ is not offered by M-x either; NIL when it runs there."
         (false (search "Bo Raglan"
                        (docx-text (alexandria:read-file-into-byte-vector (merge-pathnames "survey.docx" dir)))))))))
 
-(defun write-docx-template (directory document &key (header nil) title-page size)
+(defun write-docx-template (directory document &key (header nil) title-page size (section t))
   "Write a Word template, unpacked, into DIRECTORY: DOCUMENT its word/document.xml
 body (paragraphs and tables), HEADER, when given, a header's paragraphs, SIZE
-its text's size in half points, when given."
+its text's size in half points, when given. SECTION false leaves out the
+body's w:sectPr, the page Word then takes its own."
   (flet ((put (name text)
            (let ((path (uiop:parse-native-namestring (concatenate 'string (namestring directory) name))))
              (ensure-directories-exist path)
@@ -992,7 +1045,15 @@ its text's size in half points, when given."
       (put "word/_rels/document.xml.rels" "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/header\" Target=\"header1.xml\"/></Relationships>")
       (put "word/styles.xml" (format nil "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:styles ~a>~@[<w:docDefaults><w:rPrDefault><w:rPr><w:sz w:val=\"~d\"/></w:rPr></w:rPrDefault></w:docDefaults>~]<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:rPr><w:sz w:val=\"20\"/></w:rPr></w:style><w:style w:type=\"paragraph\" w:styleId=\"Heading1\"><w:name w:val=\"heading 1\"/><w:rPr><w:color w:val=\"C00000\"/></w:rPr></w:style></w:styles>" ns size))
       (put "word/header1.xml" (format nil "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:hdr ~a>~a</w:hdr>" ns (or header "<w:p/>")))
-      (put "word/document.xml" (format nil "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document ~a><w:body>~a<w:sectPr><w:headerReference w:type=\"default\" r:id=\"rId2\"/><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>~:[~;<w:titlePg/>~]</w:sectPr></w:body></w:document>" ns document title-page)))))
+      (put "word/document.xml"
+           (format nil "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>~
+                        <w:document ~a><w:body>~a~:[~;<w:sectPr>~
+                        <w:headerReference w:type=\"default\" r:id=\"rId2\"/>~
+                        <w:pgSz w:w=\"12240\" w:h=\"15840\"/>~
+                        <w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" ~
+                        w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>~
+                        ~:[~;<w:titlePg/>~]</w:sectPr>~]</w:body></w:document>"
+                   ns document section title-page)))))
 
 (define-test (latex-export docx-template-filled)
   (with-test-directory (dir)
@@ -1056,6 +1117,16 @@ its text's size in half points, when given."
                      (nth-value 2
                                 (tuatara.defaults::org-docx-document (format nil "#+template: nosuch~%Text~%")
                                                                      :file file)))))))
+
+(define-test (latex-export docx-template-without-a-page)
+  ;; a template whose body has no w:sectPr (Word's own page) still makes the document, columns and all
+  (with-test-directory (dir)
+    (let ((file (namestring (merge-pathnames "note.org" dir))))
+      (write-docx-template (merge-pathnames "plain/" dir) "<w:p><w:r><w:t>{{{body}}}</w:t></w:r></w:p>" :section nil)
+      (let ((all (docx-text (tuatara.defaults::org-docx-document
+                             (format nil "#+template: ./plain~%* One~%:EXPORT:~%columns: 2~%:END:~%Plain text.~%")
+                             :file file))))
+        (true (search ">Plain text.</w:t>" all))))))
 
 (define-test (latex-export docx-template-pages)
   ;; the note's contents begin a page when their paragraph did; with sections of columns in the
@@ -1730,7 +1801,7 @@ Shut in.
           (flet ((said ()
                    (alexandria:read-file-into-string
                     (concatenate 'string (tuatara.export::latex-build-directory tex "lualatex") "probe.log"))))
-            (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width 200)))
+            (let ((f (export-session tex (export-command "latex-export-pdf") :width 200)))
               (true (tuatara.frontend.fake:fake-frame-showing f "probe.pdf (lualatex)"))
               (false (tuatara.frontend.fake:fake-frame-showing f "without the sandbox")))
             (true (probe-file (merge-pathnames "probe.pdf" directory)))
@@ -1744,11 +1815,11 @@ Shut in.
             ;; file outside read, as LaTeX alone allows
             (delete-file (merge-pathnames "probe.pdf" directory))
             (let ((tuatara-user:*sandbox* nil))
-              (let ((f (export-session tex (list (export-command "export-latex-compile-pdf") "n RET") :width 200)))
+              (let ((f (export-session tex (list (export-command "latex-export-pdf") "n RET") :width 200)))
                 (true (tuatara.frontend.fake:fake-frame-showing f "LaTeX would run without the sandbox (turned off"))
                 (true (tuatara.frontend.fake:fake-frame-showing f "Not exported: LaTeX runs only shut in the sandbox unless you say yes")))
               (false (probe-file (merge-pathnames "probe.pdf" directory)))
-              (let ((f (export-session tex (list (export-command "export-latex-compile-pdf") "y RET") :width 200)))
+              (let ((f (export-session tex (list (export-command "latex-export-pdf") "y RET") :width 200)))
                 (true (tuatara.frontend.fake:fake-frame-showing f "LaTeX ran without the sandbox (turned off"))))
             (true (probe-file (merge-pathnames "probe.pdf" directory)))
             (false (probe-file (merge-pathnames "written.txt" directory)))
@@ -1778,7 +1849,7 @@ Shut in.
 (define-test (latex-export sockets-never-shown-whole)
   ;; /tmp and the runtime directory hold other programs' sockets: never shown whole to LaTeX shut in
   (false (tuatara.io:shown-place-p "/tmp/"))
-  (let ((runtime (tuatara.io:own-variable "XDG_RUNTIME_DIR")))
+  (let ((runtime (tuatara.runtime:own-variable "XDG_RUNTIME_DIR")))
     (when (and runtime (plusp (length runtime)))
       (false (tuatara.io:shown-place-p runtime)))))
 
@@ -1837,7 +1908,7 @@ Shut in.
           (alexandria:write-string-into-file
            (format nil "\\documentclass{article}~%\\usepackage{graphicx}~%\\begin{document}~%\\includegraphics[width=1cm]{~a}~%\\end{document}~%" logo)
            tex :if-exists :supersede)
-          (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width 200)))
+          (let ((f (export-session tex (export-command "latex-export-pdf") :width 200)))
             (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf (lualatex)")))
           (true (probe-file (merge-pathnames "report.pdf" directory))))))))
 
@@ -2073,6 +2144,68 @@ Shut in.
       (is string= (concatenate 'string (tuatara.io:real-path real) "/xelatex")
           (tuatara.export::latex-program-place (concatenate 'string linked "/xelatex")))
       (is string= "/nowhere/xelatex" (tuatara.export::latex-program-place "/nowhere/xelatex")))))
+
+(define-test (latex-export hidden-text-with-groups-inside)
+  ;; a LaTeX call's argument holding groups of its own hides all of it, its words looked for as it shows
+  ;; them; a call in a comment, or after \\ (a line break), hides nothing; one never closed hides the rest of
+  ;; its paragraph
+  (flet ((found (text) (mapcar #'second (tuatara.export::redaction-findings text :latex)))
+         (inside (text) (mapcar #'third (tuatara.export::hidden-spans text :latex))))
+    (is equal '("John Otago") (inside "\\R{John \\textbf{Otago}} met him."))
+    (is equal '("Otago") (found (format nil "\\R{John \\textbf{Otago}} met him.~%Later Otago wrote.~%")))
+    (is equal '("John" "Otago") (found "\\R{John \\textbf{Otago}}; John~Otago"))
+    ;; nothing given away: none found, the hidden text known
+    (is equal '() (found "\\R{John \\textbf{Otago}} wrote."))
+    (is = 1 (length (tuatara.export::hidden-spans "\\R{John \\textbf{Otago}} wrote." :latex)))
+    ;; a call inside another is part of it
+    (is equal '("Hone Raglan") (inside "\\R{Hone \\D{Raglan}} said"))
+    (is equal '("Raglan") (found "\\R{Hone \\D{Raglan}} and Raglan"))
+    ;; groups deeper still, a brace written as itself, a brace in a comment
+    (is equal '("Hemi") (found "\\redact{Tama {b {c \\emph{Hemi}}}} then Hemi"))
+    (is equal '("Kahu") (found "\\R{Rewi\\}y Kahu} and Kahu"))
+    (is equal '("Tane") (found (format nil "\\R{Mere % }~%Tane} saw Tane")))
+    ;; a space or a line break before the brace, a paragraph inside, the argument at the end of the text
+    (is equal '("Rua") (found "\\R {Rua} Rua"))
+    (is equal '("Rua") (found (format nil "\\R~%{Rua} Rua")))
+    (is equal '("Pita") (found (format nil "\\R{Wiremu~%~%Pita} and Pita")))
+    (is equal '("Pita") (found "Pita \\R{Pita}"))
+    ;; never closed: hidden to the blank line, shown after it
+    (is equal '("Aroha") (found (format nil "\\R{Aroha {more~%~%Aroha later")))
+    ;; a line break, then letters; a call in a comment
+    (is equal '() (inside "\\\\R{Kahu} Kahu"))
+    (is equal '() (inside (format nil "% \\R{Kahu}~%Kahu")))
+    (is equal '("Kahu") (inside "\\\\\\R{Kahu}"))))
+
+(define-test (latex-export redactions-named-in-looked-text)
+  ;; the places found before an export are named in the text looked through, though the buffer changed since
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "leak.org" dir))
+          (asked nil))
+      (alexandria:write-string-into-file
+       (format nil "* Survey~%Subject {{{redact(Bo Raglan)}}}.~%Later Bo Raglan wrote.~%") file)
+      (export-session file (list (lambda ()
+                                   (let* ((b (tuatara.buffer:find-buffer "leak.org"))
+                                          (job (tuatara.export::make-docx-export b (tuatara.buffer:buffer-text b)
+                                                                                 (namestring file) :file)))
+                                     (setf (tuatara.export::export-job-looked job) (tuatara.buffer:buffer-text b)
+                                           (tuatara.export::export-job-again job) (lambda ()))
+                                     (false (tuatara.export::export-looked-through-p job :org))
+                                     (tuatara.buffer:buffer-delete b 0 (tuatara.buffer:buffer-size b))
+                                     (tuatara.buffer:buffer-insert b 0 (format nil "Gone.~%"))
+                                     ;; asked, and answered no
+                                     (sb-int:encapsulate 'tuatara.command:yes-or-no-p* 'answered
+                                                         (lambda (f prompt &rest how)
+                                                           (declare (ignore f how))
+                                                           (push prompt asked)
+                                                           nil))
+                                     (unwind-protect
+                                          (true (tuatara.export::export-asked-again job "the document"))
+                                       (sb-int:unencapsulate 'tuatara.command:yes-or-no-p* 'answered)))))
+                      :width 200)
+      (is equal '("Make the document anyway?") asked)
+      (let ((said (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Redactions*"))))
+        (true (search "leak.org:3  Bo Raglan" said) "~a" said)
+        (true (search "| Later Bo Raglan wrote." said) "~a" said)))))
 
 (define-test (latex-export redactions-each-text-once)
   ;; the same name hidden twice, in another case too: looked for once, given away to the first hiding it
@@ -2596,11 +2729,11 @@ if grep -q makeindex \"$tex\"; then
 fi" also engine)))
 
 (defun helper-session (tex &key (width 400))
-  "Make a PDF of the LaTeX file TEX by M-x export-latex-compile-pdf in a session of its own; what the programs
+  "Make a PDF of the LaTeX file TEX by M-x latex-export-pdf in a session of its own; what the programs
 said they ran, in runs.txt of its working directory for xelatex, each a line, read and deleted, and the frontend."
   (let ((runs (merge-pathnames "runs.txt" (tuatara.export::latex-build-directory tex "xelatex"))))
     (when (probe-file runs) (delete-file runs))
-    (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width width)))
+    (let ((f (export-session tex (export-command "latex-export-pdf") :width width)))
       (values (prog1 (and (probe-file runs) (uiop:read-file-lines runs))
                 (when (probe-file runs) (delete-file runs)))
               f))))
@@ -2647,7 +2780,7 @@ and *LATEX-ENGINES* the stand-in ENGINE with its programs in BIN (STAND-IN-TEX-H
       (alexandria:write-string-into-file (format nil "@book{kiwi,~%  title = {Kiwi},~%  broken~%}~%") bib
                                          :if-exists :supersede)
       (multiple-value-bind (f editor)
-          (export-session tex (list (export-command "export-latex-compile-pdf") "M-g n") :width 400)
+          (export-session tex (list (export-command "latex-export-pdf") "M-g n") :width 400)
         (true (tuatara.frontend.fake:fake-frame-showing f "biber failed: *LaTeX errors* has what it said"))
         (let ((text (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*LaTeX errors*"))))
           (true (search "biber failed:" text))
@@ -2710,7 +2843,7 @@ and *LATEX-ENGINES* the stand-in ENGINE with its programs in BIN (STAND-IN-TEX-H
                                        :if-exists :supersede)
     (write-paper tex "\\usepackage{biblatex}")
     (let ((tuatara-user:*latex-engines* (append tuatara-user:*latex-engines* (list (stand-in-tex-helpers bin)))))
-      (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width 400)))
+      (let ((f (export-session tex (export-command "latex-export-pdf") :width 400)))
         (true (tuatara.frontend.fake:fake-frame-showing f "(xelatex; xelatex-flaky failed)"))
         (true (tuatara.frontend.fake:fake-frame-showing f "; biber failed: *LaTeX errors* has what it said"))
         (false (tuatara.frontend.fake:fake-frame-showing f "biber and biber")))
@@ -2824,7 +2957,7 @@ and it runs (biber and bibtex asked their version: a biber built for other libra
                (format nil "\\documentclass{article}~%~@?~%\\begin{document}~%Birds \\cite{kiwi}\\index{kiwi}.~%~@?~%\\end{document}~%"
                        preamble end)
                tex)
-              (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width 250)))
+              (let ((f (export-session tex (export-command "latex-export-pdf") :width 250)))
                 (true (tuatara.frontend.fake:fake-frame-showing f "paper.pdf (xelatex)"))
                 (let ((errors (tuatara.buffer:find-buffer "*LaTeX errors*")))
                   (false errors "~a" (and errors (tuatara.buffer:buffer-string errors)))))
@@ -2836,7 +2969,7 @@ and it runs (biber and bibtex asked their version: a biber built for other libra
               ;; again, nothing changed: the program not run again
               (let ((log (concatenate 'string build (if (string= program "makeindex") "paper.ilg" "paper.blg"))))
                 (delete-file log)
-                (export-session tex (export-command "export-latex-compile-pdf") :width 250)
+                (export-session tex (export-command "latex-export-pdf") :width 250)
                 (false (probe-file log)))))))))
 
 (define-test (latex-export private-characters-exported)
@@ -2924,8 +3057,8 @@ and it runs (biber and bibtex asked their version: a biber built for other libra
     (let ((file (merge-pathnames "leak.org" dir))
           (tuatara-user:*latex-engines* (list (stand-in-latex dir "xelatex")))
           (threads '()))
-      (alexandria:write-string-into-file (format nil "* Survey~%Subject {{{redact(Bo Raglan)}}}.~%Later Bo Raglan wrote.~%")
-                                         file)
+      (alexandria:write-string-into-file
+       (format nil "* Survey~%Subject {{{redact(Bo Raglan)}}}.~%Later Bo Raglan wrote.~%") file)
       (sb-int:encapsulate 'tuatara.export::redaction-findings 'thread
                           (lambda (function &rest arguments)
                             (push sb-thread:*current-thread* threads)

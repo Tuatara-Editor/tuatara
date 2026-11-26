@@ -182,25 +182,27 @@ beside the match before RET, as no text of the buffer: as a difference shows
 text added, on a ground of its own."
   :fg :black :bg :green :bold t)
 (define-face :match "A match found by search or replace." :bold t)
-(define-face :paren-match "The bracket at point and the one it pairs with (show-paren-mode)." :fg :black :bg :cyan)
-(define-face :paren-mismatch "A bracket at point that pairs with one of another kind, or with none (show-paren-mode)."
+(define-face :paren-match "The bracket at point and the one it pairs with (\\[show-matching-bracket-mode])."
+  :fg :black :bg :cyan)
+(define-face :paren-mismatch "A bracket at point that pairs with one of another kind, or with none
+\(\\[show-matching-bracket-mode])."
   :fg :white :bg :magenta)
 
 ;;; Gutter
 
 (define-face :line-number "Line numbers in the gutter." :dim t)
 (define-face :current-line-number "The current line's number in the gutter." :bold t)
-(define-face :hl-line "The line point is on, in the selected window, out to its
-edge (\\[hl-line-mode], \\[global-hl-line-mode])." :extend t)
-(define-face :cursor-column "The column point is in, down the selected window (\\[cursor-column-mode],
-\\[global-cursor-column-mode]): the same as :hl-line unless set apart, (set-face
-:cursor-column :bg ...) in the init file." :inherit :hl-line)
+(define-face :current-line "The line point is on, in the selected window, out to its
+edge (\\[current-line-mode], \\[global-current-line-mode])." :extend t)
+(define-face :current-column "The column point is in, down the selected window (\\[current-column-mode],
+\\[global-current-column-mode]): the same as :current-line unless set apart, (set-face
+:current-column :bg ...) in the init file." :inherit :current-line)
 (define-face :soft-wrap-row "The row point is on, where long lines wrap (\\[soft-wrap-mode]),
-painted over the line's :hl-line: the same as it unless set apart, (set-face
-:soft-wrap-row :bg ...) in the init file." :inherit :hl-line :extend t)
+painted over the line's :current-line: the same as it unless set apart, (set-face
+:soft-wrap-row :bg ...) in the init file." :inherit :current-line :extend t)
 (define-face :display-fill-column "The line down the window at the fill column
 \(\\[display-fill-column-mode]): its background, over a source block's or the
-selection's, under the line point is on (:hl-line)." :bg :bright-black)
+selection's, under the line point is on (:current-line)." :bg :bright-black)
 (define-face :wrap-indicator "The mark in the gutter beside a row that goes on
 from the one above, where long lines wrap (\\[soft-wrap-mode])." :fg :bright-black)
 (define-face :vc-added "Gutter mark for lines added since the last commit." :fg :green :bold t)
@@ -328,6 +330,11 @@ sight and out of reach until \\[widen]."
 evidence directory (*EVIDENCE-DIRECTORIES*): lit up in the theme's error colour, so
 that it is seen at once that the file opened safely and nothing is written
 where it is."
+  :inherit :error :reverse t)
+(define-face :mode-line-alarm "Every mode line while an agenda entry's alarm is on
+\(:flash of *ORG-NOTIFY-ALARMS*): it flashes, then stays so until a key is pressed, so that
+it is seen on coming back to the screen; in the theme's error colour unless
+set, as (set-face :mode-line-alarm :bg \"#d70000\" :fg \"#ffffff\") in the init file."
   :inherit :error :reverse t)
 (define-face :mode-line-look-only "Look only, in the mode line of every git buffer of a repository
 looked at only (not trusted, or holding evidence): lit up in the theme's
@@ -534,6 +541,7 @@ window paints where nothing else gives a colour."
   :colourless
   :palette ((text "#000000") (ground "#ffffff"))
   (:mode-line :reverse t) (:mode-line-inactive :reverse t :dim t) (:vertical-border :dim t)
+  (:mode-line-alarm :reverse nil :bold t :underline t)
   (:region :reverse t) (:banked-line :reverse t :dim t) (:completion-selected :reverse t)
   (:minibuffer-deletion-mark :underline t :bold t)
   (:split-place :underline t) (:split-cursor :reverse t) (:split-cursor-insert :reverse t :underline t)
@@ -610,6 +618,7 @@ steel-blue mode line. From the Ao theme by the same author."
   (:vertical-border :dim nil :fg divider)
   (:mode-line-directory :fg mode-line-directory) (:mode-line-narrowed :reverse nil :bold t :fg ground :bg yellow)
   (:mode-line-evidence :reverse nil :bold t :fg ground :bg red)
+  (:mode-line-alarm :reverse nil :bold t :fg ground :bg red)
   (:mode-line-look-only :reverse nil :bold t :fg ground :bg orange) (:git-look-only :bold t :fg orange)
   (:minibuffer-prompt :bold nil :fg blue-warmer)
   (:completion-selected :reverse nil :bold t :bg completion-ground)
@@ -637,7 +646,7 @@ steel-blue mode line. From the Ao theme by the same author."
   (:rimu-symlink :fg blue) (:rimu-broken-symlink :fg red) (:rimu-special :fg magenta) (:rimu-perm-write :fg text-dim)
   (:rimu-set-id :bold t :fg red)
   (:region :reverse nil :fg selection-text :bg selection)
-  (:hl-line :bg current-line) (:symbol-highlight :bg active-ground)
+  (:current-line :bg current-line) (:symbol-highlight :bg active-ground)
   (:diagnostic-error-ground :fg nil :bg error-ground) (:diagnostic-warning-ground :fg nil :bg yellow-subtle)
   (:diagnostic-info-ground :fg nil :bg blue-subtle) (:diagnostic-hint-ground :dim nil :bg ground-dim)
   (:wrap-indicator :fg comment)

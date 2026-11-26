@@ -145,7 +145,7 @@ they are to stop (DBLOCK-CHECK-STOP).")
   '(*org-now*
     *org-agenda-files*
     *org-agenda-file-functions*
-    tuatara-user:*default-directory*
+    tuatara-user:*no-file-directory*
     *formatted-file-directory*
     *org-tags-column*)
   "The settings dynamic blocks are made with, carried to the thread that makes
@@ -168,7 +168,7 @@ WRITER and PARAMS what makes its text. POSITION where it began, a character of
 the parse. WORDS say what the job does, for the list of jobs; COUNT, when the
 job is all the buffer's blocks, how many there are, said once they are put in.
 TEXTS hold each block's new text in order, NIL for one left as it was; MESSAGES
-what the writers said (a cell, as *MESSAGES-KEPT* takes it); DONE how many
+what the writers said (a cell, as *MESSAGES-GATHERED* takes it); DONE how many
 blocks are made and PART how far the one under way has got, from 0 to 1."
   (pieces nil
           :documentation "The dynamic blocks DBLOCK-JOB makes again, each (BEGIN START END FIRST WRITER PARAMS
@@ -178,7 +178,7 @@ POSITION).")
          :documentation "How many blocks DBLOCK-JOB makes when it is all the buffer's blocks, said once they are put
 in, or NIL.")
   (texts '() :documentation "The new text of each block of DBLOCK-JOB in order, NIL for one left as it was.")
-  (messages (list nil) :documentation "What the writers of DBLOCK-JOB said, a cell as *MESSAGES-KEPT* takes it.")
+  (messages (list nil) :documentation "What the writers of DBLOCK-JOB said, a cell as *MESSAGES-GATHERED* takes it.")
   (done 0 :documentation "How many blocks DBLOCK-JOB has made.")
   (part 0 :documentation "How far the block DBLOCK-JOB has under way has got, from 0 to 1."))
 
@@ -278,7 +278,7 @@ for; it ends :DONE, or :STOPPED when asked to stop
 \(TUATARA.RUNTIME:JOB-STOPPED). A writer that fails leaves its block as it was,
 and says why."
   (let ((*dblock-job* job)
-        (*messages-kept* (dblock-job-messages job))
+        (*messages-gathered* (dblock-job-messages job))
         (*dblock-sources* sources)
         (*dblock-own* parse)
         (*current-buffer* (dblock-job-buffer job)))
@@ -326,10 +326,10 @@ are put in."
              (job (and pieces (make-dblock-job buffer pieces words (and count (length pieces))))))
         (when job
           (let ((sources (dblock-snapshot-sources)))
-          (tuatara.runtime:start-job-thread job (tuatara.runtime:carry-settings
-                                                 *dblock-carried-settings*
-                                                 (lambda (job) (dblock-make job parse sources)))
-                                            :name "tuatara dynamic blocks"
+            (tuatara.runtime:start-job-thread job (tuatara.runtime:carry-settings
+                                                   *dblock-carried-settings*
+                                                   (lambda (job) (dblock-make job parse sources)))
+                                              :name "tuatara dynamic blocks"
                                               :details (format nil "~d block~:p" (length pieces)))
             (take-in-soon job *dblock-wait*)))))))
 
@@ -1042,7 +1042,7 @@ emphasis marks, case folded), #\\n (the number it begins with) or #\\t (the
 universal time of a timestamp in it, else the minutes of a duration, 1d 4:30,
 or of the first H:MM in it; 0 for none)."
   (ecase kind
-    (#\a (string-downcase (org-plain-text (subseq cell 0 (min (length cell) 4096)))))
+    (#\a (string-downcase (org-plain-text cell)))
     (#\n (clocktable-leading-number cell))
     (#\t (let ((stamp (cl-ppcre:scan-to-strings *org-one-timestamp-scanner* cell)))
            (cond ((and stamp (org-read-ts stamp)) (org-ts-time (org-read-ts stamp)))

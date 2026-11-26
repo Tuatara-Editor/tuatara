@@ -88,17 +88,35 @@ chapter 2, with a few more for the places a list has.
 | ~g g~, ~g e~ | ~M-<~, ~M->~ | To the top of the list, to the end                 |
 | none         | ~>~, ~<~     | To the next directory in the list, to the previous |
 | none         | ~g f~        | To an entry, by name, with completion              |
-| none         | ~g h~        | To your home directory                             |
+| none         | ~g h~        | To your home directory, or the one on the server   |
+| none         | ~g p~, ~C-c p~ | To a path you type, as ~C-x C-f~ asks for it     |
 | none         | ~g l~        | Back to the directory listed before                |
 | none         | ~q~          | Leave the list                                     |
 
 When you go up with ~h~, the cursor lands on the directory you came from. So you
 can walk down into a directory and back out again without losing your place.
 ~g l~ swaps between the last two directories, so pressing it twice returns to
-where you started. This helps when you are working in two places.
+where you started. This helps when you are working in two places. Each list
+keeps its own. In a list of a directory on another machine
+(=/ssh:HOST:/directory/=), ~g h~ lists your home directory there, as the server
+names it, and ~g l~ goes back and forth between directories there. Both are
+read over the list's own connection in the background, and a server that does
+not answer is said in the list in place of its entries.
 
 ~g f~ is the quickest way to a name in a long list. Type a few letters of the
 name, and ~RET~ puts the cursor on it.
+
+~g p~ or ~C-c p~ (=rimu-goto-path=) asks for a path in the minibuffer. The
+question opens empty, for a path pasted or typed whole; =~= is your home
+directory, and a name typed alone is taken from the directory of the list.
+Otherwise it is the question ~C-x C-f~ asks: the entries of the directory are
+listed as you type, ~DEL~ deletes back by the branches of the path, and =/= or
+=~/= starts the path again. A directory is listed. A file is listed in its
+directory with the cursor on it, not opened. A path on another machine
+(=/ssh:HOST:/directory/=) is listed there, and so is a name typed alone in a
+list of a directory there. A path that names nothing is said in the echo area
+(=... nothing is there=), and the list stays. A list opened safely opens the
+next one safely too.
 
 ~h j k l~ only move in a list. The keys that move by word or select text do
 nothing here, and the echo area says so. Each line is one whole entry, so
@@ -159,7 +177,13 @@ rather read them as numbers, as the =chmod= command does, set
 name and by time, with the most recently changed first. The mode line says
 which one is in force. ~S~ shows a size before each name. For a directory it is
 the size of everything inside, and it is worked out in the background, so the
-column fills in after a moment while you carry on. ~G~ shows, after each
+column fills in after a moment while you carry on. In a list of a directory on
+another machine, each directory below is read over the list's connection, one
+at a time, and nothing is run on the server. The server does not say which
+names are one file, nor where another drive is mounted, so a file with several
+names is counted once for each, and a drive mounted below is counted in. A
+connection that is lost or too slow ends the sizes, and those not yet found
+stay empty. ~G~ shows, after each
 name, when the file was last committed to git and the first line of what the
 commit said. Chapter 15 describes git.
 
@@ -386,7 +410,10 @@ only the lines with =jpg= in them remain, and a line at the top says how
 many of the entries are shown. A second ~C-x / s~ narrows it further.
 ~C-x / r~ takes every filter away. ~C-x / l~ lists the filters in force.
 Marks stay on entries that a filter hides, and a question that counts the
-entries says how many are hidden, so nothing goes without your knowing.
+entries says beside it how many are hidden, so nothing goes without your
+knowing. The questions of touching, deleting, replacing, copying out of
+evidence and the gpg commands show that count, and where the files are,
+beside the short question.
 
 With the details shown, ~C-x / f~ and ~C-x / h~ ask for a column first, such
 as the owner or the size, and then keep or hide the entries whose value in
@@ -827,7 +854,7 @@ the background, saying each as it is done; stopping one stops the rest.
 
 *** Commands for finding, checking and encrypting
 
-#+table: commands rimu-find rimu-find-text rimu-duplicates rimu-encrypt-files rimu-decrypt-files rimu-sign-files rimu-verify-files
+#+table: commands rimu-find rimu-find-text rimu-duplicates gpg-encrypt-file gpg-decrypt-file gpg-sign-file gpg-verify-file
 
 ** Colours of a list
 

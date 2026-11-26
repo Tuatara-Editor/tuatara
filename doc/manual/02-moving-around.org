@@ -346,7 +346,7 @@ its name.
 
 | Setting                          | Default  | What it changes                |
 |----------------------------------+----------+--------------------------------|
-| =*mark-ring-max*=                | =16=     | How many marks each buffer keeps, and the global ring. The oldest goes first. |
+| =*mark-ring-length*=             | =16=     | How many marks each buffer keeps, and the global ring. The oldest goes first. |
 | =*set-mark-command-repeat-pop*=  | =nil=    | Set to =t= for ~C-SPC~ pressed right after ~C-u C-SPC~ to go on back to the mark before, instead of setting a mark. |
 
 *** Faces

@@ -485,18 +485,33 @@ its arguments in."
   (and (org-export-option kind) t))
 
 (defun org-keyword-lines (text)
-  "The lines of the Org TEXT that begin with #+, alone: enough to read its
-keywords, the lines that begin and end its blocks still telling them from
-what a block holds, the rest never parsed."
+  "The lines of the Org TEXT, a string or a rope, that begin with #+, alone:
+enough to read its keywords, the lines that begin and end its blocks still
+telling them from what a block holds, the rest never parsed. A rope is read
+where it is kept, only those lines copied out of it.
+Complexity: O(the length of TEXT)."
   (with-output-to-string (out)
-    (cl-ppcre:do-matches-as-strings (line "(?m)^[ \\t]*#\\+.*$" text)
-      (write-line line out))))
+    (if (stringp text)
+        (cl-ppcre:do-matches-as-strings (line "(?m)^[ \\t]*#\\+.*$" text)
+          (write-line line out))
+        (let ((n (tuatara.text:rope-octet-length text)))
+          (loop for pos = 0 then (1+ end)
+                for hash = (and (< pos n) (tuatara.text:rope-find-octet text 35 :start pos))
+                for end = (and hash (or (tuatara.text:rope-find-octet text 10 :start hash) n))
+                while hash
+                do (let ((start (let ((newline (tuatara.text:rope-find-octet-backward text 10 :end hash)))
+                                  (if newline (1+ newline) 0))))
+                     (when (and (< (1+ hash) end)
+                                (= (tuatara.text:rope-octet text (1+ hash)) 43)
+                                (= (tuatara.text:rope-skip-octets text start '(32 9)) hash))
+                       (write-line (tuatara.text:rope-string text :start start :end end) out))))))))
 
 (defmacro with-org-note-keywords ((text directory &optional file) &body body)
-  "Run BODY with the keywords of the Org note TEXT read as its export reads
-them, those of its #+SETUPFILE: in their place (ORG-EXPORT-KEYWORD), DIRECTORY
-the note's directory for setup files named relative to it and FILE its file.
-Only its #+ lines are read, so that a long note is looked at in an instant."
+  "Run BODY with the keywords of the Org note TEXT, a string or a rope, read as
+its export reads them, those of its #+SETUPFILE: in their place
+\(ORG-EXPORT-KEYWORD), DIRECTORY the note's directory for setup files named
+relative to it and FILE its file. Only its #+ lines are read, so that a long
+note is looked at in an instant (ORG-KEYWORD-LINES)."
   (let ((note (gensym)) (dir (gensym)))
     `(let* ((,note ,text) (,dir ,directory)
             (*org-export* (make-org-export ,note ,dir ,file)))
@@ -669,6 +684,57 @@ is not among them: a link to it is written as its words."
              (loop for (kind . value) in (org-link-target-kinds (if (string= type "custom-id")
                                                                     (concatenate 'string "#" path) path))
                    thereis (found kind value)))))))
+
+(defun org-export-link-kind (node picture-p)
+  "What the link NODE leads to, as every export reads it, as two values: its
+kind and what writing it needs. :PICTURE, when PICTURE-P, a function of the
+link, says it is a picture the export shows; :ADDRESS and the address of the
+web, mail or news (ORG-LINK-ADDRESS); :FILE and the file's name as written;
+:HEADING or :TARGET and the heading or the element it leads to in the
+document (ORG-EXPORT-LINK-TARGET); :PLAIN and the words it shows when it has
+no description, the identifier of a note for denote:ID, else its target as
+written."
+  (let ((type (org-property node :type))
+        (path (org-property node :path)))
+    (cond ((funcall picture-p node) :picture)
+          ((org-link-address type path) (values :address (org-link-address type path)))
+          ((string= type "file") (values :file path))
+          (t (let ((target (org-export-link-target node)))
+               (cond ((null target)
+                      (values :plain (if (uiop:string-prefix-p "denote:" path) (subseq path 7) path)))
+                     ((eq (org-node-type target) 'headline) (values :heading target))
+                     (t (values :target target))))))))
+
+(defun org-export-script-p (node &optional (default (org-option-default "^")))
+  "True when the subscript or superscript NODE is written as one, as the
+document's #+OPTIONS: ^: says, DEFAULT when it says nothing: with ^:{} only
+one in braces (a_{1}), with ^:nil none. One that is not is written as it
+stands."
+  (let ((script (org-export-option "^" default)))
+    (and script (or (not (equal script "{}")) (org-property node :use-brackets-p)))))
+
+(defun org-export-macro-expansion (node written expand)
+  "What the macro call NODE is written as: EXPAND, a function of the Org text
+it stands for (ORG-EXPORT-MACRO-VALUE), gives it; WRITTEN, the call as it
+stands in the export's own form, stands for a macro not known and for one
+called within itself."
+  (let ((value (org-export-macro-value node)))
+    (if value
+        (with-org-export-expanding (:macro (org-property node :key)) (written)
+          (funcall expand value))
+        written)))
+
+(defun org-export-footnote-text (node objects elements &optional again)
+  "What the footnote reference NODE refers to as an export writes it: the
+words of an inline footnote by OBJECTS, a function of NODE; the definition
+found elsewhere in the document by ELEMENTS, a function of that definition;
+NIL when there is none; AGAIN for a footnote written within itself."
+  (with-org-export-expanding (:footnote (or (org-property node :label) node)) (again)
+    (if (eq (org-property node :type) 'inline)
+        (funcall objects node)
+        (let* ((label (org-property node :label))
+               (found (and label (gethash label (org-export-footnotes *org-export*)))))
+          (and found (funcall elements found))))))
 
 (defun org-refuse-hidden-as-written (name way values)
   "Refuse the template's place NAME read WAY when it prints VALUES, a keyword's,
@@ -1009,7 +1075,7 @@ BLANK, a function of how many, gives them."
     (concatenate 'string (subseq path 0 (or dot (length path))) "." type)))
 
 (defun org-export-file-name (text file)
-  "Where the Org note TEXT, of FILE or NIL, says its export goes: its
+  "Where the Org note TEXT, a string or a rope, of FILE or NIL, says its export goes: its
 #+EXPORT_FILE_NAME as a full name ending in .tex whatever ending it gives (so
 that an export never writes over a file of another kind), or NIL when it gives
 none. Its #+ lines alone are read, as written: every export takes the name from
@@ -1028,7 +1094,7 @@ spaces, else its file's name without its ending, else an empty string."
 
 (defun org-export-author ()
   "The author of the document being written, when #+OPTIONS: says to show one:
-its #+AUTHOR:, else your name (ORG-LATEX-USER-NAME); NIL when not shown."
+its #+AUTHOR:, else your name (USER-FULL-NAME); NIL when not shown."
   (and (org-export-option "author") (or (org-export-keyword "AUTHOR") (user-full-name))))
 
 (defun org-export-created ()

@@ -347,44 +347,45 @@
         (is equal '("big line" "small" "") (row-strings rows))
         (is equal '(2 1 1) (map 'list #'tuatara.display:row-scale rows))))))
 
-(define-modal-test (display hl-line)
+(define-modal-test (display current-line)
   ;; the line point is on, in the selected window alone, out to its edge,
   ;; under the selection: on for every buffer unless the init file says not
   (flet ((spans (keys &key (global t))
-           (let ((tuatara-user:*global-hl-line-mode* global))
+           (let ((tuatara-user:*global-current-line-mode* global))
              (let ((f (run-keys keys :text (format nil "one~%two~%three") :width 20 :height 10)))
                (loop for r below 9 collect (aref (tuatara.frontend.fake:fake-spans f) r))))))
     (let ((rows (spans "j")))
-      (is equal '((0 20 :hl-line)) (second rows))
+      (is equal '((0 20 :current-line)) (second rows))
       (false (first rows))
       (false (third rows)))
     ;; the last line, with no newline after it, and the empty line after a last newline
-    (is equal '((0 20 :hl-line)) (third (spans "j j")))
-    (let ((tuatara-user:*global-hl-line-mode* t))
+    (is equal '((0 20 :current-line)) (third (spans "j j")))
+    (let ((tuatara-user:*global-current-line-mode* t))
       (let ((f (run-keys "M->" :text (format nil "one~%two~%") :width 20 :height 10)))
-        (is equal '((0 20 :hl-line)) (aref (tuatara.frontend.fake:fake-spans f) 2))
+        (is equal '((0 20 :current-line)) (aref (tuatara.frontend.fake:fake-spans f) 2))
         (false (aref (tuatara.frontend.fake:fake-spans f) 1))))
     ;; the selection over it
-    (is equal '((0 1 (:region :hl-line)) (1 20 :hl-line)) (second (spans "j v l")))
+    (is equal '((0 1 (:region :current-line)) (1 20 :current-line)) (second (spans "j v l")))
     ;; a window not selected shows none, only its point: the lower one after C-x 2
     (let ((rows (spans "C-x 2 j")))
-      (is equal '((0 20 :hl-line)) (second rows))
+      (is equal '((0 20 :current-line)) (second rows))
       (is equal '((0 1 :cursor-inactive)) (nth 5 rows)))
-    ;; off for all, and a buffer that asks for it with hl-line-mode, and one that does not
+    ;; off for all, and a buffer that asks for it with current-line-mode, and one that does not
     (false (second (spans "j" :global nil)))
-    (is equal '((0 20 :hl-line)) (second (spans "M-x h l - l i n e - m o d e RET j" :global nil)))
-    (false (second (spans "M-x h l - l i n e - m o d e RET j")))
+    (is equal '((0 20 :current-line)) (second (spans "M-x c u r r e n t - l i n e - m o d e RET j" :global nil)))
+    (false (second (spans "M-x c u r r e n t - l i n e - m o d e RET j")))
     ;; the leader's SPC t h does the same
     (false (second (spans "SPC t h j"))))
-  ;; the commands say what they did; global-hl-line-mode switches it for every buffer
-  (let ((tuatara-user:*global-hl-line-mode* t))
-    (multiple-value-bind (f editor) (run-keys "M-x h l - l i n e - m o d e RET" :text "abc" :width 80)
+  ;; the commands say what they did; global-current-line-mode switches it for every buffer
+  (let ((tuatara-user:*global-current-line-mode* t))
+    (multiple-value-bind (f editor) (run-keys "M-x c u r r e n t - l i n e - m o d e RET" :text "abc" :width 80)
       (declare (ignore editor))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Hl-line off")))
-    (multiple-value-bind (f editor) (run-keys "M-x g l o b a l - h l - l i n e - m o d e RET" :text "abc" :width 80)
+      (true (tuatara.frontend.fake:fake-frame-showing f "Current line off")))
+    (multiple-value-bind (f editor) (run-keys (format nil "M-x ~a RET" (key-string "global-current-line-mode"))
+                                              :text "abc" :width 80)
       (declare (ignore editor))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Hl-line off in every buffer"))
-      (false tuatara-user:*global-hl-line-mode*))))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Current line off in every buffer"))
+      (false tuatara-user:*global-current-line-mode*))))
 
 
 (define-test (display wrapping-at-words)
@@ -859,15 +860,15 @@
   (dolist (code '(#x41 #x928 #x627 #xE2A #x1100))
     (true (plusp (tuatara.display:char-columns (code-char code))))))
 
-(define-modal-test (display hl-line-on-wrapped-rows)
+(define-modal-test (display current-line-on-wrapped-rows)
   ;; every row of the line point is on, where it wraps, is lit out to the window's edge
-  (let ((tuatara-user:*global-hl-line-mode* t)
+  (let ((tuatara-user:*global-current-line-mode* t)
         (tuatara-user:*fill-column* 8))
     (let ((f (run-keys "SPC t l" :text (format nil "aaa bbbbb ccc dd eee~%next") :width 30 :height 8)))
       (dotimes (r 4)
         (let ((last (car (last (aref (tuatara.frontend.fake:fake-spans f) r)))))
           (is = 30 (second last) "Row ~d is lit to column ~a" r (second last))
-          (true (intersection '(:hl-line :soft-wrap-row) (alexandria:ensure-list (third last))))))
+          (true (intersection '(:current-line :soft-wrap-row) (alexandria:ensure-list (third last))))))
       (false (aref (tuatara.frontend.fake:fake-spans f) 4)))))
 
 (define-test (display cursor-colour-from-its-background)

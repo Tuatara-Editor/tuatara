@@ -8,9 +8,13 @@
 # with SBCL, the C compilers and the libraries installed on this system. When
 # it runs here and the program COMMAND runs (after env and its NAME=VALUE
 # words) is not installed, it says so and where to find what is needed, and
-# returns 127, as the shell does.
+# returns 127, as the shell does. It refuses, before toolbox is asked anything,
+# when the environment is not the account's own (OWN_ENVIRONMENT_P).
 inside() {
   local name="${TUATARA_CONTAINER:-tuatara}"
+  if [ ! -e /run/.containerenv ] && command -v toolbox >/dev/null; then
+    own_environment_p || return 1
+  fi
   # grep -c reads to the end: -q would stop at the first match, and under the
   # callers' pipefail toolbox's broken pipe would fail the test
   if [ ! -e /run/.containerenv ] && command -v toolbox >/dev/null &&
@@ -33,6 +37,32 @@ inside() {
     fi
     "$@"
   fi
+}
+# own_environment_p: true when podman would find this account's own containers:
+# HOME is the account's home, XDG_RUNTIME_DIR is set, and XDG_DATA_HOME,
+# XDG_CONFIG_HOME and CONTAINERS_* are unset or the account's own. Else false,
+# saying what differs: with another HOME or data directory podman moves to a
+# new pause process, and every container started before can no longer be
+# entered until it is restarted. Set a fenced HOME or XDG_* directory inside the
+# container instead (toolbox run --container NAME env HOME=... COMMAND).
+own_environment_p() {
+  local home why=""
+  home="$(getent passwd "$(id -un)" | cut -d: -f6)"
+  [ "$(realpath -m "${HOME:-/}")" = "$(realpath -m "$home")" ] || why="HOME is $HOME, not $home"
+  [ -n "${XDG_RUNTIME_DIR:-}" ] || why="XDG_RUNTIME_DIR is not set"
+  if [ -n "${XDG_DATA_HOME:-}" ] &&
+     [ "$(realpath -m "$XDG_DATA_HOME")" != "$(realpath -m "$home/.local/share")" ]; then
+    why="XDG_DATA_HOME is $XDG_DATA_HOME"
+  fi
+  if [ -n "${XDG_CONFIG_HOME:-}" ] &&
+     [ "$(realpath -m "$XDG_CONFIG_HOME")" != "$(realpath -m "$home/.config")" ]; then
+    why="XDG_CONFIG_HOME is $XDG_CONFIG_HOME"
+  fi
+  if env | grep -q '^CONTAINERS_'; then why="a CONTAINERS_ variable is set"; fi
+  [ -z "$why" ] && return 0
+  echo "Not starting toolbox: $why. Podman would lose its containers for the whole machine." >&2
+  echo "Fence inside the container: toolbox run --container NAME env HOME=... COMMAND." >&2
+  return 1
 }
 # image_stale ROOT: true when ROOT/build/tuatara is not there, or older than a
 # source it is made from: the Lisp, the grammars' list and patches and syntax.c,

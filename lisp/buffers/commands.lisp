@@ -265,28 +265,68 @@ client of an editor running in the background, the client's own buffers."
   (let ((changed (remove-if-not (lambda (b) (and (tuatara.buffer:buffer-file b) (tuatara.buffer:buffer-modified-p b)))
                                 (client-buffers))))
     (cond ((null changed) (message "(No files need saving)"))
-          ((let ((*buffers-asked-about* changed))
-             (y-or-n-p* (format nil "~a?" (list-question "Save" "changed file" changed
-                                                         :name-of #'tuatara.buffer:buffer-name))
-                        :details (and (rest changed)
-                                      (format nil "~{~a~%~}" (mapcar (lambda (b)
-                                                                       (abbreviated-path (buffer-visited-name b)))
-                                                                     changed)))))
+          ((let ((*buffers-asked-about* changed)
+                 (path-of (lambda (b) (abbreviated-path (buffer-visited-name b)))))
+             (ask-list-question (y-or-n-p*)
+               (list-question "Save" "changed file" changed
+                              :name-of #'tuatara.buffer:buffer-name
+                              :details (and (rest changed) (names-shown changed :name-of path-of)))))
            (save-buffers-saying changed "Saved ~d file~:p"))
           (t (message "Nothing saved")))))
 
+(defun save-before-going (buffers going)
+  "Ask once, before GOING (\"exiting\"), whether to save the changes of those
+of BUFFERS that leaving would lose (UNSAVED-P): y saves those visiting files
+and waits for the saves; n leaves them, every change first written to its
+auto-saved copy (AUTO-SAVE-EVERY-CHANGE), so that \\[recover-file] takes it back
+on the next visit; \\`C-g' stays, as it ends any question. The buffers no copy
+keeps (a new buffer with no file, an encrypted file's text, a file opened
+safely, all of them with auto-saving off) are named beside the question.
+True to go on: nothing to ask, the answer n, or every change saved. Else NIL
+and the reason, for the caller to refuse with: a save still running, or y
+given and a buffer still not saved (its save refused or failed, or no file to
+save to), every change then written to its auto-saved copy."
+  (let ((changed (remove-if-not #'unsaved-p buffers)))
+    (if (null changed)
+        t
+        (let ((*buffers-asked-about* changed)
+              (lost (remove-if #'auto-save-wanted-p changed)))
+          (if (ask-list-question (yes-or-no-p*)
+                (list-question "Save" "changed buffer" changed
+                               :name-of #'tuatara.buffer:buffer-name
+                               :details (format nil "Before ~a: ~a~@[~%~%~a~]~%~%y    saves them~%~
+                                                     n    leaves them; ~a takes the changes back~%C-g  stays"
+                                                going (names-shown changed :name-of #'tuatara.buffer:buffer-name
+                                                                           :separator :words)
+                                                (and lost (lost-changes-count-words lost))
+                                                (substitute-command-keys "\\[recover-file]"))))
+              (progn (save-buffers-saying (remove-if-not #'tuatara.buffer:buffer-file changed) nil)
+                     ;; the saves end before the editor does, never cut short by its exit
+                     (if (not (wait-for-saving (running-jobs)))
+                         (values nil "saves are still running")
+                         (let ((left (remove-if-not #'unsaved-p changed)))
+                           (or (null left)
+                               (progn (auto-save-every-change)
+                                      (values nil (format nil "~{~a~^, ~} not saved"
+                                                          (mapcar #'tuatara.buffer:buffer-name left))))))))
+              (progn (auto-save-every-change) t))))))
+
 (define-command save-buffers-kill-editor ()
-  "Exit the editor, asking first if a buffer visiting a file, or one made by
-\\[new-empty-buffer], has unsaved changes. Other buffers without a file, such as the
-scratch buffers, are not asked about. In a client of an editor running in the
-background, close that client alone, asking nothing but about its encrypted
-buffers, which close with it (CLOSE-CLIENT); its other buffers stay in the
-editor, for another client to take up, and the editor goes on."
+  "Exit the editor, asking first, once, whether to save the changes of the
+buffers visiting files, and of those made by \\[new-empty-buffer]
+\(SAVE-BEFORE-GOING): y saves them, and stays when a save is refused or fails;
+n leaves them in auto-saved copies, which \\[recover-file] takes back; \\`C-g'
+stays. Other buffers without a file, such as
+the scratch buffers, are not asked about. In a client of an editor running in
+the background, close that client alone, asking nothing but about its
+encrypted buffers, which close with it (CLOSE-CLIENT); its other buffers stay
+in the editor, for another client to take up, and the editor goes on."
   (when (client-remote (current-client))
     (return-from save-buffers-kill-editor (close-client)))
   (let ((answers (ask-quit-queries "exit")))
-    (when (and (not (eq answers :stay))
-               (or (notany #'unsaved-p tuatara.buffer:*buffers*)
-                   (yes-or-no-p* "Modified buffers exist; exit anyway?")))
+    (unless (eq answers :stay)
+      (multiple-value-bind (go why) (save-before-going tuatara.buffer:*buffers* "exiting")
+        (unless go
+          (refuse "Not exited: ~a" why)))
       (settle-quit answers)
       (setf (editor-running *editor*) nil))))

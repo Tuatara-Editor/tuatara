@@ -857,7 +857,7 @@ windows side by side, \"floated\" for an Org note's two pictures."
                                                                    sb-sys:system-area-pointer
                                                                    sb-alien:double
                                                                    sb-alien:double sb-sys:system-area-pointer))
-                                     (tuatara.io:null-pointer) x y data)))
+                                     (tuatara.runtime:null-pointer) x y data)))
       (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-begin) 20d0 45d0)
       (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-update) 1d0 1d0)
       (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-update) 30d0 0d0)
@@ -1032,19 +1032,20 @@ windows side by side, \"floated\" for an Org note's two pictures."
     (false (eq sb-thread:*current-thread* (fonts-listed-on f)))
     (false (tuatara.frontend.fake:fake-font f))))
 
-(tuatara.io:define-c-function ("g_slist_prepend" g-slist-prepend) :pointer (list :pointer) (data :pointer))
-(tuatara.io:define-c-function ("g_file_new_for_path" g-file-new-for-path) :pointer (path :string))
-(tuatara.io:define-c-function ("gdk_file_list_new_from_list" gdk-file-list-new-from-list) :pointer (files :pointer))
-(tuatara.io:define-c-function ("g_slist_free_full" g-slist-free-full) :void (list :pointer) (free :pointer))
-(tuatara.io:define-c-function ("g_value_init" g-value-init) :pointer (value :pointer) (type :ulong))
-(tuatara.io:define-c-function ("g_value_take_boxed" g-value-take-boxed) :void (value :pointer) (boxed :pointer))
-(tuatara.io:define-c-function ("g_value_unset" g-value-unset) :void (value :pointer))
+(tuatara.runtime:define-c-function ("g_slist_prepend" g-slist-prepend) :pointer (list :pointer) (data :pointer))
+(tuatara.runtime:define-c-function ("g_file_new_for_path" g-file-new-for-path) :pointer (path :string))
+(tuatara.runtime:define-c-function ("gdk_file_list_new_from_list" gdk-file-list-new-from-list) :pointer
+  (files :pointer))
+(tuatara.runtime:define-c-function ("g_slist_free_full" g-slist-free-full) :void (list :pointer) (free :pointer))
+(tuatara.runtime:define-c-function ("g_value_init" g-value-init) :pointer (value :pointer) (type :ulong))
+(tuatara.runtime:define-c-function ("g_value_take_boxed" g-value-take-boxed) :void (value :pointer) (boxed :pointer))
+(tuatara.runtime:define-c-function ("g_value_unset" g-value-unset) :void (value :pointer))
 
 (define-test (gtk dropped-files)
   ;; files as a file manager drops them: a GdkFileList in a GValue
   (tuatara.gtk:load-gtk-libraries)
   (let* ((paths (list "/tmp/a file.txt" "/tmp/b [2].txt" (format nil "/tmp/caf~a.txt" (code-char #xe9))))
-         (files (let ((list (tuatara.io:null-pointer)))
+         (files (let ((list (tuatara.runtime:null-pointer)))
                   (dolist (path (reverse paths) list)
                     (setf list (g-slist-prepend list (g-file-new-for-path path))))))
          (file-list (gdk-file-list-new-from-list files)))
@@ -1066,7 +1067,7 @@ windows side by side, \"floated\" for an Org note's two pictures."
                                                     sb-sys:system-area-pointer
                                                     sb-sys:system-area-pointer
                                                     sb-alien:double sb-alien:double sb-sys:system-area-pointer))
-                      (tuatara.io:null-pointer) value 20d0 45d0 data))
+                      (tuatara.runtime:null-pointer) value 20d0 45d0 data))
                (tuatara.frontend.gtk::forget-window f)
                (let ((event (tuatara.frontend:queue-pop (tuatara.frontend.gtk::gtk-queue f) 0)))
                  (is eq :drop (tuatara.frontend:event-kind event))
@@ -1156,7 +1157,7 @@ windows side by side, \"floated\" for an Org note's two pictures."
            ;; the window closed while the minibuffer asks: the question ends, and closing asks its own
            (dolist (keys '("C-x C-f" "C-s a" "C-x k RET"))
              (let ((f (session keys (tuatara.frontend:make-event :close))))
-               (true (tuatara.frontend.fake:fake-frame-showing f "Modified buffers exist; exit anyway?"))))
+               (true (tuatara.frontend.fake:fake-frame-showing f "Save the changed buffer"))))
            ;; files dropped while it asks: the question ends, the file is opened
            (multiple-value-bind (f editor)
                (session "C-x C-f" (tuatara.frontend:make-event :drop :files (list other) :column 1 :row 1))
@@ -1431,8 +1432,10 @@ windows side by side, \"floated\" for an Org note's two pictures."
 (define-test (gtk paste-waits-a-second-at-most)
   ;; a watched clipboard whose change is not in after a second: the text it had, at once
   (with-painting-window (f)
-    (setf (tuatara.frontend.gtk::gtk-clipboard-reads f) 1
-          (tuatara.frontend.gtk::gtk-clipboard-kept f) "kept before")
+    (let ((kept (tuatara.frontend:make-clipboard-kept)))
+      (tuatara.frontend:clipboard-read-done kept "kept before")
+      (tuatara.frontend:clipboard-read-begun kept)
+      (setf (tuatara.frontend.gtk::gtk-clipboard-kept f) kept))
     (let ((start (get-internal-real-time)))
       (is equal "kept before" (tuatara.frontend.gtk::read-clipboard-now f nil))
       (true (< (/ (- (get-internal-real-time) start) internal-time-units-per-second) 5)))))
@@ -1766,7 +1769,7 @@ windows side by side, \"floated\" for an Org note's two pictures."
 (define-test (gtk clipboard-watched-from-the-first-paste)
   ;; a window keeps no copy of the clipboard until a paste asks for it: opening it starts no watch
   (with-painting-window (f)
-    (false (tuatara.frontend.gtk::gtk-clipboard-reads f))
+    (false (tuatara.frontend.gtk::gtk-clipboard-kept f))
     (false (search "(read-changed-clipboard f)"
                    (subseq (gtk-frontend-source)
                            (search "(defun open-window (f)" (gtk-frontend-source))

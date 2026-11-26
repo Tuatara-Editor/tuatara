@@ -150,8 +150,10 @@ options shape the list. \\`C-h' there lists every action."
    ("= d" "Since" :option "--since=")
    ("= u" "Until" :option "--until=")))
 
-(defun read-whole-number-string (prompt)
-  "Ask with PROMPT for a whole number, as a string; empty when none is typed."
+(defun read-whole-number-string (prompt &key initial)
+  "Ask with PROMPT for a whole number, as a string; empty when none is typed.
+INITIAL, the value the option has now, is not offered: it is read as a count."
+  (declare (ignore initial))
   (let ((number (read-whole-number prompt nil :valid (constantly t) :refusal "Not a whole number.")))
     (if number (princ-to-string number) "")))
 

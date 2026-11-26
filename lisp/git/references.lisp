@@ -71,11 +71,12 @@ another, a program to run), no space or control character in it."
          (not (and helper (plusp helper)
                    (every (lambda (c) (or (alphanumericp c) (find c "+.-"))) (subseq address 0 helper)))))))
 
-(defun git-read-address (prompt &optional (initial ""))
-  "Ask with PROMPT for a remote's address (INITIAL to begin with), a directory
-on this computer written from ~/ made whole; NIL, said so, when it could not
-be given to git (GIT-ADDRESS-P)."
-  (let* ((address (read-string prompt :initial initial :trim t))
+(defun git-read-address (prompt &key (initial "") details)
+  "Ask with PROMPT for a remote's address (INITIAL to begin with), DETAILS
+shown beside the question when given, a directory on this computer written
+from ~/ made whole; NIL, said so, when it could not be given to git
+\(GIT-ADDRESS-P)."
+  (let* ((address (read-string prompt :initial initial :trim t :details details))
          (address (if (uiop:string-prefix-p "~/" address)
                       (tuatara.io:native (tuatara.io:expand-path address))
                       address)))
@@ -116,7 +117,7 @@ none) and its address; its branches are fetched with f e."
                       (git-ask "Reading the address" top
                                (lambda (job top) (git-output-line job top (list "remote" "get-url" remote)))
                                (lambda (old)
-                                 (let ((address (git-read-address (format nil "Address of ~a: " remote) old)))
+                                 (let ((address (git-read-address (format nil "Address of ~a: " remote) :initial old)))
                                    (when address
                                      (git-run "Setting the address" top (list "remote" "set-url" remote address)
                                               (format nil "~a is at ~a now" remote (escape-controls address)))))))))))

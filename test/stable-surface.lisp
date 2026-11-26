@@ -221,3 +221,16 @@ keyword no longer taken."
                   "VISIT-SECTION" "*MONTH-NAMES*" "*WEEKDAY-NAMES*"))
     (is eq :external (nth-value 1 (find-symbol name "TUATARA")) name))
   (false (find-symbol "FIRST-LINE" "TUATARA") "removed from the API"))
+
+(define-test (stable-surface runtime-helpers-named-by-their-home)
+  ;; the helpers tuatara.io borrows from tuatara.runtime are exported by the runtime alone; the API's
+  ;; own-variable is the same symbol, so packages see no change
+  (dolist (name '("OWN-VARIABLE" "DUPLICATE-FD" "NULL-POINTER" "NULL-POINTER-P" "SAP-STRING" "WITH-C-STRING"
+                  "C-TYPE" "DEFINE-C-FUNCTION"))
+    (is eq :external (nth-value 1 (find-symbol name "TUATARA.RUNTIME")) name)
+    (isnt eq :external (nth-value 1 (find-symbol name "TUATARA.IO")) name))
+  (is eq (find-symbol "OWN-VARIABLE" "TUATARA.RUNTIME") (find-symbol "OWN-VARIABLE" "TUATARA"))
+  (dolist (name '("READ-HERE-P" "PERCENT-ENCODED" "EXIF-TAGS" "EXIF-TAG" "EXIF-THUMBNAIL-PLACE" "EXIF-RESOLUTION"))
+    (is eq :external (nth-value 1 (find-symbol name "TUATARA")) name))
+  (false (find-symbol "READ-ANSWER-KEY" "TUATARA.COMMAND") "one question for one key: read-key-choice")
+  (is string= "a%20b" (tuatara:percent-encoded "a b" :safe "-._~")))

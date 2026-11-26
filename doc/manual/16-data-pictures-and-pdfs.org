@@ -448,7 +448,9 @@ For a picture from outside (chapter 12) Tuatara does not read what else the
 file keeps when it opens: it reads it when you first press ~n~ or ~p~, or
 follow a link to one of its pictures. A file whose other pictures cannot be
 read, because it is damaged or made to trip the reader, says so on the line
-above the picture and under =Pictures inside=.
+above the picture and under =Pictures inside=. A file you open as usual after
+~M-x end-safe-visit~ is no longer from outside, and its pictures are read when
+it opens.
 
 ~M-x show-file-metadata~ lists them all under =Pictures inside=, as the
 section "What a file says of itself" below describes.
@@ -632,7 +634,7 @@ A double click on the page goes to the line of the point you clicked. Chapter
 
 #+table: commands pdf-view-fit-page pdf-view-fit-width pdf-view-zoom-in pdf-view-zoom-out pdf-view-zoom-reset pdf-view-toggle-dark
 
-#+table: commands pdf-view-search pdf-view-toggle-text pdf-view-facts pdf-view-attachments pdf-attachment-save pdf-view-show-source pdf-view-show-source-at-click
+#+table: commands pdf-view-search pdf-view-toggle-text pdf-view-facts pdf-view-attachments pdf-view-attachment-save pdf-view-show-source pdf-view-show-source-at-click
 
 #+table: faces :pdf-view-mark
 

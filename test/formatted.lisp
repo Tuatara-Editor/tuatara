@@ -341,10 +341,10 @@ file sets them."
                (is = (length (format nil "first line~%the foo and the bar~%")) (tuatara.buffer:buffer-point buffer))))
            ;; M-r: literal text, the prompt saying so, and back to a regular expression
            (let ((f (run-keys '("C-x n g" :wait "f . o SPC a l" :wait) :width 100 :height 20)))
-             (true (fake-frame-showing* f "Regex search formatted files: "))
+             (true (fake-frame-showing* f "Regex search formatted files [1 file not searched]: "))
              (true (fake-frame-showing* f "foo alone")))
            (let ((f (run-keys '("C-x n g" :wait "M-r" :wait "f . o SPC a l" :wait) :width 100 :height 20)))
-             (true (fake-frame-showing* f "Literal search formatted files: "))
+             (true (fake-frame-showing* f "Literal search formatted files [1 file not searched]: "))
              (false (fake-frame-showing* f "foo alone")))
            (multiple-value-bind (f editor)
                (run-keys '("C-x n g" :wait "M-r f o o SPC a l" :wait "RET") :width 100 :height 20)
@@ -1009,10 +1009,11 @@ file sets them."
 
 (defun index-now (index result)
   "Put RESULT, what READ-DIRECTORY-INDEX gave, in place in INDEX, as the tick does."
-  (destructuring-bind (files corpora large directories) result
+  (destructuring-bind (files corpora large directories unread) result
     (setf (tuatara.defaults::directory-index-files index) files
           (tuatara.defaults::directory-index-corpora index) corpora
           (tuatara.defaults::directory-index-large index) large
+          (tuatara.defaults::directory-index-unread index) unread
           (tuatara.defaults::directory-index-directories index) directories
           (tuatara.defaults::directory-index-ready index) t)
     index))

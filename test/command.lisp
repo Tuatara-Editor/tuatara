@@ -7,8 +7,8 @@
   :description "Keys through the fake frontend: modal states, editing commands, kill ring, undo, minibuffer, files, screen contents.")
 
 ;; The tests read the colours of rows exactly; the line point is on is
-;; highlighted (*global-hl-line-mode*, on for users) only in the tests about it.
-(setf tuatara-user:*global-hl-line-mode* nil)
+;; highlighted (*global-current-line-mode*, on for users) only in the tests about it.
+(setf tuatara-user:*global-current-line-mode* nil)
 ;; Files open at their top in the tests, wherever an earlier test left them;
 ;; the places test (test/places.lisp) turns remembering on for itself.
 (setf tuatara-user:*remember-places* nil)
@@ -79,7 +79,7 @@ for the editor woken there once, a function called there."
 none, giving the text said since BODY began; a log that keeps only its last
 lines would move the text under an offset taken before."
   (let ((log (gensym "LOG")) (start (gensym "START")))
-    `(let* ((tuatara.command:*message-log-max* most-positive-fixnum)
+    `(let* ((tuatara.command:*messages-kept* most-positive-fixnum)
             (,log (tuatara.command::messages-buffer))
             (,start (tuatara.buffer:buffer-size ,log)))
        (flet ((,said () (tuatara.buffer:buffer-string ,log :start (min ,start (tuatara.buffer:buffer-size ,log)))))
@@ -314,6 +314,27 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (declare (ignore f2))
       (is string= "abc" (session-text e2)))))
 
+(define-modal-test (command same-keymap-parent-keeps-the-generation)
+  ;; setting a keymap's parent to the one it has, as each key in a buffer with its own NORMAL keys does, drops
+  ;; no table made from the keymaps
+  (let ((keymap (tuatara.command:make-keymap :name "test own normal"))
+        (parent (tuatara.command:make-keymap :name "test parent")))
+    (setf (tuatara.command:keymap-parent keymap) parent)
+    (let ((generation tuatara.command::*keymaps-generation*))
+      (setf (tuatara.command:keymap-parent keymap) parent)
+      (is = generation tuatara.command::*keymaps-generation*))
+    (let ((generations '()))
+      (run-keys (list (lambda ()
+                        (let ((editor tuatara.command:*editor*))
+                          (setf (tuatara.buffer:buffer-local (session-buffer editor) :tuatara-normal-keymap) keymap)
+                          (tuatara.defaults::modal-sync editor)
+                          (push tuatara.command::*keymaps-generation* generations)
+                          (tuatara.defaults::modal-sync editor)
+                          (push tuatara.command::*keymaps-generation* generations)
+                          (setf (tuatara.buffer:buffer-local (session-buffer editor) :tuatara-normal-keymap) nil)))))
+      (is = 2 (length generations))
+      (is = (first generations) (second generations)))))
+
 (define-modal-test (command repeat-with-its-selection)
   ;; . repeats a change with the selection it took, made again as large from point:
   ;; whole lines, characters, a text object as many times, a rectangle
@@ -381,8 +402,8 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
   (multiple-value-bind (f editor) (run-keys "C-k C-k g e C-y" :text (format nil "one~%two"))
     (declare (ignore f))
     (is string= (format nil "twoone~%") (session-text editor)))
-  ;; the ring keeps the *KILL-RING-MAX* newest kills
-  (let ((tuatara-user:*kill-ring-max* 3))
+  ;; the ring keeps the *KILL-RING-LENGTH* newest kills
+  (let ((tuatara-user:*kill-ring-length* 3))
     (multiple-value-bind (f editor) (run-keys "C-k C-n C-k C-n C-k C-n C-k C-n C-k" :text (format nil "a~%b~%c~%d~%e"))
       (declare (ignore f))
       (is equal '("e" "d" "c") (tuatara.command:editor-kill-ring editor)))))
@@ -651,8 +672,8 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     (is eq :asked (tuatara.command:call-with-question-details "Details" (lambda () :asked)))))
 
 (define-test (command kill-ring-bounded)
-  ;; the kills together held to *kill-ring-max-size*: the oldest forgotten, the latest always kept
-  (let ((tuatara.defaults::*kill-ring-max-size* 10))
+  ;; the kills together held to *kill-ring-octets*: the oldest forgotten, the latest always kept
+  (let ((tuatara.defaults::*kill-ring-octets* 10))
     (multiple-value-bind (f editor)
         (run-keys "M-x k i l l - l i n e RET M-x k i l l - l i n e RET M-x k i l l - l i n e RET"
                   :text (format nil "abcdef~%ghijkl~%") :width 80)
@@ -809,8 +830,8 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       ;; C-h e shows it
       (is string= "*Messages*" (tuatara.buffer:buffer-name (session-buffer editor)))
       (true (tuatara.frontend.fake:fake-frame-showing f "C-c is undefined [2 times]"))))
-  ;; it keeps *MESSAGE-LOG-MAX* lines, the oldest going first
-  (let ((tuatara.command:*message-log-max* 3))
+  ;; it keeps *MESSAGES-KEPT* lines, the oldest going first
+  (let ((tuatara.command:*messages-kept* 3))
     (let ((old (tuatara.buffer:find-buffer "*Messages*"))) (when old (tuatara.buffer:kill-buffer old)))
     (dotimes (i 5) (tuatara.command:log-message (format nil "line ~d" i)))
     (is string= (format nil "line 2~%line 3~%line 4~%")
@@ -907,6 +928,15 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
 (defun typed-keys (text)
   "TEXT as the keys that type it, a space as SPC."
   (format nil "~{~a~^ ~}" (map 'list (lambda (c) (if (char= c #\Space) "SPC" (string c))) text)))
+
+(define-test (command wake-not-input)
+  ;; the editor woken from the background (a tick) is not something you did: the time of the last input
+  ;; stays that of the last key
+  (let ((before nil) (after nil))
+    (run-keys (list "C-f" (lambda () (setf before tuatara.command:*last-input-time*))
+                    :tick :tick (lambda () (setf after tuatara.command:*last-input-time*)))
+              :text "abc")
+    (is = before after)))
 
 (define-test (command mode-line-long-names)
   (let ((long "a-very-long-buffer-name-that-goes-on-and-on-and-on.txt"))
@@ -1744,7 +1774,9 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
                       (tuatara.buffer:buffer-replace b 0 3 "xyz")
                       (is string= (format nil "abc~%def~%ghi~%") (funcall text))
                       ;; letting go of the banks
-                      (setf (tuatara.defaults::buffer-banks b) '())
+                      (true (tuatara:banked-p b))
+                      (tuatara:clear-banks b)
+                      (false (tuatara:banked-p b))
                       (is eq nil (tuatara.defaults::banked-spans b))))
                (tuatara.buffer:kill-buffer b))))
       (delete-package package))))
@@ -1754,7 +1786,7 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
   (dolist (name '("BUFFER-TEXT" "ROPE-OCTET-LENGTH" "ROPE-OCTET" "ROPE-COPY-INTO" "ROPE-FIND-OCTET" "ROPE-LINE-START"
                   "ROPE-LINE-END" "FIND-OR-MAKE-BUFFER" "COMPLETE-IN-MINIBUFFER" "JOB-PROGRAM-STARTED" "RUNNING-JOB"
                   "TAKE-IN-SOON" "WRITE-OCTETS" "FILE-SYSTEM-ERROR" "LENIENT-STRING" "MERGE-RANGES"
-                  "SELECTION-RANGE" "BANKED-SPANS" "SPAN-LINE-COUNT" "BUFFER-BANKS"))
+                  "SELECTION-RANGE" "BANKED-SPANS" "SPAN-LINE-COUNT" "BANKED-P" "CLEAR-BANKS"))
     (is eq :external (nth-value 1 (find-symbol name :tuatara)) "~a is not exported" name)))
 
 (define-test (command start-up-garbage-collected-when-idle)

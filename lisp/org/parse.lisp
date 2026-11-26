@@ -209,6 +209,11 @@ RESULT in one step, EDITOR, when given, woken for it."
       (when (eq (org-state-worker state) sb-thread:*current-thread*)
         (setf (org-state-worker state) nil)))))
 
+(defun org-worker-alive-p (state)
+  "True while STATE has a parse worker running."
+  (let ((worker (org-state-worker state)))
+    (and worker (sb-thread:thread-alive-p worker))))
+
 (defun org-want-parse (buffer state version source &key todo-keywords)
   "Have BUFFER's text at VERSION parsed in the background into STATE: SOURCE,
 a function of no arguments called when the job is made, gives what is
@@ -216,23 +221,24 @@ parsed, an ORG-SNAPSHOT of its parts for the whole buffer (ORG-ASSEMBLE) or
 the octets (START . END) of a part, parsed with TODO-KEYWORDS. The worker
 running takes it next, or one is started. A buffer of a file mapped from
 disk gives the worker a copy of a part's text, made when a worker starts,
-since its mapping may go with the buffer; another gives its text as it is,
-which never changes."
+since its mapping may go with the buffer; while a worker runs, such a part
+is not asked for, a whole buffer's snapshot always is. Another buffer gives
+its text as it is, which never changes."
   (let ((mapped (tuatara.buffer:buffer-mapping buffer)))
-    (flet ((job ()
-             (let ((what (funcall source)))
-               (list version
-                     (cond ((org-snapshot-p what) what)
-                           (mapped (tuatara.buffer:buffer-string buffer :start (car what) :end (cdr what)))
-                           (t (list (tuatara.buffer:buffer-text buffer) (car what) (cdr what))))
-                     (buffer-crlf-p buffer) todo-keywords (tuatara.runtime:secret-buffer-p buffer)))))
+    (flet ((job (what)
+             (list version
+                   (cond ((org-snapshot-p what) what)
+                         (mapped (tuatara.buffer:buffer-string buffer :start (car what) :end (cdr what)))
+                         (t (list (tuatara.buffer:buffer-text buffer) (car what) (cdr what))))
+                   (buffer-crlf-p buffer) todo-keywords (tuatara.runtime:secret-buffer-p buffer))))
       (sb-thread:with-mutex ((org-state-lock state))
         (unless (eql (car (org-state-wanted state)) version)
-          (cond ((let ((worker (org-state-worker state))) (and worker (sb-thread:thread-alive-p worker)))
-                 (unless mapped
-                   (setf (org-state-wanted state) (job))))
+          (cond ((org-worker-alive-p state)
+                 (let ((what (funcall source)))
+                   (unless (and mapped (not (org-snapshot-p what)))
+                     (setf (org-state-wanted state) (job what)))))
                 (t
-                 (setf (org-state-wanted state) (job)
+                 (setf (org-state-wanted state) (job (funcall source))
                        (org-state-worker state)
                        (let ((editor *editor*))
                          (tuatara.runtime:make-guarded-thread (lambda () (org-parse-worker state editor))
@@ -346,7 +352,8 @@ gives the parse of the text as it is now."
   "BUFFER's ORG-PARSE of its text as it is now, NIL when it has no Org
 structure: a small buffer parsed at once (*ORG-PARSE-AT-ONCE*); a large one
 whose parse is behind its text waited for while it is parsed in the
-background, the editor reading keys meanwhile (\\`C-g' gives the command up)."
+background, asked for again when no worker is left to parse it, the editor
+reading keys meanwhile (\\`C-g' gives the command up)."
   (let ((state (org-buffer-state buffer))
         (version (tuatara.buffer:buffer-version buffer)))
     (if (or (<= (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
@@ -359,7 +366,10 @@ background, the editor reading keys meanwhile (\\`C-g' gives the command up)."
           (org-buffer-parse buffer)
           (flet ((ready-p ()
                    (let ((result (org-state-result state)))
-                     (and result (>= (org-version-number (third result)) (org-version-number version))))))
+                     (cond ((and result (>= (org-version-number (third result)) (org-version-number version))))
+                           ((not (org-worker-alive-p state))
+                            (org-buffer-parse buffer)
+                            nil)))))
             (unless (or (ready-p) (wait-until-interruptibly #'ready-p :message "Reading the file..."))
               (keyboard-quit-signal)))
           (org-buffer-parse buffer)))))

@@ -28,7 +28,7 @@ bound on a wait that never ends, the test failing past it. As a step begins,
 what is queued counts as typed meanwhile, as keys pressed while the editor
 waits are. CELL-PIXELS has the frontend show pictures. Returns the frontend
 and the editor."
-  (let* ((tuatara.command:*message-log-max* most-positive-fixnum)
+  (let* ((tuatara.command:*messages-kept* most-positive-fixnum)
          (f (tuatara.frontend.fake:make-fake-frontend :width width :height height :cell-pixels cell-pixels))
          (log (lambda () (tuatara.buffer:buffer-size (tuatara.command::messages-buffer))))
          (begun nil)
@@ -65,6 +65,13 @@ and the editor."
                                                                      (take (rest steps) (get-internal-real-time)))))))))
       (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps (get-internal-real-time))))
       (values f (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)))))
+
+(defun messages-since-step ()
+  "What *Messages* says since the step before the one AUTO-SAVE-SESSION waits
+on began (*SESSION-MESSAGES-START*, an octet position); after the session,
+since its last step but one began."
+  (let ((log (tuatara.command::messages-buffer)))
+    (tuatara.buffer:buffer-string log :start (min *session-messages-start* (tuatara.buffer:buffer-size log)))))
 
 (defun recovered-p ()
   "True once notes.txt has been recovered, its buffer changed by the copy taken in."
@@ -187,6 +194,29 @@ and the editor."
         (false (copy))
         (let ((list (tuatara.buffer:find-buffer "*Auto-saves*"))) (when list (tuatara.buffer:kill-buffer list)))))))
 
+(define-test (auto-save copy-previewed-beside-the-list)
+  ;; P in the list of auto-saved copies shows the copy on the line beside it, read only; P again takes it away
+  (with-test-directory (dir)
+    (let* ((file (namestring (merge-pathnames "notes.txt" dir)))
+           (copies (namestring (merge-pathnames "copies/" dir)))
+           (tuatara-user:*auto-save-directory* copies)
+           (tuatara.defaults::*modal-editing* nil))
+      (alexandria:write-string-into-file "the file" file)
+      (tuatara.io:ensure-private-directory copies)
+      (alexandria:write-string-into-file "the words kept in the copy" (tuatara.defaults::auto-save-path file copies))
+      (flet ((session ()
+               (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "auto-saves-manager"))
+                                        (list :until #'auto-saves-listed-p)
+                                        "P"
+                                        (list :wait 0.1))
+                                  :width 120)))
+        (true (tuatara.frontend.fake:fake-frame-showing (session) "the words kept in the copy")
+              "the copy shown beside the list")
+        (true (notany (lambda (row) (search "the words kept in the copy" row))
+                      (tuatara.frontend.fake:fake-screen (session)))
+              "the preview gone once P is pressed again")
+        (let ((list (tuatara.buffer:find-buffer "*Auto-saves*"))) (when list (tuatara.buffer:kill-buffer list)))))))
+
 (define-test (auto-save following-the-file)
   ;; renamed, the copy follows the name; written as another file, saved, or its changes thrown away by a revert: gone
   (with-test-directory (dir)
@@ -272,6 +302,32 @@ and the editor."
       (sb-int:unencapsulate 'tuatara.defaults::auto-save-copies 'where))
     (false (member 'tuatara.defaults::auto-saves-startup-notice tuatara.command:*tick-functions*))))
 
+(define-test (auto-save waiting-ticks-draw-nothing)
+  ;; a tick function whose thread wakes the editor says :WAITING while it runs, not T or a number of seconds,
+  ;; so that a drive that never answers does not keep the editor drawing; the session still counts it as work
+  (let* ((release (sb-thread:make-semaphore))
+         (held (lambda () (sb-thread:wait-on-semaphore release :timeout 10)))
+         (gathering (tuatara.defaults::start-gathering "tuatara test held"
+                                                       (lambda (give cancel)
+                                                         (declare (ignore give cancel))
+                                                         (funcall held))))
+         (thread (tuatara.runtime:make-guarded-thread held :name "tuatara test held")))
+    (unwind-protect
+         (let ((tuatara.defaults::*auto-saves-counting* gathering)
+               (tuatara.defaults::*recent-files-cleaner* thread)
+               (tuatara.defaults::*openings* (list (cons thread nil)))
+               (tuatara.defaults::*path-listing* (list nil 0 "/" gathering)))
+           (is eq :waiting (tuatara.defaults::auto-saves-startup-notice nil))
+           (is eq :waiting (tuatara.defaults::recent-files-tick nil))
+           (is eq :waiting (tuatara.defaults::openings-tick nil))
+           (is eq :waiting (tuatara.defaults::path-completion-tick nil))
+           (let ((tuatara.command:*tick-functions* (list (constantly :waiting)))
+                 (tuatara.command:*background-work* nil))
+             (is eq nil (tuatara.command:run-tick-functions nil) "no call wanted before a wake")
+             (true tuatara.command:*background-work*)))
+      (sb-thread:signal-semaphore release 2)
+      (sb-thread:join-thread thread :default nil))))
+
 (define-test (auto-save recovered-away-from-the-editor)
   ;; the copy is read on a thread of its own, never on the editor's
   (with-test-directory (dir)
@@ -290,3 +346,12 @@ and the editor."
              (false (member sb-thread:*current-thread* threads)))
         (sb-int:unencapsulate 'tuatara.io:file-octets 'where)
         (tuatara.buffer:kill-buffer b)))))
+
+(define-test (auto-save said-since-step-after-other-letters)
+  ;; *Messages* is read from an octet position: a message in letters of more
+  ;; than one octet said before the step moves nothing
+  (let ((tuatara.command:*messages-kept* most-positive-fixnum))
+    (tuatara.command:log-message "Fichier écrit — ā")
+    (let ((*session-messages-start* (tuatara.buffer:buffer-size (tuatara.command::messages-buffer))))
+      (tuatara.command:log-message "said after")
+      (is string= (format nil "said after~%") (messages-since-step)))))

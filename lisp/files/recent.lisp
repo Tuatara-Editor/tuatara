@@ -173,7 +173,7 @@ file selected is shown meanwhile, opened safely."
   "Have the list of recent files name TO, first, where it named FROM, a file
 just renamed, visited safely or not as it was."
   (let* ((from (tuatara.io:native from))
-         (entries (remove from (read-recent-files) :key #'car :test-not #'equal)))
+         (entries (remove-if-not (lambda (entry) (equal (car entry) from)) (read-recent-files))))
     (when entries
       (drop-recent-files (list from))
       (state-list-put *recent-files* (mapcar (lambda (entry) (cons (tuatara.io:native to) (cdr entry))) entries)))))
@@ -214,11 +214,12 @@ hold the editor up. How many went is said, and kept in *Messages*."
 
 (defun recent-files-tick (editor)
   "Tick function: once the clean-up has looked, take the files it found gone
-out of the list of recent files; true while it looks."
+out of the list of recent files; :WAITING while it looks, the clean-up waking
+the editor when done (*TICK-FUNCTIONS*)."
   (declare (ignore editor))
   (let ((thread *recent-files-cleaner*))
     (cond ((null thread) nil)
-          ((sb-thread:thread-alive-p thread) t)
+          ((sb-thread:thread-alive-p thread) :waiting)
           (t (setf *recent-files-cleaner* nil)
              (let ((gone (shiftf *recent-files-gone* nil)))
                (if (eq gone :failed)

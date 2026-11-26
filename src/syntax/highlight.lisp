@@ -288,7 +288,7 @@ past them, those kept are let go and parsed again as they are needed.")
   "Let go of the trees of text in other languages kept for SYNTAX's colours."
   (let ((kept (syntax-injected syntax)))
     (when kept
-      (maphash (lambda (key tree) (declare (ignore key)) (when tree (delete-tree tree))) (cdr kept))
+      (maphash (lambda (key tree) (declare (ignore key)) (when tree (free-tree tree))) (cdr kept))
       (setf (syntax-injected syntax) nil))))
 
 (defun keep-injected-trees (syntax)
@@ -485,6 +485,114 @@ languages."
              (rich-highlights (layer-work-colours layer) tree rope start end (layer-work-faces layer)))
            local-ranges)))
 
+(defvar *later-syntax* nil
+  "While PART-HIGHLIGHTS colours a buffer's text on the editor's thread, its
+SYNTAX: the texts in other languages whose trees are not kept are then parsed
+in the background (START-INJECTED-PARSE), and shown without their colours
+until they are; NIL elsewhere, each such text parsed when asked.")
+
+(define-record (injected-parse (:constructor make-injected-parse (generation grammars keys host)) (:copier nil))
+  "Texts in other languages of a buffer parsed in the background for its
+colours (START-INJECTED-PARSE): in GRAMMARS, the trees then kept by KEYS for
+the buffer's tree of GENERATION. TREES is (TREE WHY) for each once FINISHED,
+as PARSE-TEXTS gives them; HOST is woken then; THREAD does the parsing."
+  (generation 0 :read-only t :documentation "The generation of the buffer's tree the texts are of.")
+  (grammars '() :read-only t :documentation "The grammar of each text.")
+  (keys '() :read-only t :documentation "What the tree of each text is kept by, as (NAME RANGES).")
+  (host nil :read-only t :documentation "The host woken once the parse is done, or NIL.")
+  (thread nil :documentation "The thread parsing the texts.")
+  (trees '() :documentation "(TREE WHY) for each text once parsed.")
+  (finished nil :documentation "True once the texts are parsed."))
+
+(setf (documentation 'make-injected-parse 'function)
+      "An INJECTED-PARSE of texts in GRAMMARS kept by KEYS, for GENERATION, waking HOST.")
+
+(defun start-injected-parse (syntax helper rope layers)
+  "Parse in the background, in HELPER, the texts of ROPE that LAYERS, each a
+LAYER-WORK with no tree kept, hold, for SYNTAX's tree as it is now: the trees
+are kept once the editor takes them in (TAKE-IN-INJECTED-PARSE), and the
+editor is woken then. Nothing is started while another such parse of SYNTAX
+runs. Returns at once."
+  (unless (syntax-injected-parse syntax)
+    (let ((parse (make-injected-parse (syntax-generation syntax) (mapcar #'layer-work-grammar layers)
+                                      (mapcar #'layer-work-key layers) tuatara.runtime:*host*))
+          (parses (loop for layer in layers
+                        collect (make-text-parse (layer-work-grammar layer) (layer-work-ranges layer) nil '()
+                                                 *injection-time-limit*
+                                                 (parse-memory-limit (loop for (s . e) in (layer-work-ranges layer)
+                                                                           sum (- e s))))))
+          (buffer (syntax-buffer syntax)))
+      (setf (syntax-injected-parse syntax) parse
+            (injected-parse-thread parse)
+            (tuatara.runtime:make-guarded-thread
+             (lambda ()
+               ;; counted until its trees are handed over and the editor woken
+               (tuatara.runtime:counting-pending-work
+                 (let* ((*helper* helper)
+                        (*parsing-buffer* buffer)
+                        (trees (handler-case (parse-texts rope parses #'identity :helper helper)
+                                 (error () (mapcar (lambda (parse) (declare (ignore parse)) (list nil :failed))
+                                                   parses))))
+                        (current (sb-thread:with-mutex ((syntax-lock syntax))
+                                   (setf (injected-parse-trees parse) trees
+                                         (injected-parse-finished parse) t)
+                                   (sb-thread:condition-broadcast (syntax-done syntax))
+                                   (eq (syntax-injected-parse syntax) parse))))
+                   (if current
+                       (when (injected-parse-host parse)
+                         (tuatara.runtime:ignoring-errors-reported ("waking the editor after parsing text in ~a"
+                                                                    (tuatara.buffer:buffer-name buffer))
+                           (tuatara.runtime:host-wake (injected-parse-host parse))))
+                       ;; given up on meanwhile: nobody takes the trees in
+                       (loop for (tree) in trees when tree do (free-tree tree))))))
+             :name "tuatara parse of text in another language")))))
+
+(defun take-in-injected-parse (syntax &key (wait 0) (round t))
+  "Keep the trees of SYNTAX's texts in other languages parsed in the
+background, once that parse is done, waiting at most WAIT seconds for it:
+those for its tree as it is now in the table KEEP-INJECTED-TREES gives, the
+rest let go, and a text that could not be parsed noted as NOTE-PARSE-FAILURE
+notes it. With ROUND, SYNTAX's colours of texts in other languages are worked
+out again (SYNTAX-INJECTED-ROUND). True when trees were taken in. On the
+editor's thread."
+  (let ((parse (syntax-injected-parse syntax)))
+    (when parse
+      (let ((deadline (tuatara.runtime:deadline-in wait)))
+        (sb-thread:with-mutex ((syntax-lock syntax))
+          (loop until (injected-parse-finished parse)
+                do (let ((left (tuatara.runtime:seconds-left deadline)))
+                     (unless (plusp left) (return))
+                     (sb-thread:condition-wait (syntax-done syntax) (syntax-lock syntax) :timeout left)))
+          (if (injected-parse-finished parse)
+              (setf (syntax-injected-parse syntax) nil)
+              (setf parse nil))))
+      (when parse
+        (let ((current (= (injected-parse-generation parse) (syntax-generation syntax)))
+              (*parsing-buffer* (syntax-buffer syntax)))
+          (if current
+              (let ((table (keep-injected-trees syntax)))
+                (loop for (tree why) in (injected-parse-trees parse)
+                      for key in (injected-parse-keys parse)
+                      for grammar in (injected-parse-grammars parse)
+                      do (note-parse-failure grammar why (syntax-helper syntax))
+                         (setf (gethash key table) tree))
+                (when round (incf (syntax-injected-round syntax)))
+                t)
+              (progn (loop for (tree) in (injected-parse-trees parse) when tree do (free-tree tree))
+                     nil)))))))
+
+(defun abandon-injected-parse (syntax)
+  "Give up on the texts of SYNTAX in other languages being parsed in the
+background: their trees are let go once parsed. Returns the thread parsing
+them, or NIL."
+  (let ((parse nil) (finished nil))
+    (sb-thread:with-mutex ((syntax-lock syntax))
+      (setf parse (shiftf (syntax-injected-parse syntax) nil)
+            finished (and parse (injected-parse-finished parse))))
+    (when finished
+      (loop for (tree) in (injected-parse-trees parse) when tree do (free-tree tree)))
+    (and parse (not finished) (injected-parse-thread parse))))
+
 (defun layers-highlights (resolve layers rope start end depth)
   "The colours of each of LAYERS, (NAME RANGES), the text of ROPE in RANGES
 read as the language NAME, as LANGUAGE-HIGHLIGHTS gives them: a list of
@@ -496,8 +604,26 @@ not parsed; those of a text are kept only when it, and every text in yet
 other languages in it, was parsed or is not to be (its grammar off). As a
 second value, true when that holds for all of LAYERS."
   (let* ((helper (current-helper))
-         (where (or *parsing-buffer* helper)))
+         (where (or *parsing-buffer* helper))
+         (asked layers))
     (multiple-value-bind (layers settled) (resolve-layers resolve layers helper where rope start end depth)
+      ;; on the editor's thread, a text whose tree is not kept is parsed in the background, waited for a moment
+      (let ((syntax *later-syntax*)
+            (fresh (and *later-syntax* *injected-trees* (= depth 1)
+                        (remove-if-not (lambda (layer)
+                                         (and layer (not (layer-work-kept layer)) (null (layer-work-tree layer))
+                                              (layer-work-key layer)))
+                                       layers))))
+        (when fresh
+          ;; a parse of another buffer's tree, or of an older tree, ended meanwhile: one more for these
+          (loop repeat 2
+                do (start-injected-parse syntax helper rope fresh)
+                   (when (take-in-injected-parse syntax :wait *syntax-wait* :round nil)
+                     (return-from layers-highlights (layers-highlights resolve asked rope start end depth)))
+                while (null (syntax-injected-parse syntax)))
+          ;; shown without their colours, given once parsed (TAKE-IN-INJECTED-PARSE)
+          (setf layers (substitute-if nil (lambda (layer) (member layer fresh)) layers)
+                settled nil)))
       (let ((wanted (remove-if (lambda (layer) (or (null layer) (layer-work-kept layer))) layers)))
         (flet ((all-colours (results)
                  ;; the colours of each of LAYERS, kept or worked out now, of a list of those worked out
@@ -508,70 +634,85 @@ second value, true when that holds for all of LAYERS."
                                      (t (pop results))))))
           (if (null wanted)
               (values (all-colours '()) settled)
-              (parse-texts
-               rope
-               (loop for layer in wanted collect (layer-parse layer start end))
-               ;; in HELPER, the current one
-               (lambda (trees)
-                 (let ((made '()))
-                   (unwind-protect
-                        (let* ((trees (loop for layer in wanted
-                                            for (tree why) in trees
-                                            do (note-parse-failure (layer-work-grammar layer) why helper)
-                                               ;; not parsed, its grammar not turned off for it: tried again later
-                                               (unless (or tree (layer-work-tree layer)
-                                                           (grammar-off-p (layer-work-grammar layer) where))
-                                                 (setf settled nil))
-                                               (unless (layer-work-tree layer)
-                                                 (if (layer-work-key layer)
-                                                     (setf (gethash (layer-work-key layer) *injected-trees*) tree)
-                                                     (when tree (push tree made))))
-                                            collect tree))
-                               ;; each one's own colours, and where text in yet other languages lies in it
-                               (own (loop for layer in wanted
-                                          for tree in trees
-                                          collect (and tree (layer-own-colours layer tree rope start end))))
-                               (from (injection-cut rope (max 0 (- start *injection-reach*))))
-                               (to (tuatara.text:rope-char-start rope (min (tuatara.text:rope-octet-length rope)
-                                                                           (+ end *injection-reach*))))
-                               (found (loop for layer in wanted
-                                            for tree in trees
-                                            collect (let ((inner (layer-work-inner layer)))
-                                                      (and tree inner
-                                                           (find-injection-texts inner tree rope start end from to)))))
-                               (inner-layers
-                                 (let ((all (remove nil found)))
-                                   (when all
-                                     (multiple-value-bind (pairs starts)
-                                         (injection-texts-children all (tree-helper (injection-texts-tree (first all))))
-                                       (let ((first 0))
-                                         (loop for texts in found
-                                               collect (when texts
-                                                         (prog1 (injection-texts-layers texts pairs starts first)
-                                                           (incf first (injection-texts-asked texts))))))))))
-                               (inner-settled t)
-                               (inner (and inner-layers
-                                           (multiple-value-bind (colours all-settled)
-                                               (layers-highlights resolve (loop for list in inner-layers append list)
-                                                                  rope start end (1+ depth))
-                                             (unless all-settled (setf inner-settled nil settled nil))
-                                             colours)))
-                               (results (loop for colours in own
-                                              for list in (or inner-layers (make-list (length own)))
-                                              collect (nconc colours
-                                                             (loop repeat (length list) nconc (pop inner))))))
-                          ;; those of a text parsed kept for the same text again, unless a text in
-                          ;; yet other languages in it is to be parsed again
-                          (loop for layer in wanted
-                                for tree in trees
-                                for colours in results
-                                for list in (or inner-layers (make-list (length wanted)))
-                                when (and tree (or inner-settled (null list)))
-                                  do (keep-layer (layer-work-name layer) (layer-work-colours layer)
-                                                 (layer-work-faces layer) depth rope (layer-work-ranges layer)
-                                                 start end colours))
-                          (values (all-colours results) settled))
-                     (dolist (tree made) (delete-tree tree))))))))))))
+              (parse-texts rope
+                           (loop for layer in wanted collect (layer-parse layer start end))
+                           ;; in HELPER, the current one
+                           (lambda (trees)
+                             (multiple-value-bind (results settled)
+                                 (parsed-layers-highlights resolve wanted trees helper where rope start end depth
+                                                           settled)
+                               (values (all-colours results) settled))))))))))
+
+(defun layers-within (wanted trees rope start end)
+  "For each of WANTED, the layers being worked out, and its tree of TREES,
+the layers of the text in yet other languages in it from octet START below
+END of ROPE, as INJECTION-TEXTS-LAYERS gives them, NIL for none; the children
+of the nodes holding them asked for in one request. NIL when none has any."
+  (let* ((from (injection-cut rope (max 0 (- start *injection-reach*))))
+         (to (tuatara.text:rope-char-start rope (min (tuatara.text:rope-octet-length rope) (+ end *injection-reach*))))
+         (found (loop for layer in wanted
+                      for tree in trees
+                      collect (let ((inner (layer-work-inner layer)))
+                                (and tree inner (find-injection-texts inner tree rope start end from to)))))
+         (all (remove nil found)))
+    (when all
+      (multiple-value-bind (pairs starts)
+          (injection-texts-children all (tree-helper (injection-texts-tree (first all))))
+        (let ((first 0))
+          (loop for texts in found
+                collect (when texts
+                          (prog1 (injection-texts-layers texts pairs starts first)
+                            (incf first (injection-texts-asked texts))))))))))
+
+(defun parsed-layers-highlights (resolve wanted trees helper where rope start end depth settled)
+  "The colours of each of WANTED, the layers being worked out, from TREES, as
+PARSE-TEXTS gave them parsed in HELPER for WHERE, with those of the text in yet
+other languages in them (LAYERS-HIGHLIGHTS at DEPTH one deeper), a list in the
+order of WANTED. A tree of a text in another language is kept for it, any
+other let go once done, and the colours of a text kept for the same text again
+when nothing in it is still to be parsed. As a second value, SETTLED, or NIL
+when a text was not parsed and is to be tried again."
+  (let ((made '()))
+    (unwind-protect
+         (let* ((trees (loop for layer in wanted
+                             for (tree why) in trees
+                             do (note-parse-failure (layer-work-grammar layer) why helper)
+                                ;; not parsed, its grammar not turned off for it: tried again later
+                                (unless (or tree (layer-work-tree layer)
+                                            (grammar-off-p (layer-work-grammar layer) where))
+                                  (setf settled nil))
+                                (unless (layer-work-tree layer)
+                                  (if (layer-work-key layer)
+                                      (setf (gethash (layer-work-key layer) *injected-trees*) tree)
+                                      (when tree (push tree made))))
+                             collect tree))
+                ;; each one's own colours, and where text in yet other languages lies in it
+                (own (loop for layer in wanted
+                           for tree in trees
+                           collect (and tree (layer-own-colours layer tree rope start end))))
+                (inner-layers (layers-within wanted trees rope start end))
+                (inner-settled t)
+                (inner (and inner-layers
+                            (multiple-value-bind (colours all-settled)
+                                (layers-highlights resolve (loop for list in inner-layers append list)
+                                                   rope start end (1+ depth))
+                              (unless all-settled (setf inner-settled nil settled nil))
+                              colours)))
+                (results (loop for colours in own
+                               for list in (or inner-layers (make-list (length own)))
+                               collect (nconc colours (loop repeat (length list) nconc (pop inner))))))
+           ;; those of a text parsed kept for the same text again, unless a text in
+           ;; yet other languages in it is to be parsed again
+           (loop for layer in wanted
+                 for tree in trees
+                 for colours in results
+                 for list in (or inner-layers (make-list (length wanted)))
+                 when (and tree (or inner-settled (null list)))
+                   do (keep-layer (layer-work-name layer) (layer-work-colours layer)
+                                  (layer-work-faces layer) depth rope (layer-work-ranges layer)
+                                  start end colours))
+           (values results settled))
+      (dolist (tree made) (free-tree tree)))))
 
 (defun language-highlights (resolve name ranges rope start end &optional (depth 1))
   "The colours of the text of ROPE in RANGES (each (START . END), in order and
@@ -953,7 +1094,7 @@ START below END, parsed in HELPER."
                                                   (let ((*injected-trees* nil))
                                                     (injected-highlights injections tree slice low high))))
                    collect (list (+ s from) (+ e from) face)))
-        (delete-tree tree)))))
+        (free-tree tree)))))
 
 (defun syntax-highlights (syntax query faces parts &optional injections locals)
   "The syntax colours of SYNTAX's buffer text in PARTS, each (START . END) in
@@ -988,9 +1129,11 @@ or is parsed again, their room then taken by the next colours worked out."
 (defun part-highlights (syntax tree query faces start end injections locals)
   "The colours of SYNTAX's text from octet START below END, TREE its tree made
 ready, as SYNTAX-HIGHLIGHTS gives those of a part."
+  (when injections
+    (take-in-injected-parse syntax))
   (let ((key (list (syntax-generation syntax) start end query faces
                    (and injections (first injections)) (and locals (first locals))
-                   (and injections (car *rules-generation*)))))
+                   (and injections (car *rules-generation*)) (and injections (syntax-injected-round syntax)))))
     ;; the text edited and not parsed yet: those of before moved with it,
     ;; worked out once the parse is done
     (let ((job (syntax-job syntax)))
@@ -1004,6 +1147,7 @@ ready, as SYNTAX-HIGHLIGHTS gives those of a part."
               (*helper* (or (syntax-helper syntax) :none))
               (*parsing-buffer* (syntax-buffer syntax))
               (*injected-trees* (and injections (keep-injected-trees syntax)))
+              (*later-syntax* (and injections (not (waiting-allowed-p)) syntax))
               (*injected-colours* (and injections (or (syntax-injected-colours syntax)
                                                       (setf (syntax-injected-colours syntax)
                                                             (make-hash-table)))))

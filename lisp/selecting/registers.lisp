@@ -293,11 +293,10 @@ a place, the start of a text and how long it is, a block's size, a number."
                            (or (and buffer (anchor-in buffer (register-place-anchor value)))
                                (and (register-place-place value) (file-place-offset (register-place-place value)))
                                0))))
-      (:text (format nil "~a (~:d character~:p)"
-                     (if (stringp value)
-                         (tuatara.display:shorten-string value 60 :one-line t)
-                         "kept where it is")
-                     (kill-size value)))
+      (:text (if (stringp value)
+                 (format nil "~a (~:d character~:p)"
+                         (tuatara.display:shorten-string value 60 :one-line t) (length value))
+                 (format nil "kept where it is (~a)" (tuatara.text:octets-words (kill-size value)))))
       (:block (if (rectangle-source-p value)
                   (format nil "~:d row~:p, kept where they are" (rectangle-source-rows value))
                   (format nil "~:d row~:p: ~a" (length value)
@@ -366,7 +365,7 @@ others, say what they keep and how to put it in."
 (defmethod delete-entries ((mode registers-mode) list names mark)
   "Empty the registers NAMES, after asking."
   (declare (ignore mark))
-  (when (y-or-n-p* (format nil "~a?" (list-question "Empty" "register" names)))
+  (when (ask-list-question (y-or-n-p*) (list-question "Empty" "register" names))
     (dolist (name names) (remhash name *registers*))
     (unmark-list list)
     (registers-render list)

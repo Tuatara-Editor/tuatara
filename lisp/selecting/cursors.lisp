@@ -715,7 +715,7 @@ shown, as when cursors were made before it was narrowed."
          (let ((*read-key-replay* replay))
            (loop for place across places
                  do (setf (car replay) (reverse (cdr replay)))
-                 (let ((*message-log-max* (and (eq place last) *message-log-max*)))
+                 (let ((*messages-kept* (and (eq place last) *messages-kept*)))
                    (replay-at split place command arg edit)))
            (setf done t))
       (setf (editor-this-command *editor*) this)

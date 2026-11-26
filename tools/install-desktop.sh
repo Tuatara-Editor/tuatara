@@ -19,9 +19,7 @@
 # entry and the icons taken from inside it, so that this script and the
 # AppImage are all another computer needs. --remove takes that copy away too.
 # The AppImage runs this itself: Tuatara-x86_64.AppImage --install-desktop, or
-# --remove-desktop. Run so by the legacy AppImage (TUATARA_APPIMAGE=legacy),
-# --dark or --light after FILE has the entry start it so, as
-# Tuatara-legacy-x86_64.AppImage --install-desktop --dark does.
+# --remove-desktop.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 data="${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -47,16 +45,10 @@ unpacked=""
 trap 'if [ -n "$unpacked" ]; then rm -rf "$unpacked"; fi' EXIT
 if [ "${1:-}" = "--appimage" ]; then
   appimage="${2:?--appimage needs the AppImage file}"
-  case "${3:-}" in
-    "") style="" ;;
-    --dark|--light)
-      if [ "${TUATARA_APPIMAGE:-}" != legacy ]; then
-        echo "$3 is taken by the legacy AppImage alone: this window follows the desktop's light or dark style" >&2
-        exit 1
-      fi
-      style="$3" ;;
-    *) echo "$3 is neither --dark nor --light" >&2; exit 1 ;;
-  esac
+  if [ $# -gt 2 ]; then
+    echo "$3 is not an option of tools/install-desktop.sh" >&2
+    exit 1
+  fi
   if ! is_appimage "$appimage"; then
     echo "$appimage is no AppImage" >&2
     exit 1
@@ -82,7 +74,7 @@ if [ "${1:-}" = "--appimage" ]; then
   fi
   entries() {
     env TUATARA_DESKTOP_ENTRIES="$applications" ${unpack:+APPIMAGE_EXTRACT_AND_RUN=1} \
-      "$installed" "$installed" ${style:+"$style"}
+      "$installed" "$installed"
   }
   source_icons="$inside/tuatara/icons/hicolor"
   source_completion="$inside/tuatara/completion/tuatara"

@@ -150,21 +150,22 @@ characters git would read as a pattern's taken as themselves (GIT-IGNORE-ESCAPED
           (concatenate 'string "/" (git-ignore-escaped from)))
         "")))
 
-(defun git-add-ignore-pattern (file pattern top)
+(defun git-write-ignore-pattern (file pattern)
   "Add PATTERN as a line of FILE, a file of patterns git ignores, made with
 the directories it is in when it is not there, unless it is a line of it already;
-refused, said so, when FILE is a link or not a file. The file is written whole
-again in one step, a link put in its place meanwhile replaced, never followed.
-The status of the repository at TOP is read again."
+refused when FILE is a link or not a file. The file is written whole again in
+one step, a link put in its place meanwhile replaced, never followed. Returns
+words saying what was done, and true when FILE was written, as two values.
+Reads and writes the file: call it from a thread working in the background."
   (let ((kind (tuatara.io:path-kind file :follow nil)))
     (if (and kind (not (eq kind :regular)))
-        (message "~a is not a file of its own: not written" (abbreviated-path file))
+        (format nil "~a is not a file of its own: not written" (abbreviated-path file))
         (let ((old (if kind
                        (tuatara.io:file-octets file :limit (* 16 1024 1024))
                        (make-array 0 :element-type '(unsigned-byte 8)))))
           (if (member pattern (uiop:split-string (tuatara.text:lenient-string old) :separator '(#\Newline))
                       :test #'string=)
-              (message "~a is in ~a already" (escape-controls pattern) (abbreviated-path file))
+              (format nil "~a is in ~a already" (escape-controls pattern) (abbreviated-path file))
               (progn
                 (tuatara.io:ensure-directories file)
                 (tuatara.io:replace-file
@@ -175,8 +176,18 @@ The status of the repository at TOP is read again."
                               (if (and (plusp (length old)) (/= 10 (aref old (1- (length old))))) #(10) #())
                               (tuatara.text:string-octets (format nil "~a~%" pattern)))
                  :mode (if kind (logand #o7777 (tuatara.io:stamp-mode (tuatara.io:path-stamp file :follow nil))) #o666))
-                (message "~a ignored, in ~a" (escape-controls pattern) (abbreviated-path file))
-                (git-refresh-repository top)))))))
+                (values (format nil "~a ignored, in ~a" (escape-controls pattern) (abbreviated-path file)) t)))))))
+
+(defun git-add-ignore-pattern (file pattern top)
+  "Add PATTERN to FILE, a file of patterns git ignores (GIT-WRITE-IGNORE-PATTERN),
+in the background: FILE a native path, or a function of the job and TOP that
+finds it there. Says what was done; the status of the repository at TOP is
+read again once the file is written."
+  (start-git-job "Ignoring a pattern"
+                 (lambda (job) (git-write-ignore-pattern (if (functionp file) (funcall file job top) file) pattern))
+                 (lambda (words written)
+                   (message "~a" words)
+                   (when written (git-refresh-repository top)))))
 
 (defun git-ignore-in (where)
   "Ask for a pattern for git to ignore and add it WHERE: :SHARED the
@@ -191,11 +202,10 @@ committed."
       (cond ((zerop (length (string-trim '(#\Space) pattern))) (message "No pattern given: nothing ignored"))
             ((find #\Newline pattern) (message "A pattern is one line"))
             ((eq where :private)
-             (git-ask "Reading where git keeps its exclusions" top
-                      (lambda (job top)
-                        (git-output-line job top (list "rev-parse" "--path-format=absolute"
-                                                       "--git-path" "info/exclude")))
-                      (lambda (file) (git-add-ignore-pattern file pattern top))))
+             (git-add-ignore-pattern (lambda (job top)
+                                       (git-output-line job top (list "rev-parse" "--path-format=absolute"
+                                                                      "--git-path" "info/exclude")))
+                                     pattern top))
             (t (git-add-ignore-pattern (concatenate 'string (or directory top) ".gitignore") pattern top))))))
 
 (define-command git-ignore-shared ()
@@ -282,7 +292,9 @@ format given the directory, once done."
   (with-git-repository (top switches)
     (let ((prefix (git-read-prefix (format nil "Subtree directory to ~a: " verb))))
       (when prefix
-        (let ((repository (git-read-address (format nil "Repository (a remote or an address) to ~a ~a: " verb prefix))))
+        (let ((repository (git-read-address (format nil "Repository to ~a: " verb)
+                                            :details (format nil "A remote's name or an address, for the subtree ~a."
+                                                             (escape-controls prefix)))))
           (when repository
             (let ((ref (git-read-name "Branch or revision: " '() :default "main")))
               (when ref

@@ -1234,6 +1234,69 @@ window of them at a time."
                              (rope-copy-into rope (+ other-start from) (+ other-start from n) b)
                              (loop for i of-type fixnum from 0 below n always (= (aref a i) (aref b i))))))))
 
+(defun ropes-same-octets-p (a b)
+  "True when the ropes A and B hold the same octets. The two trees are walked
+side by side from their roots: a part both share at the same place, a whole
+subtree or a leaf, is passed over unread, so that two versions of a large text
+made from one are told apart by reading only what was changed in either; the
+reading stops at the first octet that differs. NIL too when what would have to
+be read has not arrived from its file yet. Makes no garbage.
+Complexity: O(1) for the same rope; else O(F log n) for each place where the
+trees differ, F the fanout, plus the octets read there."
+  (or (eq a b)
+      (eq (rope-root a) (rope-root b))
+      (and (= (rope-octet-length a) (rope-octet-length b))
+           ;; each side's path from its root to the node it is at, and the child taken at each step
+           (let ((left (make-array 64)) (left-index (make-array 64 :element-type 'fixnum :initial-element 0))
+                 (right (make-array 64)) (right-index (make-array 64 :element-type 'fixnum :initial-element 0))
+                 (left-depth 0) (right-depth 0) (left-at 0) (right-at 0) (at 0)
+                 (one (make-array 4096 :element-type '(unsigned-byte 8)))
+                 (other (make-array 4096 :element-type '(unsigned-byte 8))))
+             (declare (type fixnum left-depth right-depth left-at right-at at)
+                      (dynamic-extent left left-index right right-index one other))
+             (setf (svref left 0) (rope-root a) (svref right 0) (rope-root b))
+             (macrolet ((open-node (path index depth)
+                          ;; to the node's first child
+                          `(let ((children (branch-children (svref ,path ,depth))))
+                             (incf ,depth)
+                             (setf (svref ,path ,depth) (svref children 0) (aref ,index ,depth) 0)))
+                        (next-node (path index depth)
+                          ;; to the node after this one; the depth -1 once there is none
+                          `(loop (when (zerop ,depth) (setf ,depth -1) (return))
+                                 (let ((children (branch-children (svref ,path (1- ,depth))))
+                                       (i (1+ (aref ,index ,depth))))
+                                   (when (< i (length children))
+                                     (setf (svref ,path ,depth) (svref children i) (aref ,index ,depth) i)
+                                     (return))
+                                   (decf ,depth)))))
+               (handler-case
+                   (loop
+                     (loop while (and (>= left-depth 0) (= left-at (node-bytes (svref left left-depth))))
+                           do (next-node left left-index left-depth) (setf left-at 0))
+                     (loop while (and (>= right-depth 0) (= right-at (node-bytes (svref right right-depth))))
+                           do (next-node right right-index right-depth) (setf right-at 0))
+                     (when (or (minusp left-depth) (minusp right-depth))
+                       (return (and (minusp left-depth) (minusp right-depth))))
+                     (let ((l (svref left left-depth)) (r (svref right right-depth)))
+                       (cond ((and (eq l r) (= left-at right-at))
+                              (let ((n (- (node-bytes l) left-at)))
+                                (declare (type fixnum n))
+                                (incf left-at n) (incf right-at n) (incf at n)))
+                             ((> (node-height l) (node-height r)) (open-node left left-index left-depth))
+                             ((< (node-height l) (node-height r)) (open-node right right-index right-depth))
+                             ((branch-p l) (open-node left left-index left-depth)
+                              (open-node right right-index right-depth))
+                             (t (let ((n (min (- (node-bytes l) left-at) (- (node-bytes r) right-at) 4096)))
+                                  (declare (type fixnum n))
+                                  (rope-check-arrived a at (+ at n))
+                                  (rope-check-arrived b at (+ at n))
+                                  (piece-copy l left-at (+ left-at n) one 0)
+                                  (piece-copy r right-at (+ right-at n) other 0)
+                                  (when (mismatch one other :end1 n :end2 n)
+                                    (return nil))
+                                  (incf left-at n) (incf right-at n) (incf at n))))))
+                 (not-arrived () nil)))))))
+
 (defun rope-copy-to-sap (rope start end sap)
   "Copy ROPE's octets from byte START below END to foreign memory at SAP, which
 must have room; return the number of octets copied. Allocates nothing.

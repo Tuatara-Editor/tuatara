@@ -47,8 +47,8 @@ universal TIME: 2026-10-23 Fri 13:50  Agenda  Dentist · 14:00, in 10 min."
 
 (defun log-notification (line)
   "Add LINE at the end of *Notifications*, which keeps the last
-*MESSAGE-LOG-MAX* lines told this session, as *Messages* keeps its own."
-  (add-to-log (notifications-buffer) *message-log-max*
+*MESSAGES-KEPT* lines told this session, as *Messages* keeps its own."
+  (add-to-log (notifications-buffer) *messages-kept*
               (lambda (buffer)
                 (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-size buffer)
                                               (format nil "~a~%" line)))))

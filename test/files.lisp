@@ -546,7 +546,7 @@ second value."
     (is equalp #(0 0 0 0) (tuatara.io:sap-octets sap 4))
     (setf (sb-sys:sap-ref-8 sap 0) 104 (sb-sys:sap-ref-8 sap 1) 105)
     (is equalp #(104 105) (tuatara.io:sap-octets sap))
-    (true (tuatara.io:null-pointer-p (tuatara.io:null-pointer)))))
+    (true (tuatara.runtime:null-pointer-p (tuatara.runtime:null-pointer)))))
 
 (define-test (visiting-and-saving read-only-mount)
   ;; in the toolbox the host's /usr is mounted read-only: nothing can change a
@@ -576,7 +576,7 @@ second value."
                (tuatara.io:sap-octets (sb-alien:alien-sap (sb-alien:deref argv 0))))
            (is equalp #(98 97 100 255 110 195 169 109 101)
                (tuatara.io:sap-octets (sb-alien:alien-sap (sb-alien:deref argv 1))))
-           (true (tuatara.io:null-pointer-p (sb-alien:alien-sap (sb-alien:deref argv 2)))))
+           (true (tuatara.runtime:null-pointer-p (sb-alien:alien-sap (sb-alien:deref argv 2)))))
       (tuatara.io::free-argument-vector argv))))
 
 (define-test (visiting-and-saving snapshots-have-one-name)
@@ -1130,20 +1130,20 @@ second value."
                   (tuatara.defaults::input-directory-path (concatenate 'string odd "/")) nil)))))))
 
 (define-test (visiting-and-saving default-directory)
-  ;; a buffer with no file is in *default-directory*, ~/ unless set: a file
+  ;; a buffer with no file is in *no-file-directory*, ~/ unless set: a file
   ;; named there is taken from it, and the mode line shows it
   (with-test-directory (dir)
     (let ((root (tuatara.io:native dir)))
-      (let ((tuatara-user:*default-directory* root))
+      (let ((tuatara-user:*no-file-directory* root))
         (is string= root (tuatara.io:native (tuatara.io:default-directory)))
         (is string= (concatenate 'string root "x.txt") (tuatara.io:native (tuatara.io:expand-path "x.txt")))
         (is string= (concatenate 'string root "x.txt")
             (tuatara.io:native (tuatara.defaults::save-target (tuatara.buffer:make-buffer "*no file*") "x.txt"))))
       ;; NIL, or a directory that is not there: where Tuatara was started
       (dolist (setting (list nil (concatenate 'string root "no-such-directory/")))
-        (let ((tuatara-user:*default-directory* setting))
+        (let ((tuatara-user:*no-file-directory* setting))
           (is string= (tuatara.io:native (uiop:getcwd)) (tuatara.io:native (tuatara.io:default-directory)))))
-      (let ((tuatara-user:*default-directory* "~/"))
+      (let ((tuatara-user:*no-file-directory* "~/"))
         (is string= (tuatara.io:home-directory) (tuatara.io:native (tuatara.io:default-directory)))
         (is string= "~/" (tuatara.command::buffer-directory-name (tuatara.buffer:make-buffer "*no file either*")))))))
 
@@ -1153,7 +1153,7 @@ second value."
   (with-test-directory (dir)
     (let* ((root (tuatara.io:native dir))
            (shown (tuatara.defaults::abbreviated-path dir))
-           (tuatara-user:*default-directory* root))
+           (tuatara-user:*no-file-directory* root))
       (ensure-directories-exist (merge-pathnames "notes/" dir))
       (put-file (merge-pathnames "notes/old.org" dir) (format nil "old~%"))
       (flet ((saved (keys)
@@ -1180,7 +1180,7 @@ second value."
   ;; there, for a file visited safely; a buffer with no file saved as asked
   (with-test-directory (dir)
     (let* ((root (tuatara.io:native dir))
-           (tuatara-user:*default-directory* root)
+           (tuatara-user:*no-file-directory* root)
            (old (merge-pathnames "old.txt" dir)))
       (ensure-directories-exist (merge-pathnames "sub/" dir))
       (put-file old (format nil "* first~%"))
@@ -1239,7 +1239,7 @@ second value."
   ;; written as a file another buffer visits: that buffer killed after asking, or refused while it has changes;
   ;; renamed to a name another buffer visits: refused
   (with-test-directory (dir)
-    (let* ((tuatara-user:*default-directory* (tuatara.io:native dir))
+    (let* ((tuatara-user:*no-file-directory* (tuatara.io:native dir))
            (mine (merge-pathnames "mine.txt" dir))
            (taken (merge-pathnames "taken.txt" dir))
            (visit-taken (format nil "C-x C-f C-a C-k ~a RET" (key-string (namestring taken))))
@@ -1273,7 +1273,7 @@ second value."
   ;; buffer visits it after, named after it; the file it visited is left as it was
   (with-test-directory (dir)
     (let* ((root (tuatara.io:native dir))
-           (tuatara-user:*default-directory* root)
+           (tuatara-user:*no-file-directory* root)
            (old (merge-pathnames "old.txt" dir)))
       (ensure-directories-exist (merge-pathnames "copies/" dir))
       (put-file old (format nil "first~%"))
@@ -1320,7 +1320,7 @@ second value."
         (kill-buffers-visiting dir)))))
 
 (define-test (visiting-and-saving finding-from-the-default-directory)
-  ;; C-x C-f offers the directory to start from, *default-directory* in a
+  ;; C-x C-f offers the directory to start from, *no-file-directory* in a
   ;; buffer with no file, and a / or ~/ typed after it starts again
   (is string= "/etc/hosts" (tuatara.defaults::substitute-file-input "~/notes//etc/hosts"))
   (is string= "~/notes" (tuatara.defaults::substitute-file-input "/etc/~/notes"))
@@ -1332,7 +1332,7 @@ second value."
   (with-test-directory (dir)
     (let* ((root (tuatara.io:native dir))
            (shown (tuatara.defaults::abbreviated-path dir))
-           (tuatara-user:*default-directory* root))
+           (tuatara-user:*no-file-directory* root))
       (put-file (merge-pathnames "here.txt" dir) (format nil "here~%"))
       (ensure-directories-exist (merge-pathnames "sub/" dir))
       (put-file (merge-pathnames "sub/there.txt" dir) (format nil "there~%"))
@@ -1385,7 +1385,7 @@ second value."
 (define-modal-test (visiting-and-saving new-empty-buffer)
   ;; SPC N: an empty buffer, untitled, then untitled<2>; saved where asked
   (with-test-directory (dir)
-    (let ((tuatara-user:*default-directory* (tuatara.io:native dir)))
+    (let ((tuatara-user:*no-file-directory* (tuatara.io:native dir)))
       (dolist (b (copy-list tuatara.buffer:*buffers*))
         (when (uiop:string-prefix-p "untitled" (tuatara.buffer:buffer-name b)) (tuatara.buffer:kill-buffer b)))
       (multiple-value-bind (f editor) (run-keys "SPC N i h i C-g" :width 120 :height 10)
@@ -1648,7 +1648,7 @@ serves it alone."
   ;; the directory of buffers with no file is found once for a while, not at
   ;; every frame; a new setting is taken at once
   (with-test-directory (dir)
-    (let ((tuatara-user:*default-directory* (namestring dir)) (looks 0))
+    (let ((tuatara-user:*no-file-directory* (namestring dir)) (looks 0))
       (setf tuatara.io::*default-directory-found* nil)
       (sb-int:encapsulate 'tuatara.io:path-kind 'counted (lambda (f &rest args) (incf looks) (apply f args)))
       (unwind-protect
@@ -1656,7 +1656,8 @@ serves it alone."
              (dotimes (i 200) (tuatara.io:default-directory))
              (true (<= looks 2) "~d looks" looks)
              (is equal (namestring dir) (namestring (tuatara.io:default-directory)))
-             (let ((tuatara-user:*default-directory* (namestring (ensure-directories-exist (merge-pathnames "other/" dir)))))
+             (let ((tuatara-user:*no-file-directory*
+                     (namestring (ensure-directories-exist (merge-pathnames "other/" dir)))))
                (is equal (namestring (merge-pathnames "other/" dir)) (namestring (tuatara.io:default-directory)))))
         (sb-int:unencapsulate 'tuatara.io:path-kind 'counted)))))
 
@@ -2438,3 +2439,41 @@ the old one put back after."
         (sb-posix:rename other path)
         (fail (tuatara.io::backup-copy path existing) tuatara.io:file-changed-on-disk)
         (is equal '("file.txt" "kept.txt") (directory-names dir))))))
+
+(define-test (visiting-and-saving examining-mounts-nothing)
+  ;; listing a directory and examining a path ask statx never to mount a file system on the way
+  (with-test-directory (dir)
+    (let ((path (tuatara.io:native (merge-pathnames "file.txt" dir)))
+          (flags '()))
+      (put-file path "kiwi")
+      (sb-posix:symlink path (tuatara.io:native (merge-pathnames "link" dir)))
+      (sb-int:encapsulate 'tuatara.io::statx-flags 'noting
+                          (lambda (function &rest arguments)
+                            (let ((given (apply function arguments)))
+                              (push given flags)
+                              given)))
+      (unwind-protect
+           (progn (tuatara.io:list-directory (namestring dir))
+                  (tuatara.io:path-stamp path)
+                  (tuatara.io:path-stamp path :follow nil))
+        (sb-int:unencapsulate 'tuatara.io::statx-flags 'noting))
+      (true (> (length flags) 3))
+      (true (every (lambda (given) (logtest given #x800)) flags)))))
+
+(define-test (visiting-and-saving one-way-to-begin-a-save)
+  ;; a save now and a save in the background begin alike: a file changed on disk refuses both, checked
+  ;; by the one beginning
+  (with-test-directory (dir)
+    (let ((path (put-file (merge-pathnames "shared.txt" dir) "original"))
+          (begun 0))
+      (with-visited (b path)
+        (tuatara.buffer:buffer-insert b 0 "mine: ")
+        (replace-by-rename path "theirs")
+        (sb-int:encapsulate 'tuatara.io::begin-save 'counting
+                            (lambda (function &rest arguments) (incf begun) (apply function arguments)))
+        (unwind-protect
+             (progn (fail (tuatara.io:save-buffer-file b) tuatara.io:file-changed-on-disk)
+                    (fail (tuatara.io:start-save b) tuatara.io:file-changed-on-disk))
+          (sb-int:unencapsulate 'tuatara.io::begin-save 'counting))
+        (is = 2 begun)
+        (is string= "theirs" (file-text path))))))

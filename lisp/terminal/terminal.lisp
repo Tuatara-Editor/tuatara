@@ -772,7 +772,7 @@ colours a program picks are the theme's (*TERMINAL-PALETTE-ROLES*)."
           (tuatara.buffer:buffer-local buffer :key-handler) 'terminal-key-handler
           (tuatara.buffer:buffer-local buffer :paste-handler) 'terminal-paste-handler
           (buffer-given-directory buffer) directory)
-    (dolist (toggle '(line-numbers hl-line cursor-column soft-wrap spellcheck display-fill-column centred-text
+    (dolist (toggle '(line-numbers current-line current-column soft-wrap spellcheck display-fill-column centred-text
                       text-direction))
       (ignoring-errors-reported ("turning ~(~a~) off" toggle) (choose-display buffer toggle nil)))
     ;; shown where *terminal-place* says, and its program started, or the buffer killed again
@@ -882,7 +882,8 @@ pasted only after asking."
            (ends (count-if (lambda (c) (member c '(#\Newline #\Return))) text))
            (lines (if (member (char text (1- (length text))) '(#\Newline #\Return)) ends (1+ ends))))
       (if (and (plusp ends) (not (emulator-bracketed-paste-p emulator))
-               (not (yes-or-no-p* (format nil "Paste ~:d line~:p; the program runs each as it comes; go on?" lines))))
+               (not (yes-or-no-p* (format nil "Paste ~:d line~:p?" lines)
+                                    :details "The program runs each line as it comes.")))
           (message "Not pasted")
           (progn
             (unless (terminal-typing-p buffer) (set-terminal-history-view buffer nil))

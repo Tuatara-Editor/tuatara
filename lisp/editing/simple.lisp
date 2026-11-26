@@ -130,7 +130,7 @@ or in the background on all but two cores when the lines hold more than
   (let* ((top (tuatara.buffer:buffer-line-start buffer (max start (tuatara.buffer:buffer-start buffer))))
          (bottom (tuatara.buffer:buffer-line-start buffer (min last (tuatara.buffer:buffer-end buffer))))
          (end (min (tuatara.buffer:next-line-start buffer bottom) (tuatara.buffer:buffer-end buffer)))
-         (per-line (joining-line top bottom (if (lisp-prefix-char-p buffer #\') "'`,#" ""))))
+         (prefixes (if (lisp-prefix-char-p buffer #\') "'`,#" "")))
     (flet ((first-text-end (from)
              (loop with p = (tuatara.buffer:buffer-line-end buffer from)
                    while (and (> p from) (member (tuatara.buffer:buffer-char-at buffer (1- p)) '(#\Space #\Tab)))
@@ -138,7 +138,8 @@ or in the background on all but two cores when the lines hold more than
                    finally (return p))))
       (cond ((>= top bottom) nil)
             ((large-for-here-p top end)
-             (start-line-job buffer top (tuatara.buffer:buffer-line-end buffer bottom) per-line
+             (start-line-job buffer top (tuatara.buffer:buffer-line-end buffer bottom)
+                             (lambda (rope from to) (joining-line from (tuatara.text:rope-line-start rope to) prefixes))
                              :doing "Joining" :what "Joining the lines" :report (join-report)
                              :verb "join the lines" :leaves "the lines are as they were"
                              :goal (lambda (from)
@@ -146,7 +147,7 @@ or in the background on all but two cores when the lines hold more than
                                        (lambda (b) (declare (ignore b)) goal)))
                              :announce "Joining the lines"))
             (t (let ((goal (first-text-end top)))
-                 (rewrite-lines-here buffer top end per-line)
+                 (rewrite-lines-here buffer top end (joining-line top bottom prefixes))
                  (goto goal)))))))
 
 (define-command join-line ()
@@ -154,7 +155,8 @@ or in the background on all but two cores when the lines hold more than
 the spaces about it become one space, or none where a line begins or ends,
 before a closing bracket or after an opening one. With
 \\[universal-argument], join the next line to this one; with a selection, join
-every line it takes in, in the background when it holds more than 32 MB."
+every line it takes in, in the background when it holds more than
+*REWRITE-THRESHOLD* octets."
   (let* ((b (current-buffer))
          (arg (prefix-argument))
          (line (tuatara.buffer:buffer-line-start b (point))))
@@ -700,6 +702,20 @@ car turns true."
       (sentence-over)
       (when (and (< start end) last-octet (/= last-octet 10)) (incf lines))
       (values lines sentences words chars))))
+
+(defun buffer-count-words (buffer start end)
+  "How many words BUFFER's text has from octet START below END (the two either
+way round): runs of letters and digits, as \\[count-words] counts them.
+Signals an error when either is outside the text, or when part of it has not
+arrived from its file yet. Linear in the octets between them."
+  (let ((rope (tuatara.buffer:buffer-text buffer)))
+    (unless (and (integerp start) (integerp end) (<= 0 (min start end))
+                 (<= (max start end) (tuatara.text:rope-octet-length rope)))
+      (refuse "Octets ~a to ~a are outside ~a (0 to ~d)" start end (tuatara.buffer:buffer-name buffer)
+              (tuatara.text:rope-octet-length rope)))
+    (let ((low (min start end)) (high (max start end)))
+      (tuatara.text:rope-check-arrived rope low high)
+      (nth-value 2 (count-text rope low high)))))
 
 (defmethod tuatara.runtime:job-percent ((job count-job))
   "How much of JOB is counted, from 0 to 99 while it runs."

@@ -5,7 +5,7 @@
   :description "Tuatara: an Emacs-shaped editor in Common Lisp."
   :author "Michael A Jones <yardquit@pm.me>"
   :license "GPL-3.0-or-later"
-  :version "0.90.46"
+  :version "0.90.47"
   :depends-on ("tuatara/core")
   :in-order-to ((test-op (test-op "tuatara/tests"))))
 
@@ -90,8 +90,8 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                          (:file "case") (:file "mouse") (:file "font") (:file "font-list") (:file "selection")
                          (:file "lists") (:file "narrowing") (:file "sort") (:file "records") (:file "enchant")
                          (:file "toggles") (:file "spellcheck") (:file "windows") (:file "frames") (:file "own-files")
-                         (:file "snippets") (:file "fill") (:file "hl-line") (:file "cursor-column")
-                         (:file "soft-wrap") (:file "centred-text") (:file "display-fill-column") (:file "user-lisp")
+                         (:file "snippets") (:file "fill") (:file "current-line") (:file "current-column")
+                         (:file "soft-wrap") (:file "centred-text") (:file "display-fill-column")
                          (:file "recorded-keys") (:file "shown-files") (:file "conflicts")))
                (:module "pattern-questions" :pathname "search" :components ((:file "questions")))
                (:module "buffer-commands" :pathname "buffers" :components ((:file "commands")))
@@ -146,7 +146,7 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                (:module "git-run" :pathname "git" :serial t :components ((:file "run") (:file "look-only")))
                (:module "gutter"  :serial t :components ((:file "line-numbers") (:file "vc")))
                (:module "lisp-tools" :pathname "modes" :serial t :components
-                        ((:file "lisp-complete") (:file "lisp-xref") (:file "lisp-debug") (:file "ielm")
+                        ((:file "lisp-complete") (:file "lisp-xref") (:file "lisp-debug") (:file "lisp-repl")
                          (:file "lisp-macroexpand")))
                (:module "lsp"     :serial t :components
                         ((:file "tools") (:file "usual-tools") (:file "format") (:file "client") (:file "documents")
@@ -381,7 +381,7 @@ the program's entry point."
                (:file "conflicts")
                (:file "xref")
                (:file "backtrace")
-               (:file "ielm")
+               (:file "lisp-repl")
                (:file "macroexpansion")
                (:file "lists")
                (:file "list-buffers")

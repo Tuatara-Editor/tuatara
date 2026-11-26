@@ -143,6 +143,38 @@ entries and their directory gone after."
           (tuatara.defaults::stop-using-cache-directory busy :someone)
           (when (list-buffer) (tuatara.buffer:kill-buffer (list-buffer))))))))
 
+(define-test (cache delete-question-as-every-list-asks)
+  ;; the question before deleting entries is short; those a filter hides and those in use are in its details
+  (with-cache-kind ("test" "cache-test/")
+    (let ((tuatara-user:*modal-editing* nil) (asked nil))
+      (tuatara.defaults::make-cache-entry "test" "one" "One entry")
+      (tuatara.defaults::make-cache-entry "test" "two" "Two entry")
+      (unwind-protect
+           (progn
+             ;; the list is filled from a thread of its own
+             (auto-save-session (list (format nil "M-x ~a RET" (typed-keys "cache-manager"))
+                                      (list :until (lambda ()
+                                                     (let ((list (tuatara.buffer:find-buffer "*Cache*")))
+                                                       (and list (tuatara.buffer:buffer-local
+                                                                  list 'tuatara.defaults::cache-items))))))
+                                :width 160)
+             (let* ((list (tuatara.buffer:find-buffer "*Cache*"))
+                    (keys (alexandria:hash-table-keys
+                           (tuatara.buffer:buffer-local list 'tuatara.defaults::cache-items))))
+               (sb-int:encapsulate 'tuatara.command:yes-or-no-p* 'recorded
+                                   (lambda (function prompt &key details)
+                                     (declare (ignore function))
+                                     (setf asked (list prompt details))
+                                     nil))
+               (unwind-protect
+                    (let ((tuatara.defaults::*list-hidden-count* 1))
+                      (tuatara.defaults::delete-entries (tuatara.modes:buffer-major-mode list) list keys :deletion))
+                 (sb-int:unencapsulate 'tuatara.command:yes-or-no-p* 'recorded))
+               (true (uiop:string-prefix-p "Delete the " (first asked)) "~s" asked)
+               (true (search "entries from the cache?" (first asked)) "~s" asked)
+               (true (search "hidden by the filter" (second asked)) "~s" asked)))
+        (let ((list (tuatara.buffer:find-buffer "*Cache*"))) (when list (tuatara.buffer:kill-buffer list)))))))
+
 (define-test (cache cleared-entry-not-taken-up)
   ;; a session taking up an entry just as another clears it, which moves it aside under its lock, lets go of
   ;; the lock it took and does not use the entry

@@ -83,7 +83,7 @@
                (let ((f (hints "SPC t")))
                  (true (tuatara.frontend.fake:fake-frame-showing f "z to the end"))
                  (true (tuatara.frontend.fake:fake-frame-showing f "y to the top"))
-                 (true (tuatara.frontend.fake:fake-frame-showing f "h hl-line-mode")))
+                 (true (tuatara.frontend.fake:fake-frame-showing f "h current-line-mode")))
                ;; a labelled key still runs its command
                (is = 3 (session-point (nth-value 1 (run-keys "SPC t z" :text "abc"))))))
         (ignore-errors (delete-file file))
@@ -206,8 +206,8 @@
 (define-test (config options-reach-the-editor)
   ;; the options documented for the init file are, read in
   ;; TUATARA-USER, the very variables the editor uses
-  (loop for (name used) in '(("*MESSAGE-LOG-MAX*" tuatara.command:*message-log-max*)
-                             ("*SORT-FOLD-CASE*" tuatara.defaults::*sort-fold-case*)
+  (loop for (name used) in '(("*MESSAGES-KEPT*" tuatara.command:*messages-kept*)
+                             ("*SORT-IGNORES-CASE*" tuatara.defaults::*sort-ignores-case*)
                              ("*RELOAD-CHANGED-FILES*" tuatara.defaults::*reload-changed-files*)
                              ("*LINE-NUMBERS-DEFAULT*" tuatara.defaults::*line-numbers-default*)
                              ("*INDENT-NEW-LINES*" tuatara.defaults::*indent-new-lines*)
@@ -245,12 +245,12 @@
   ;; refused, and pairs as standard
   (let* ((file (merge-pathnames (format nil "init-~36r.lisp" (random (expt 36 8))) (tuatara.io:cache-directory)))
          (pairs tuatara-user:*pair-delimiters*)
-         (mode tuatara-user:*electric-pair-mode*))
+         (mode tuatara-user:*auto-close-mode*))
     (unwind-protect
          (progn
            (with-open-file (out (ensure-directories-exist file) :direction :output :if-exists :supersede)
              (write-string "(setf *pair-delimiters* '(#\\( . #\\)))
-(setf *electric-pair-mode* t)
+(setf *auto-close-mode* t)
 " out))
            (let ((tuatara.defaults:*config-file* file))
              (multiple-value-bind (f editor) (run-keys "i ( a C-g" :text "" :width 140)
@@ -259,7 +259,7 @@
                      "~s" tuatara.defaults::*init-file-outcome*)
                (is string= "(a)" (session-text editor)))))
       (setf tuatara-user:*pair-delimiters* pairs
-            tuatara-user:*electric-pair-mode* mode)
+            tuatara-user:*auto-close-mode* mode)
       (ignore-errors (delete-file file))))
   ;; a step of starting that fails is said, and the rest carries on
   (let ((said nil))
@@ -294,7 +294,7 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
          (file (merge-pathnames "tuatara/init.lisp" home))
          (old (uiop:getenv "XDG_CONFIG_HOME"))
          ;; loading the starter sets tabs for some modes: put back afterwards
-         (tabs (alexandria:copy-hash-table tuatara.defaults::*mode-indent-tabs*)))
+         (tabs tuatara-user:*indent-with-tabs-modes*))
     (unwind-protect
          (progn
            ;; the first start without an init file writes one there and says so
@@ -304,24 +304,24 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
                (declare (ignore editor))
                (true (tuatara.frontend.fake:fake-frame-showing f "Wrote a starter init file" "tuatara/init.lisp"))))
            ;; and reads it at once: Makefiles have their tabs from the first start
-           (true (gethash 'tuatara.defaults::makefile-mode tuatara.defaults::*mode-indent-tabs*))
+           (true (tuatara.modes:mode-setting 'tuatara.defaults::makefile-mode tuatara-user:*indent-with-tabs-modes*))
            (let ((text (uiop:read-file-string file)))
              (true (search "(setf *reload-changed-files* t)" text))
              (true (search "(bind-key \"C-c t\" 'toggle-light-dark-theme)" text))
              (true (search "(set-colouring 'rust :sparse)" text))
              ;; every line of it is a comment but the tabs some languages' own
-             ;; tools require, a line each, and the load-package forms holding the
-             ;; settings, by what they are for
+             ;; tools require, an entry a line, and the load-package forms holding
+             ;; the settings, by what they are for
              (true (every (lambda (line)
                             (let ((line (string-left-trim " " line)))
                               (or (zerop (length line)) (char= (char line 0) #\;)
                                   (string= line ":config") (string= line ")")
                                   (cl-ppcre:scan "^\\(load-package \"[a-z-]+\"$" line)
-                                  (and (string= "(set-indent-tabs-mode '" line :end2 (min (length line) 23))
-                                       (search " t)" line)))))
+                                  (string= line "(setf *indent-with-tabs-modes*")
+                                  (cl-ppcre:scan "^'?\\((;;.*|[a-z-]+ \\. t\\)\\)*)$" line))))
                           (uiop:split-string text :separator '(#\Newline))))
-             (true (search "(set-indent-tabs-mode 'makefile t)" text))
-             (true (search "(set-indent-tabs-mode 'go t)" text)))
+             (true (search "(makefile . t)" text))
+             (true (search "(go . t)" text)))
            ;; each setting in it works once its ;; is taken away, from every line of it
            (let ((*package* (find-package :tuatara-user)))
              (dolist (form (commented-forms (uiop:read-file-string file)))
@@ -334,7 +334,7 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
              (run-keys "" :text "abc"))
            (is string= ";; mine" (uiop:read-file-string file)))
       (if old (sb-posix:setenv "XDG_CONFIG_HOME" old 1) (sb-posix:unsetenv "XDG_CONFIG_HOME"))
-      (setf tuatara.defaults::*mode-indent-tabs* tabs)
+      (setf tuatara-user:*indent-with-tabs-modes* tabs)
       (uiop:delete-directory-tree home :validate #'tests-own-path-p))))
 
 (define-test (config bind-key-a-mode-either-way)
@@ -620,6 +620,40 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
           (true (search "*save-place-limit*, now called *remembered-places-limit*" (said)) "~a" (said))
           (false (boundp (find-symbol "*SAVE-PLACE-MODE*" :tuatara-user))))))))
 
+(define-test (config emacs-named-settings-renamed)
+  ;; each setting named the Emacs way has its new name, a setting an init file reaches with its
+  ;; documentation; an init file setting the old name gives the value to the new one and is told
+  (let ((renamed '(("*DEBUG-ON-ERROR*" "*BACKTRACE-ON-ERROR*") ("*MESSAGE-LOG-MAX*" "*MESSAGES-KEPT*")
+                   ("*KILL-RING-MAX*" "*KILL-RING-LENGTH*") ("*KILL-RING-MAX-SIZE*" "*KILL-RING-OCTETS*")
+                   ("*MARK-RING-MAX*" "*MARK-RING-LENGTH*") ("*SHOW-PAREN-MODE*" "*SHOW-MATCHING-BRACKET*")
+                   ("*BLINK-MATCHING-PAREN*" "*SAY-MATCHING-BRACKET*") ("*ELECTRIC-PAIR-MODE*" "*AUTO-CLOSE-MODE*")
+                   ("*ELECTRIC-PAIR-TYPING*" "*AUTO-CLOSE-DELIMITERS*")
+                   ("*ELECTRIC-PAIR-SAFE-EXCLUSIONS*" "*AUTO-CLOSE-SAFE-EXCLUSIONS*")
+                   ("*INDENT-TABS-MODE*" "*INDENT-WITH-TABS*") ("*TAB-ALWAYS-INDENT*" "*TAB-KEY-ACTION*")
+                   ("*GLOBAL-HL-LINE-MODE*" "*GLOBAL-CURRENT-LINE-MODE*") ("*HL-LINE-MODES*" "*CURRENT-LINE-MODES*")
+                   ("*GLOBAL-CURSOR-COLUMN-MODE*" "*GLOBAL-CURRENT-COLUMN-MODE*")
+                   ("*CURSOR-COLUMN-MODES*" "*CURRENT-COLUMN-MODES*") ("*SORT-FOLD-CASE*" "*SORT-IGNORES-CASE*")
+                   ("*DEFAULT-DIRECTORY*" "*NO-FILE-DIRECTORY*"))))
+    (loop for (old new) in renamed
+          do (multiple-value-bind (symbol status) (find-symbol new :tuatara-user)
+               (is eq :external status "~a" new)
+               (true (tuatara.runtime:setting-values symbol) "~a" new)
+               (true (documentation symbol 'variable) "~a" new))
+             (is eq (find-symbol new :tuatara-user)
+                 (cdr (assoc old tuatara.defaults::*renamed-settings* :test #'string=)) "~a" old))
+    (with-test-directory (dir)
+      (let ((file (merge-pathnames "init.lisp" dir))
+            (tuatara-user:*sort-ignores-case* nil)
+            (tuatara-user:*kill-ring-length* 120))
+        (alexandria:write-string-into-file (format nil "(setf *sort-fold-case* t)~%(setf *kill-ring-max* 7)~%") file)
+        (let ((tuatara.defaults:*config-file* file))
+          (with-messages-said (said)
+            (run-keys "" :text "")
+            (true tuatara-user:*sort-ignores-case*)
+            (is = 7 tuatara-user:*kill-ring-length*)
+            (true (search "*sort-fold-case*, now called *sort-ignores-case*" (said)) "~a" (said))
+            (true (search "*kill-ring-max*, now called *kill-ring-length*" (said)) "~a" (said))))))))
+
 (define-test (config renamed-setting-not-taken)
   ;; a value given by a setting's old name that the setting does not take is put back, and said
   (with-test-directory (dir)
@@ -709,6 +743,16 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
         (makunbound name)
         (unintern name :tuatara-user)))))
 
+(define-test (config times-in-words-read-in-linear-time)
+  ;; a time written with long runs of spaces is read at once, whether it is one or not
+  (let ((spaces (make-string 40000 :initial-element #\Space)))
+    (dolist (words (list (concatenate 'string "1" spaces "x" spaces "y") (concatenate 'string "1h" spaces "2")
+                         (concatenate 'string spaces "1h" spaces "30m" spaces)))
+      (let ((start (get-internal-real-time)))
+        (tuatara.runtime::seconds-in-words words)
+        (true (< (- (get-internal-real-time) start) (* 1/2 internal-time-units-per-second)))))
+    (is eql 5400 (tuatara.runtime::seconds-in-words (concatenate 'string spaces "1h" spaces "30m" spaces)))))
+
 (define-test (config sizes-and-times-in-words)
   ;; a setting holding octets or a time takes words for them, turned into its number where a value is
   ;; looked at: the editor's own setting, a form of the init file, a value given before the setting was
@@ -719,7 +763,8 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
                                   (".5K" 512) ("20Q" nil) ("G" nil) ("" nil) ("1.2.3G" nil) ("-5G" nil) ("5 G B" nil))
           do (is eql octets (tuatara.runtime::octets-in-words words) "~s" words)))
   (loop for (words seconds) in '(("90s" 90) ("500ms" 1/2) ("1.5h" 5400) ("30m" 1800) ("2 h" 7200) ("14d" 1209600)
-                                 ("10" 10) ("90 minutes" nil) ("h" nil) ("1:30" nil))
+                                 ("10" 10) ("90 minutes" nil) ("h" nil) ("1:30" nil)
+                                 ("1h30m" 5400) ("1h 3m 10s" 3790) ("1h30" nil) ("h30m" nil) ("1h30x" nil))
         do (is eql seconds (tuatara.runtime::seconds-in-words words) "~s" words))
   (loop for (description words value) in '(((or (member nil) (octets 1 *)) "1.5G" 1610612736)
                                            ((octets 1 *) "0" "0")

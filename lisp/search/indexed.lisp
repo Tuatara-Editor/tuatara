@@ -67,11 +67,13 @@ name ending in /. FILES is every file under it as (RELATIVE . STAMP), the ones
 changed last first. CORPORA is the text of those a search reads, as
 FILE-CORPUS pieces. LARGE is the text files too large to keep within the
 limit or past the most files kept (*INDEXED-FILES-MOST*), each (RELATIVE
-PATH), which a search reads from disk (LINES-ON-DISK). DIRECTORIES is those under it, watched
-on disk. READY is true once it has been read. READING is true while a thread
-reads it, and AGAIN when it is to be read once more after, the directories
-reported changed meanwhile in PENDING (:ALL for all). RESULT is what the
-thread read, until taken in. TREE is each directory's entries as last listed
+PATH), which a search reads from disk (LINES-ON-DISK). UNREAD is the paths
+from ROOT of the files found to be no text or not readable, which a search
+leaves out. DIRECTORIES is those under it, watched on disk. READY is true
+once it has been read. READING is true while a thread reads it, and AGAIN
+when it is to be read once more after, the directories reported changed
+meanwhile in PENDING (:ALL for all). RESULT is what the thread read, until
+taken in. TREE is each directory's entries as last listed
 \(INDEX-DIRECTORY, by native name), which the walks of other threads look at
 too (DIRECTORY-LISTING). KEPT-IN is the directory of the cache it is kept in
 on disk, once read so, and LOST true once a search found that cleared, to be
@@ -86,6 +88,9 @@ not to be text, with their stamps."
   (large '()
          :documentation "The text files of a DIRECTORY-INDEX too large to keep,
 or past the most kept, searched from disk.")
+  (unread '()
+          :documentation "The files of a DIRECTORY-INDEX found to be no text or
+not readable, by their paths from its root.")
   (directories '() :documentation "The directories under a DIRECTORY-INDEX's root, watched on disk.")
   (ready nil :documentation "True once a DIRECTORY-INDEX has been read.")
   (reading nil :documentation "True while a thread reads a DIRECTORY-INDEX.")
@@ -241,11 +246,12 @@ it is where its files come in the same order, all as they were. The others are
 made anew as a search of many files makes them \(GATHER-TEXT-FILE): the text
 of a file as it was is copied from its old piece, and that of a file changed
 is read from disk. One found not to be text is noted in NOT-TEXT with its
-stamp and not read again while it stays so. Pieces made anew hold about PIECE
-octets."
+stamp and not read again while it stays so; a third value lists the paths
+of those, and of the files that could not be read. Pieces made anew hold
+about PIECE octets."
   (let* ((where (make-hash-table :test 'equal))
          (starting (make-hash-table :test 'equal))
-         (made '()) (large '())
+         (made '()) (large '()) (unread '())
          (texts (coerce texts 'simple-vector))
          (gatherer (make-corpus-gatherer
                     limit piece
@@ -304,10 +310,12 @@ octets."
                                        ((tuatara.io:same-state-p stamp (gethash relative not-text)) :not-text)
                                        (t (gather-text-file gatherer relative path :stamp stamp)))
                              (:text (remhash relative not-text))
-                             ((nil) (when stamp (setf (gethash relative not-text) stamp)))))
+                             (:not-text (push relative unread))
+                             ((nil) (push relative unread)
+                              (when stamp (setf (gethash relative not-text) stamp)))))
                          (incf k)))))
         (gather-piece gatherer)))
-    (values (coerce (nreverse made) 'simple-vector) (nreverse large))))
+    (values (coerce (nreverse made) 'simple-vector) (nreverse large) (nreverse unread))))
 
 ;;; Kept on disk between sessions
 
@@ -525,7 +533,7 @@ of its files is read from them again."
   "Bring INDEX up to date on the thread reading it: the whole of its directory
 when it has not been read (CHANGED :ALL), else only the directories CHANGED,
 the text of only the files changed read from disk and only the pieces holding
-them made anew. Returns (FILES CORPORA LARGE DIRECTORIES), as
+them made anew. Returns (FILES CORPORA LARGE DIRECTORIES UNREAD), as
 DIRECTORY-INDEX keeps them, its text in pieces of about PIECE octets, at most
 LIMIT in all, those of at most MOST files: the files past them are among
 LARGE, searched from disk. With KEPT-ON-DISK, the pieces kept at the last
@@ -559,14 +567,15 @@ the cache held in use, or NIL for none."
           (index-tree-update (directory-index-tree index) changed root outer)))
     (multiple-value-bind (files texts past directories)
         (index-tree-files (directory-index-tree index) root (outer-gitignore-rules root) most)
-      (multiple-value-bind (pieces large)
+      (multiple-value-bind (pieces large unread)
           (index-pieces texts (directory-index-pieces index) (directory-index-not-text index) root limit piece)
         (setf (directory-index-pieces index) pieces)
         (when cache (ignoring-errors-reported ("keeping the index of ~a" root) (save-index index cache)))
         (list (stable-sort files #'> :key (lambda (file) (if (cdr file) (tuatara.io:stamp-mtime (cdr file)) 0)))
               (map 'simple-vector #'index-piece-corpus pieces)
               (nconc large past)
-              directories)))))
+              directories
+              unread)))))
 
 (defun start-reading-index (index &optional (changed :all))
   "Bring INDEX up to date on a thread of its own (READ-DIRECTORY-INDEX): the
@@ -639,10 +648,11 @@ directories asked for are looked at again only when the setting changes."
           (setf (directory-index-result index) nil
                 (directory-index-reading index) nil)
           (unless (eq result :failed)
-            (destructuring-bind (files corpora large directories) result
+            (destructuring-bind (files corpora large directories unread) result
               (setf (directory-index-files index) files
                     (directory-index-corpora index) corpora
                     (directory-index-large index) large
+                    (directory-index-unread index) unread
                     (directory-index-directories index) directories
                     (directory-index-ready index) t)
               (directories-followed-changed)))

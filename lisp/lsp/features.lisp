@@ -759,10 +759,10 @@ project first."
   (let* ((root (lsp-server-root server))
          (outside (remove-if (lambda (p) (tuatara.io:really-within-p p root)) paths))
          (inside (set-difference paths outside :test #'equal)))
-    (values (format nil "~a ~:[would change~;asks to change~] ~d file~:p~@[ (~d outside its project)~]; ~
-                         change ~:[it~;them~]?"
-                    (lsp-server-name server) asked (length paths) (and outside (length outside)) (rest paths))
-            (format nil "~{~{~a ~a:~%~{  ~a~^~%~}~}~^~%~}"
+    (values (format nil "Change ~d file~:p for ~a?" (length paths) (lsp-server-name server))
+            (format nil "It ~:[would change them~;asks to change them of itself~]~@[, ~d outside its project~].~%~
+                         ~{~{~a ~a:~%~{  ~a~^~%~}~}~^~%~}"
+                    asked (and outside (length outside))
                     (loop for (where files) in (list (list "Outside" outside) (list "In" inside))
                           when files collect (list where (abbreviated-path root) (mapcar #'abbreviated-path files)))))))
 
@@ -793,7 +793,7 @@ what was left alone, or NIL."
 (define-lsp-request "workspace/applyEdit" (server params)
   ;; asked as the next command; the server answered once that is done
   (let ((answer *lsp-answer*)
-        (asked (zerop (lsp-server-acting server))))
+        (asked (not (lsp-acting-p server))))
     (defer-action
         (lambda ()
           (multiple-value-bind (files left)
@@ -884,6 +884,11 @@ too (an abbreviation, as in CSS)."
       (concatenate 'string (string (char-downcase (char title 0))) (subseq title 1))
       title))
 
+(defparameter *lsp-command-seconds* 300
+  "How long a command of a language server chosen to be run (a code action's,
+a code lens's, which may run tests) is waited for before it is given up, its
+changes after that asked about as those it makes of itself.")
+
 (defun lsp-do-action (server action)
   "Make ACTION, one of SERVER's CodeActions (its edit, then its command) or a
 Command alone, and say its title: a command the editor runs itself
@@ -900,18 +905,23 @@ about first as LSP-APPLY-WORKSPACE-EDIT asks; not made, its command is not run."
     (let ((own (and command (gethash (tuatara.text:json-text command "command") *lsp-client-commands*))))
       (cond (own (funcall own server (tuatara.text:json-items command "arguments")))
             (command
-             ;; what the server changes meanwhile (workspace/applyEdit) is what was chosen
-             (incf (lsp-server-acting server))
-             (lsp-request server "workspace/executeCommand"
-                          (tuatara.text:json-object "command" (tuatara.text:json-text command "command")
-                                                    "arguments" (tuatara.text:json-items command "arguments"))
-                          (lambda (result error)
-                            (declare (ignore result))
-                            (decf (lsp-server-acting server))
-                            (when error
-                              (message "~a could not ~a: ~a" (lsp-server-name server)
-                                       (title-in-a-sentence (or (tuatara.text:json-text action "title") "do it"))
-                                       (lsp-error-words error))))))))
+             (let ((id nil))
+               (setf id (lsp-request server "workspace/executeCommand"
+                                     (tuatara.text:json-object
+                                      "command" (tuatara.text:json-text command "command")
+                                      "arguments" (tuatara.text:json-items command "arguments"))
+                                     (lambda (result error)
+                                       (declare (ignore result))
+                                       (setf (lsp-server-acting server) (remove id (lsp-server-acting server)))
+                                       (when error
+                                         (message "~a could not ~a: ~a" (lsp-server-name server)
+                                                  (title-in-a-sentence (or (tuatara.text:json-text action "title")
+                                                                           "do it"))
+                                                  (lsp-error-words error :seconds *lsp-command-seconds*
+                                                                         :setting nil))))
+                                     :seconds *lsp-command-seconds*))
+               ;; what the server changes meanwhile (workspace/applyEdit) is what was chosen
+               (push id (lsp-server-acting server))))))
     (message "~a~@[; ~a~]" (tuatara.text:json-text action "title") left)))
 
 (define-lsp-client-command "rust-analyzer.showReferences" (server arguments)

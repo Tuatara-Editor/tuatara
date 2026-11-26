@@ -12,7 +12,7 @@
 (in-package #:tuatara.defaults)
 
 (define-face :outline-preview "The line of the heading shown while one is chosen in \\[buffer-outline]."
-  :inherit :hl-line)
+  :inherit :current-line)
 
 ;;; Where the headings are
 
@@ -249,10 +249,10 @@ search does not end at once then, BUFFER's file stays mapped for it
                                                (tuatara.syntax:rich-highlights colours copy rope start end faces)))
                                         halt))
                                (error (e) (setf failure e)))
-                          (when copy (tuatara.syntax:delete-tree copy)))))
+                          (when copy (tuatara.syntax:free-tree copy)))))
                     :name "tuatara outline"))))
     (cond ((null thread)
-           (when copy (tuatara.syntax:delete-tree copy))
+           (when copy (tuatara.syntax:free-tree copy))
            (refuse "There is no thread to find the headings in"))
           ((multiple-value-bind (done state)
                    (wait-interruptibly thread :message "Finding the headings..."

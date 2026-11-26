@@ -139,11 +139,9 @@ a moment.")
   (is equal '() (tuatara.frontend:frontend-health (tuatara.frontend.fake:make-fake-frontend))))
 
 (define-test (health appimage-said)
-  ;; which AppImage Tuatara runs from, and for the legacy one which to take next
-  (true (search "take Tuatara-x86_64.AppImage" (tuatara.defaults::appimage-words "legacy" '(2 43))))
-  (true (search "later releases need glibc 2.43" (tuatara.defaults::appimage-words "legacy" '(2 39))))
-  (true (search "Ubuntu 26.04's libraries" (tuatara.defaults::appimage-words "current" '(2 43))))
-  (true (search "glibc is 2.43" (tuatara.defaults::appimage-words "current" '(2 43))))
+  ;; which libraries the AppImage brings, and the system's glibc
+  (true (search "Ubuntu 26.04's libraries" (tuatara.defaults::appimage-words '(2 43))))
+  (true (search "glibc is 2.43" (tuatara.defaults::appimage-words '(2 43))))
   (is = 2 (first (tuatara.defaults::glibc-version))))
 
 (define-test (health latex-shut-in-said)

@@ -46,10 +46,13 @@ so that work on another thread reads them whole.")
   (keymap-%parent keymap))
 
 (defun (setf keymap-parent) (parent keymap)
-  "Make PARENT the keymap consulted when a key is not bound in KEYMAP."
+  "Make PARENT the keymap consulted when a key is not bound in KEYMAP. Setting
+the parent it has already changes nothing."
   (with-keymaps-held
-    (incf *keymaps-generation*)
-    (setf (keymap-%parent keymap) parent)))
+    (unless (eq parent (keymap-%parent keymap))
+      (incf *keymaps-generation*)
+      (setf (keymap-%parent keymap) parent))
+    parent))
 
 (defun make-keymap (&key name parent)
   "Return an empty keymap called NAME whose unbound keys fall through to PARENT."

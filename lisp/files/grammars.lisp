@@ -347,16 +347,15 @@ other languages coloured again by the grammars on."
 
 (defun ask-to-turn-on-grammar (language)
   "Ask whether to turn LANGUAGE's grammar on, answered by one key pressed once
-the question is shown (READ-ANSWER-KEY; keys typed before are thrown away).
+the question is shown (READ-KEY-CHOICE; keys typed before are thrown away).
 Pressing y keeps it on and parses the buffers in it, n keeps it off and says
 how to turn it on later. Any other key says which keys answer and asks again.
 \\`C-g' is \"not now\", not asked again in this session, and nothing kept."
   (let* ((words (language-words language))
-         (answer (handler-case (read-answer-key (format nil "Turn on the ~a grammar? (y or n) " words)
-                                                '(#\y #\n)
-                                                :fresh t)
+         (answer (handler-case (read-key-choice (format nil "Turn on the ~a grammar?" words) '(("y") ("n"))
+                                                :fresh t :fold-case t)
                    (quit () nil))))
-    (case answer
+    (case (and answer (char answer 0))
       (#\y (note-grammar-answer language t)
        (grammars-changed)
        (message "The ~a grammar is on" words))

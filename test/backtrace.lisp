@@ -1,57 +1,59 @@
-;;;; test/backtrace.lisp --- Errors shown with the calls under way: toggle-debug-on-error, *Backtrace*.
+;;;; test/backtrace.lisp --- Errors shown with the calls under way: toggle-backtrace-on-error, *Backtrace*.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 
 (in-package #:tuatara.tests)
 
 (define-test backtrace
-  :description "With debug-on-error on, an error in Lisp evaluated in the editor or in a command
+  :description "With *backtrace-on-error* on, an error in Lisp evaluated in the editor or in a command
 shows the calls under way in *Backtrace*, innermost first, the signalling itself and the editor's
 own frames below left out; RET goes to the definition of the function called on the line.")
 
-(defmacro with-debug-on-error-restored (&body body)
-  "Run BODY, then put *DEBUG-ON-ERROR* back as it was: sessions set it for every thread."
+(defmacro with-backtrace-on-error-restored (&body body)
+  "Run BODY, then put *BACKTRACE-ON-ERROR* back as it was: sessions set it for every thread."
   (let ((old (gensym)))
-    `(let ((,old tuatara-user:*debug-on-error*))
+    `(let ((,old tuatara-user:*backtrace-on-error*))
        (unwind-protect (progn ,@body)
-         (setf tuatara-user:*debug-on-error* ,old)))))
+         (setf tuatara-user:*backtrace-on-error* ,old)))))
 
 (define-test (backtrace errors-in-evaluation)
-  (with-debug-on-error-restored
+  (with-backtrace-on-error-restored
     ;; switched on, an evaluation's error shows *Backtrace*, the message too
     (multiple-value-bind (f editor)
         (fresh-start (format nil
                              "M-x ~a RET o ~a C-g C-x C-e"
-                             (key-string "toggle-debug-on-error")
-                             (key-string "(goto-char 'x)"))
+                             (key-string "toggle-backtrace-on-error")
+                             (key-string "(buffer-count-words (current-buffer) 'x 0)"))
                      :width 160 :height 20)
-      (true (showing f "Debug on Error enabled globally"))
+      (true (showing f "Backtraces on errors: on"))
       (is string= "*Backtrace*" (current-name editor))
       (let ((text (session-text editor)))
-        (true (search "Debugger entered--Lisp error: Wrong type argument" text))
+        (true (search "An error: Octets X to 0 are outside" text))
         ;; the innermost call first, the function it was in after it
-        (true (search "(GOTO-CHAR X)" text))
+        (true (search "(BUFFER-COUNT-WORDS " text))
         ;; neither the signalling nor the editor's own evaluation
         (false (search "%SIGNAL" text))
         (false (search "EVALUATE-FORMS" text)))
-      ;; its lines name the calls; the one of goto-char leads to its definition
+      ;; its lines name the calls; the one of buffer-count-words leads to its definition
       (let* ((b (session-buffer editor))
              (text (tuatara.buffer:buffer-string b))
-             (at (search "(GOTO-CHAR X)" text)))
-        (is string= "GOTO-CHAR" (tuatara.defaults::backtrace-call-name b at))
+             (at (search "(BUFFER-COUNT-WORDS " text)))
+        (is string= "BUFFER-COUNT-WORDS" (tuatara.defaults::backtrace-call-name b at))
         (false (tuatara.defaults::backtrace-call-name b 0))
-        (true (search "user-lisp.lisp"
+        (true (search "simple.lisp"
                       (tuatara.defaults::definition-group
-                       (first (tuatara.defaults::mode-find-definitions (tuatara.modes:buffer-major-mode b) b "GOTO-CHAR")))))))
+                       (first (tuatara.defaults::mode-find-definitions (tuatara.modes:buffer-major-mode b) b
+                                                                       "BUFFER-COUNT-WORDS")))))))
     ;; switched off again: the message alone
-    (setf tuatara-user:*debug-on-error* nil)
+    (setf tuatara-user:*backtrace-on-error* nil)
     (multiple-value-bind (f editor)
-        (fresh-start (format nil "o ~a C-g C-x C-e" (key-string "(goto-char 'x)")) :width 160)
-      (true (showing f "Error: Wrong type argument"))
+        (fresh-start (format nil "o ~a C-g C-x C-e" (key-string "(buffer-count-words (current-buffer) 'x 0)"))
+                     :width 160)
+      (true (showing f "Error: Octets X to 0 are outside"))
       (is string= "*lisp-scratch*" (current-name editor)))))
 
 (define-test (backtrace errors-in-commands)
-  (with-debug-on-error-restored
-    (setf tuatara-user:*debug-on-error* t)
+  (with-backtrace-on-error-restored
+    (setf tuatara-user:*backtrace-on-error* t)
     ;; a command's error: its calls, down to the command, not the command loop's
     (unwind-protect
          (multiple-value-bind (f editor)

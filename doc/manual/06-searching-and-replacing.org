@@ -258,6 +258,10 @@ match, with =Query replacing ... with ...:= and the keys =y n ! . q=:
 | none  | ~.~       | Replace this one and stop                |
 | none  | ~q~       | Stop                                     |
 
+~SPC~ answers as ~y~ does, ~DEL~ as ~n~ and ~RET~ as ~q~. The words for each
+key are shown below the question, and a long pattern or replacement is
+shortened on the question's line.
+
 ~M-%~ is the same for plain text, with no special characters to think about.
 ~C-z r q~ is the key for ~r q~ in every state.
 
@@ -360,11 +364,19 @@ directory, and with a prefix argument (~C-u~ first) it asks for a directory.
 Type words and Tuatara lists every line that holds all of them, in any order,
 each as =path:line: text=. Nothing is listed before the third character
 (=*search-files-min-input*=). The files are read in the background while you
-type, and Tuatara skips hidden files, backups, binary files and whatever the
-project's =.gitignore= leaves out. Each word is a regex, as for ~C-s~, and ~M-r~
-switches to plain text, where the whole line you typed is found as it stands,
-spaces and all. At most =*search-files-lines-limit*= lines are listed. If the
-search stops there, the first line of the list says so.
+type, and Tuatara skips hidden files, backups, symbolic links, binary files
+and whatever the project's =.gitignore= leaves out. A link to a file is never
+followed, so a link in the tree to a file elsewhere is not searched as part of
+it. Each word is a regex, as for ~C-s~, and ~M-r~ switches to plain text, where
+the whole line you typed is found as it stands, spaces and all.
+
+Files that are not text are not searched: binary files, UTF-16 text (it holds
+zero bytes), pictures, archives and encrypted files, and files you may not
+read. The question counts them in brackets, as in =[3 files not searched]=,
+and so does the first line of the list. At most =*search-files-lines-limit*=
+lines are listed. When the search stops there, the question says
+=[first 2,000 lines only]=, the first line of the list says so too, and
+~M-g n~ says =Line 5 of the first 2,000 found=.
 
 Move down the list with ~C-n~ (modal: ~j~) and ~RET~ opens the file at that
 line. With =*preview-file-search*= set to true, the file of the selected line is
@@ -438,7 +450,7 @@ is left out.
 
 #+table: commands search-in-files search-in-formatted search-files-list search-results-edit search-results-finish search-results-cancel next-place previous-place
 
-#+table: settings *project-root-markers* *default-directory* *search-files-min-input* *search-files-lines-limit* *search-files-limit* *indexed-files-most* *search-results-save-files* *preview-file-search* *preview-formatted-search* *indexed-directories* *indexes-kept-on-disk* *indexing-indicator* *searching-indicator*
+#+table: settings *project-root-markers* *no-file-directory* *search-files-min-input* *search-files-lines-limit* *search-files-limit* *indexed-files-most* *search-results-save-files* *preview-file-search* *preview-formatted-search* *indexed-directories* *indexes-kept-on-disk* *indexing-indicator* *searching-indicator*
 
 ** The outline of a buffer
 

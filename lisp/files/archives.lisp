@@ -128,10 +128,11 @@ the memory a program shut in may take, with as many threads as fit in it."
 
 ;;; 7-Zip
 
-(defparameter *seven-zip-names* '("7zz" "7z" "7za")
-  "The names 7-Zip's program has, looked for in this order: 7zz on Debian,
-Ubuntu and Arch, 7z or 7za on Fedora. An older program of those names that
-is not 7-Zip's own (p7zip, 16.02 and before) is not taken.")
+(defparameter *seven-zip-names* (first (getf (outside-program :seven-zip) :programs))
+  "The names 7-Zip's program has, looked for in this order, as
+*OUTSIDE-PROGRAMS* lists them: 7zz on Debian, Ubuntu and Arch, 7z or 7za on
+Fedora. An older program of those names that is not 7-Zip's own (p7zip,
+16.02 and before) is not taken.")
 
 (sb-ext:defglobal **seven-zip** nil
   "7-Zip as last found (SEVEN-ZIP): (PATH VERSION FORMATS), (PATH) when the

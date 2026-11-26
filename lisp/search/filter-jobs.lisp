@@ -210,6 +210,7 @@ once it is done."
                          (setf ranges runs))))))
            :name "tuatara record filter"))
         (progn
+          ;; the lines worked out here, so that the job only reads them
           (list-source-entry-lines source)
           (setf (search-filter-job-total job)
                 (* (length left) (max 1 (if previous (count 1 previous) (length (list-source-entries source))))))

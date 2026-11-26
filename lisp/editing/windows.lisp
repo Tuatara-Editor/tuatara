@@ -316,7 +316,7 @@ kept for them and selected."
     ("C-x ^" enlarge-window) ("C-x }" enlarge-window-horizontally) ("C-x {" shrink-window-horizontally)
     ("C-x -" shrink-window-if-larger-than-buffer) ("C-x +" balance-windows)
     ("C-x 4 b" switch-to-buffer-other-window) ("C-x 4 f" find-file-other-window)
-    ("C-x 4 C-f" find-file-other-window) ("C-x 4 0" kill-buffer-and-window)
+    ("C-x 4 0" kill-buffer-and-window)
     ("C-M-v" scroll-other-window) ("C-M-S-v" scroll-other-window-down)
     ("C-M-h" select-window-left) ("C-M-j" select-window-below)
     ("C-M-k" select-window-above) ("C-M-l" select-window-right))

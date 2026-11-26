@@ -67,10 +67,10 @@ opened it."
   "Functions giving the preview of a file a text of their own, for kinds of
 file rimu's preview does not know (a package's). Each is called, on the
 preview's own thread, with the file open as file descriptor (FD), its PATH,
-its SIZE in octets, its KIND (TUATARA.IO:OCTETS-KIND's keyword, or NIL) and
-its first OCTETS. It returns the text to show, read only, or NIL to leave the
-file to the next and at last to its octets. The text is the file read by
-Tuatara itself, nothing in it run.")
+its SIZE in octets, its KIND (TUATARA.IO:OCTETS-KIND's keyword, or NIL), its
+first OCTETS and the LIST it is shown from, for READ-HERE-P. It returns the
+text to show, read only, or NIL to leave the file to the next and at last to
+its octets. The text is the file read by Tuatara itself, nothing in it run.")
 
 (define-record (rimu-preview-job (:constructor make-rimu-preview-job (entry directory)) (:copier nil))
   "The start of the file ENTRY of DIRECTORY read on THREAD for the preview.
@@ -335,13 +335,14 @@ where it shows none."
            (and width (list (* width (max 1 (ceiling (editor-width editor) 2)))
                             (* height (max 1 (editor-height editor)))))))))
 
-(defun rimu-preview-decode (job fd path size limit pixels untrusted)
+(defun rimu-preview-decode (job fd path size limit pixels here list)
   "On JOB's thread, read the start of the file open on FD, at PATH, SIZE
-octets, at most LIMIT of them, into JOB, with what it tells of the file's kind;
+octets, at most LIMIT of them, into JOB, shown from the rimu list LIST, with
+what it tells of the file's kind;
 then what the preview shows of it: an Office document's or a PDF's text and
 page, an image's picture PIXELS (RIMU-PREVIEW-PIXELS) at most, or the text a
-package gives for it (*PREVIEW-TEXT-FUNCTIONS*). A file from outside,
-UNTRUSTED (UNTRUSTED-PATH-P), is read only by programs shut in by the
+package gives for it (*PREVIEW-TEXT-FUNCTIONS*). Unless HERE, the file may be
+read in the editor (READ-HERE-P), it is read only by programs shut in by the
 sandbox: an Office document's page alone, and no package's text."
   (let* ((cancel (rimu-preview-job-cancel job))
          (octets (tuatara.io:read-fd-start fd path size limit))
@@ -356,7 +357,7 @@ sandbox: an Office document's page alone, and no package's text."
                    (rimu-preview-job-notes job) notes)))
       (cond (office
              (multiple-value-bind (text notes image)
-                 (office-preview fd path size office :pixels pixels :cancel cancel :read (not untrusted))
+                 (office-preview fd path size office :pixels pixels :cancel cancel :read here)
                (shown text notes image)))
             ((eq (second kind) :pdf)
              (multiple-value-bind (text notes image) (decode-pdf fd :cancel cancel :limit limit :pixels pixels)
@@ -365,21 +366,22 @@ sandbox: an Office document's page alone, and no package's text."
              (multiple-value-bind (image notes)
                  (decode-image fd (second kind) (first pixels) (second pixels) :cancel cancel)
                (shown nil notes image)))
-            ((not untrusted)
-             (let ((text (run-hook-until-success *preview-text-functions* fd path size (second kind) octets)))
+            (here
+             (let ((text (run-hook-until-success *preview-text-functions* fd path size (second kind) octets list)))
                (when text
                  (setf (rimu-preview-job-text job) text
                        (rimu-preview-job-read-here job) t))))))))
 
-(defun rimu-preview-read (job source editor)
+(defun rimu-preview-read (job source editor list)
   "Start reading on a thread of its own the file JOB is for, as SOURCE keeps
-it (RIMU-SOURCE, NIL for the disk), for the preview in EDITOR
-\(RIMU-PREVIEW-DECODE); however it ends, JOB is done and EDITOR woken. Returns
-JOB."
+it (RIMU-SOURCE, NIL for the disk), for the preview in EDITOR of an entry of
+LIST, the rimu list \(RIMU-PREVIEW-DECODE), read in the editor only where
+READ-HERE-P allows it for LIST; however it ends, JOB is done and EDITOR woken.
+Returns JOB."
   (let* ((entry (rimu-preview-job-entry job))
          (limit *rimu-preview-size*)
          (pixels (rimu-preview-pixels editor))
-         (untrusted (untrusted-path-p (rimu-path (rimu-preview-job-directory job) entry))))
+         (here (read-here-p (rimu-path (rimu-preview-job-directory job) entry) list)))
     (setf (rimu-preview-job-thread job)
           (tuatara.runtime:make-guarded-thread
            (tuatara.runtime:carry-settings
@@ -390,8 +392,7 @@ JOB."
                        (rimu-source-call-with-entry source (rimu-preview-job-directory job)
                                                     (tuatara.io:listed-octets entry)
                                                     (lambda (fd path size)
-                                                      (rimu-preview-decode job fd path size limit pixels
-                                                                           untrusted))
+                                                      (rimu-preview-decode job fd path size limit pixels here list))
                                                     :cancel (rimu-preview-job-cancel job))
                      (serious-condition (e) (setf (rimu-preview-job-reason job) (princ-to-string e))))
                 ;; however it ends, the preview is over and shown
@@ -405,9 +406,10 @@ JOB."
 of its own (RIMU-PREVIEW-READ), or shown in the buffer visiting it already;
 the rest at once."
   (destructuring-bind (entry . directory) (rimu-preview-wanted state)
-    (let ((kind (rimu-leads-to entry))
-          ;; a directory as a commit left it: its files as they were then
-          (rewound (rimu-source (tuatara.display:window-buffer (rimu-preview-list-window state)))))
+    (let* ((kind (rimu-leads-to entry))
+           (list (tuatara.display:window-buffer (rimu-preview-list-window state)))
+           ;; a directory as a commit left it: its files as they were then
+           (rewound (rimu-source list)))
       (setf (rimu-preview-shown state) entry)
       (case kind
         (:directory (rimu-preview-directory-list state entry directory))
@@ -419,7 +421,7 @@ the rest at once."
            (if visiting
                (rimu-preview-show state visiting nil entry)
                (setf (rimu-preview-job state)
-                     (rimu-preview-read (make-rimu-preview-job entry directory) rewound editor)))))
+                     (rimu-preview-read (make-rimu-preview-job entry directory) rewound editor list)))))
         (t (rimu-preview-show state (side-preview-note (tuatara.io:listed-name entry)
                                                      (format nil "~a." (rimu-unopenable-reason entry)))
                               t entry))))))
@@ -457,8 +459,8 @@ an image its picture and its octets, the picture shown where the frontend
 shows pictures and the list has not been switched to text
 \(\\<rimu-mode>\\[rimu-toggle-picture]). A binary file, one with a null (NUL)
 octet in its first 64 KB, shows in the hex view. A text file shows with the
-major mode its name calls for, unless it would be visited safely or the list
-is opened safely."
+major mode its name calls for, and an Office document's text as an Org note,
+unless it would be visited safely or the list is opened safely."
   (let ((entry (rimu-preview-job-entry job)))
     (when (eq entry (car (rimu-preview-wanted state)))
       (let ((name (escape-controls (tuatara.io:listed-name entry))))
@@ -469,20 +471,21 @@ is opened safely."
                    (cut (and (null text) (< (length octets) (rimu-preview-job-size job))))
                    (path (rimu-path (rimu-preview-job-directory job) entry))
                    (office (office-preview-format (second (rimu-preview-job-kind job)) (tuatara.io:listed-name entry)))
+                   (safe (tuatara.io:safe-visit-p (tuatara.display:window-buffer (rimu-preview-list-window state))))
                    (buffer (tuatara.buffer:make-buffer
                             (tuatara.buffer:unique-buffer-name
                              (format nil "~a (preview~@[, first ~a~]~:[~;, text~]~:[~;, image~])" name
                                      (and cut (octets-words (length octets))) text (rimu-preview-job-image job)))
                             :text (or text octets))))
               (cond
-                ;; an Office document read as text, an Org note
-                ((and text office)
+                ;; an Office document read as text, an Org note, but in a list opened safely plain text
+                ((and text office (not safe))
                  (ignoring-errors-reported ("giving the preview of ~a its mode" path)
                    (set-major-mode buffer 'org-mode)))
                 (text)
                 ((tuatara.io:binary-head-p octets)
                  (hex-view-on buffer))
-                ((not (tuatara.io:safe-visit-p (tuatara.display:window-buffer (rimu-preview-list-window state))))
+                ((not safe)
                  (ignoring-errors-reported ("giving the preview of ~a its mode" path)
                    (let ((mode (mode-for-shown-text path octets)))
                      (unless (eq mode 'fundamental-mode)

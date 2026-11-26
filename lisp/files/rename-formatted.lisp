@@ -94,7 +94,7 @@ line each under tags: (Markdown's), which the keywords written replace."
 as the line has it (#+TITLE: kept in capitals) and the spaces after it kept,
 one space when there were none."
   (let* ((after (subseq line (length prefix)))
-         (gap (subseq after 0 (or (position #\Space after :test-not #'char=) (length after)))))
+         (gap (subseq after 0 (or (position-if-not (lambda (c) (char= c #\Space)) after) (length after)))))
     (concatenate 'string (subseq line 0 (length prefix)) (if (string= gap "") " " gap) value)))
 
 (defun rewritten-header (lines style title keywords)

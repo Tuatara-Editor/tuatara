@@ -209,15 +209,14 @@ force; *compile* killed afterwards."
 (define-test (compiling trust-question-short-at-the-prompt)
   ;; the trust question is answered at a short prompt, as ssh's and gpg's are; all a yes allows, what
   ;; look only does and what no does are in its details, shown beside it
-  (multiple-value-bind (prompt details) (tuatara.defaults::trust-question "/tmp/kiwi-project/")
+  (multiple-value-bind (prompt choices) (tuatara.defaults::trust-question "/tmp/kiwi-project/")
     (true (search "Trust" prompt))
-    (true (search "(y, l or n)" prompt))
     (false (search "language servers" prompt))
     (true (< (length prompt) 60) "~d columns" (length prompt))
-    (true (stringp details))
-    (true (search "y: its language servers start by themselves" details))
-    (true (search "l: look only" details))
-    (true (search "n: not now" details))))
+    (is equal '("y" "l" "n") (mapcar #'car choices))
+    (true (search "its language servers start by themselves" (cdr (first choices))))
+    (true (search "look only" (cdr (second choices))))
+    (true (search "not now" (cdr (third choices))))))
 
 (define-test (compiling run-only-when-trusted)
   ;; a project not trusted: asked first, the question saying all a yes allows, answered by one key; with n nothing runs
@@ -257,6 +256,24 @@ force; *compile* killed afterwards."
           (true child)
           (false (and child (pid-alive-p child)))
           (true (< (- (get-internal-real-time) began) (* 9 internal-time-units-per-second))))))))
+
+(define-test (compiling stopped-with-every-programs-grace)
+  ;; the programs of a compile stopped have the time any program no longer wanted has to end
+  (with-compile-session (dir (format nil "sh -c 'trap \"\" TERM; echo child $$; exec sleep 30' &~%~
+                                          trap '' TERM~%sleep 30~%"))
+    (let ((grace tuatara.io::*program-end-grace*) (child nil) (there-after-3 :unknown))
+      (setf tuatara.io::*program-end-grace* 8)
+      (unwind-protect
+           (auto-save-session
+            (compile-steps dir
+                           (list :until (lambda () (setf child (numbers-after "child" (compile-output)))))
+                           "C-x o C-c C-k y" (list :wait 3)
+                           (list :until (lambda () (setf there-after-3 (pid-alive-p child)) t)))
+            :width 100 :height 30)
+        (setf tuatara.io::*program-end-grace* grace)
+        (when child (ignore-errors (sb-posix:kill child sb-posix:sigkill))))
+      (true child)
+      (is eq t there-after-3 "not killed before the grace was over"))))
 
 (define-test (compiling session-of-its-own)
   ;; the command runs in a session of its own, so that nothing it runs can reach the editor's
@@ -522,7 +539,7 @@ force; *compile* killed afterwards."
           (marker (format nil "stopped-though-an-outside-program-writes begins ~d" (get-universal-time))))
       ;; a full *Messages* drops its oldest lines as new ones come, so what the compile said is
       ;; found after a line of the test's own, not after the size the log had
-      (loop repeat tuatara.command:*message-log-max* for n from 0
+      (loop repeat tuatara.command:*messages-kept* for n from 0
             do (tuatara.command:log-message (format nil "filler ~d ~a" n (make-string 200 :initial-element #\x))))
       (tuatara.command:log-message marker)
       (unwind-protect

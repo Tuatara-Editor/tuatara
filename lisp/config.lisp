@@ -89,11 +89,11 @@ the modes made from them. MAP is then :global, :normal, :insert, :support or
 key bound without MODE stays as it is everywhere else.
 
 LABEL, a string, is what the key hints show for the key instead of the
-command's name: (bind-key \"t h\" 'hl-line-mode :map :leader :label \"toggle
-hl-line\"). COMMAND may also be the label and the command together: '(\"toggle
-hl-line\" . hl-line-mode). A prefix key is labelled with COMMAND NIL, its
-binding left as it is: (bind-key \"t\" nil :map :leader :label \"toggle\") shows
-+toggle beside \\`t' after \\`SPC'."
+command's name: (bind-key \"t h\" 'current-line-mode :map :leader :label
+\"toggle current line\"). COMMAND may also be the label and the command
+together: '(\"toggle current line\" . current-line-mode). A prefix key is
+labelled with COMMAND NIL, its binding left as it is: (bind-key \"t\" nil :map
+:leader :label \"toggle\") shows +toggle beside \\`t' after \\`SPC'."
   (let* ((label (or label (and (consp command) (car command))))
          (command (if (consp command) (cdr command) command))
          (symbol (and (or command (null label))
@@ -202,7 +202,25 @@ editor starts."
     ("*TRUSTED-PROJECTS*" . "*untrusted-directories* decides which projects are trusted")
     ("*LSP-TRUSTED-PROJECTS*" . "*untrusted-directories* decides which projects are trusted")
     ("*SAVE-PLACE-MODE*" . tuatara-user:*remember-places*)
-    ("*SAVE-PLACE-LIMIT*" . tuatara-user:*remembered-places-limit*))
+    ("*SAVE-PLACE-LIMIT*" . tuatara-user:*remembered-places-limit*)
+    ("*DEBUG-ON-ERROR*" . tuatara-user:*backtrace-on-error*)
+    ("*MESSAGE-LOG-MAX*" . tuatara-user:*messages-kept*)
+    ("*KILL-RING-MAX*" . tuatara-user:*kill-ring-length*)
+    ("*KILL-RING-MAX-SIZE*" . tuatara-user:*kill-ring-octets*)
+    ("*MARK-RING-MAX*" . tuatara-user:*mark-ring-length*)
+    ("*SHOW-PAREN-MODE*" . tuatara-user:*show-matching-bracket*)
+    ("*BLINK-MATCHING-PAREN*" . tuatara-user:*say-matching-bracket*)
+    ("*ELECTRIC-PAIR-MODE*" . tuatara-user:*auto-close-mode*)
+    ("*ELECTRIC-PAIR-TYPING*" . tuatara-user:*auto-close-delimiters*)
+    ("*ELECTRIC-PAIR-SAFE-EXCLUSIONS*" . tuatara-user:*auto-close-safe-exclusions*)
+    ("*INDENT-TABS-MODE*" . tuatara-user:*indent-with-tabs*)
+    ("*TAB-ALWAYS-INDENT*" . tuatara-user:*tab-key-action*)
+    ("*GLOBAL-HL-LINE-MODE*" . tuatara-user:*global-current-line-mode*)
+    ("*HL-LINE-MODES*" . tuatara-user:*current-line-modes*)
+    ("*GLOBAL-CURSOR-COLUMN-MODE*" . tuatara-user:*global-current-column-mode*)
+    ("*CURSOR-COLUMN-MODES*" . tuatara-user:*current-column-modes*)
+    ("*SORT-FOLD-CASE*" . tuatara-user:*sort-ignores-case*)
+    ("*DEFAULT-DIRECTORY*" . tuatara-user:*no-file-directory*))
   "Settings renamed or taken away before Tuatara 1.0, each (OLD-NAME . SETTING)
 for one renamed, (OLD-NAME :INTO SETTING) for one taken away whose list is
 added to SETTING, or (OLD-NAME . WORDS) for one taken away, WORDS saying what

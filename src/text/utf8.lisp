@@ -557,6 +557,17 @@ byte's character as its one octet, any other lone surrogate as U+FFFD's three."
 without making them (CHAR-OCTET-LENGTH)."
   (loop for i from start below end sum (char-octet-length (char string i))))
 
+(defun string-octet-char-index (string octet)
+  "The index in STRING of the character its octet OCTET, counted as
+STRING-OCTET-LENGTH counts them, begins: how many characters come before it;
+the length of STRING for an octet at or past its end. O(OCTET), without making
+the octets."
+  (let ((at 0) (index 0) (length (length string)))
+    (loop while (and (< index length) (< at octet))
+          do (incf at (char-octet-length (char string index)))
+             (incf index))
+    index))
+
 (defun put-string-octets (string out at &key (start 0) (end (length string)))
   "Put STRING from START below END into OUT, octets, from AT, as
 STRING-OCTETS writes it, a larger copy of OUT made first when it has no room:

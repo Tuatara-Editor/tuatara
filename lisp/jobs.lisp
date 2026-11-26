@@ -358,7 +358,8 @@ indexing), else faint, in :mode-line-sign-idle, so that nothing after it
 moves as work starts and ends. What each job does, and how far it has got,
 are in the list of jobs (\\[jobs-manager]).
 - \"P\": P (for processing), which any font has (the standard).
-- any other text, such as ⚙, or \"\" (nf-fa-cog, U+F013) for a Nerd Font.
+- any other text, such as ⚙, or for a Nerd Font its cog, nf-fa-cog, written
+  (string (code-char #xf013)).
 - nil: nothing."
   :values (or (member nil) string))
 
@@ -578,8 +579,7 @@ from a new one of the same name."
 \(JOBS-ENTRIES), a line for each job, marks kept on the jobs still there,
 point on the same job or line, at its start, or with POINT :keep at its column."
   (let* ((key (jobs-key list))
-         (entries (jobs-entries))
-         (place (make-hash-table :test 'eq)))
+         (entries (jobs-entries)))
     (render-table-list
      list *jobs-columns* (group-sections entries #'job-entry-buffer)
      (lambda (entry mark section)
@@ -587,7 +587,7 @@ point on the same job or line, at its start, or with POINT :keep at its column."
        (if (queued-job-p entry)
            (let ((buffer (queued-job-buffer entry)))
              (list (format nil " ~a" (list-mark-sign mark))
-                   (cons (format nil "waiting, ~:r in line" (incf (gethash buffer place 0))) :job-waiting)
+                   (cons (format nil "waiting, ~:r in line" (1+ (position entry (queued-in buffer)))) :job-waiting)
                    (cons (queued-job-words entry) (list-mark-face mark))))
            (list (format nil " ~a" (list-mark-sign mark))
                  (cons (tuatara.runtime:job-state-words entry) :job-queued)
@@ -622,14 +622,8 @@ programs; another key means the list is out of date (KEEP-SHOWN-CURRENT)."
 (define-command jobs-manager ()
   "List the jobs in the background in *Jobs*, a section for each buffer: the
 job running there, with how far it has got, and those waiting their turn, in
-the order they will run, their text painted in the buffer meanwhile.
-\\<jobs-mode>\\[list-visit] goes to the buffer of the job on the line,
-\\[list-fold-heading] folds a buffer's section. \\[list-mark-for-deletion]
-marks the job on the line for deletion and \\[list-unmark-entry] unmarks it; \\[list-execute]
-drops the jobs marked for deletion that wait, and stops those running, after
-asking, \\[list-delete-marked] the marked ones (\\[list-mark-entry]), or the one on the line.
-\\[revert-buffer] lists them again, as the list does by itself while it is
-shown, when they have changed; \\[quit-window] returns."
+the order they will run, their text painted in the buffer meanwhile. The keys
+there are jobs-mode's."
   (let ((list (buffer-in-mode "*Jobs*" 'jobs-mode)))
     (show-buffer list)
     (jobs-render list :first-entry)))
@@ -655,11 +649,12 @@ after one stopped move up."
   (declare (ignore mark))
   (let ((waiting (remove-if-not #'queued-job-p jobs))
         (running (remove-if #'queued-job-p jobs)))
-    (when (y-or-n-p* (format nil "~a?" (list-question (cond ((and waiting running) "Drop or stop") (waiting "Drop") (t "Stop"))
-                                                      "job" jobs
-                                                      :name-of (lambda (job)
-                                                                 (let ((buffer (job-entry-buffer job)))
-                                                                   (if buffer (tuatara.buffer:buffer-name buffer) "without a buffer"))))))
+    (when (ask-list-question (y-or-n-p*)
+            (list-question (cond ((and waiting running) "Drop or stop") (waiting "Drop") (t "Stop"))
+                           "job" jobs
+                           :name-of (lambda (job)
+                                      (let ((buffer (job-entry-buffer job)))
+                                        (if buffer (tuatara.buffer:buffer-name buffer) "without a buffer")))))
       (mapc #'drop-queued-job waiting)
       (mapc #'tuatara.runtime:job-stop running)
       (unmark-list list)

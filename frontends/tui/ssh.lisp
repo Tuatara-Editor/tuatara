@@ -302,7 +302,7 @@ out; NIL when it names a token TOKENS lacks."
 %d, %u, %h, %r and %% written out (WRITTEN-OUT), those that are there."
   (let* ((settings (tuatara.defaults:ssh-settings (ssh-link-program link) (ssh-link-host link)))
          (home (string-right-trim "/" (tuatara.io:native (user-homedir-pathname))))
-         (tokens `((#\% . "%") (#\d . ,home) (#\u . ,(or (tuatara.io:own-variable "USER") ""))
+         (tokens `((#\% . "%") (#\d . ,home) (#\u . ,(or (tuatara.runtime:own-variable "USER") ""))
                    (#\h . ,(or (cdr (assoc "hostname" settings :test #'string=)) ""))
                    (#\r . ,(or (cdr (assoc "user" settings :test #'string=)) "")))))
     (loop for (key . value) in settings
@@ -560,21 +560,17 @@ said on the error output."
 
 ;;; Opening and closing
 
-(defun open-ssh-link (host name &key start)
-  "Connect to HOST with the system's ssh and bring the socket of the daemon
-NAME there to a private directory here, the daemon started first with START
-when none runs there, with what HOST is trusted with
-\(TUATARA.DEFAULTS:SERVER-PERMISSIONS) forwarded too: the SSH-LINK, whose
-socket (SSH-LINK-SOCKET) a client connects to. NIL, why said on the error
-output, when that cannot be done: no ssh or setpriv, ssh failing, no
-Tuatara there or another build of it, no daemon, or what it is trusted with
-not forwarded. A connection left by a client that crashed is told to end
-before its directory is deleted."
+(defun new-ssh-link (host)
+  "An SSH-LINK to HOST with the system's ssh and a private directory of its
+own here, with what HOST is trusted with (TUATARA.DEFAULTS:SERVER-PERMISSIONS),
+no connection made yet. NIL, why said on the error output, when there is no
+ssh or no such directory can be made. A connection left by a client that
+crashed is told to end before its directory is deleted."
   (let ((program (tuatara.io:system-program tuatara.defaults:*ssh-program*)))
     (unless program
       (format *error-output* "tuatara: ssh is not installed in the system's directories of programs: a daemon on ~
                               another machine is reached with it~%")
-      (return-from open-ssh-link nil))
+      (return-from new-ssh-link nil))
     (multiple-value-bind (directory lock)
         (handler-case
             (let ((base (tuatara.defaults:daemon-directory)))
@@ -591,17 +587,61 @@ before its directory is deleted."
               (tuatara.defaults:make-owned-directory "ssh/" :base base))
           ((or tuatara.runtime:refusal tuatara.io:file-system-error) (condition)
             (format *error-output* "tuatara: ~a~%" (shown (princ-to-string condition)))
-            (return-from open-ssh-link nil)))
-      (let ((link (make-ssh-link host program directory lock (tuatara.defaults:server-permissions host)))
-            (opened nil))
-        (unwind-protect
-             (multiple-value-bind (why said) (connect-ssh-link link name start)
-               (if why
-                   (progn (format *error-output* "tuatara: ~a~%" (shown why))
-                          (when said (say-what-ssh-said host said)))
-                   (setf opened link)))
-          (unless opened (close-ssh-link link)))
-        opened))))
+            (return-from new-ssh-link nil)))
+      (make-ssh-link host program directory lock (tuatara.defaults:server-permissions host)))))
+
+(defun open-ssh-link (host name &key start)
+  "Connect to HOST with the system's ssh and bring the socket of the daemon
+NAME there to a private directory here (NEW-SSH-LINK), the daemon started
+first with START when none runs there, with what HOST is trusted with
+forwarded too: the SSH-LINK, whose socket (SSH-LINK-SOCKET) a client
+connects to. NIL, why said on the error output, when that cannot be done: no
+ssh or setpriv, ssh failing, no Tuatara there or another build of it, no
+daemon, or what it is trusted with not forwarded."
+  (let ((link (or (new-ssh-link host) (return-from open-ssh-link nil)))
+        (opened nil))
+    (unwind-protect
+         (multiple-value-bind (why said) (connect-ssh-link link name start)
+           (if why
+               (progn (format *error-output* "tuatara: ~a~%" (shown why))
+                      (when said (say-what-ssh-said host said)))
+               (setf opened link)))
+      (unless opened (close-ssh-link link)))
+    opened))
+
+(defun list-daemons-there (host)
+  "Say on the standard output the daemons running on HOST, as tuatara
+--daemons there says them, asked over the system's ssh (NEW-SSH-LINK, closed
+again), what it says cleaned of control characters. The exit code: what the
+Tuatara there gave, or 1 when it could not be asked, why said on the error
+output."
+  (let ((link (or (new-ssh-link host) (return-from list-daemons-there 1))))
+    (unwind-protect
+         (multiple-value-bind (why said) (start-master link)
+           (if why
+               (progn (format *error-output* "tuatara: ~a~%" (shown why))
+                      (when said (say-what-ssh-said host said))
+                      1)
+               (multiple-value-bind (code said complained)
+                   (run-ssh link (ssh-arguments link :session :quiet :command (list (link-tuatara link) "--daemons")))
+                 (cond ((null code)
+                        (format *error-output* "tuatara: ~a did not list its daemons within ~d seconds~%"
+                                host *ssh-answer-seconds*)
+                        1)
+                       ((eql code 127)
+                        (format *error-output* "tuatara: ~a has no tuatara on the PATH ssh's commands are run with ~
+                                                there~%" host)
+                        1)
+                       ((eql code 255)
+                        (format *error-output* "tuatara: ssh lost its connection to ~a~%" host)
+                        (when complained (say-what-ssh-said host complained))
+                        1)
+                       (t (dolist (line (uiop:split-string (string-right-trim '(#\Newline) said)
+                                                           :separator '(#\Newline)))
+                            (format t "~a~%" (shown line)))
+                          (when complained (say-what-ssh-said host complained))
+                          code)))))
+      (close-ssh-link link))))
 
 (defun master-asker (&key (terminal (terminal-p 0)) (window (tuatara.defaults:ssh-askpass-window-p)))
   "How the ssh holding a connection can ask you what it needs: :TERMINAL with

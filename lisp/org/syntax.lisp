@@ -550,18 +550,47 @@ already uses one by that name, else NIL."
 begins to what its list's structure says of it (ORG-LIST-STRUCTURE), the
 list read last for an item in more than one; NIL before the first list.")
 
+(defun map-org-keyword-lines (function text names)
+  "Call FUNCTION with the value of each #+NAME: line of TEXT, its NAME one of
+NAMES in any case, in order: what follows the colon, blanks about it left out,
+\"\" for nothing. The lines of its blocks (#+begin_ to #+end_) are passed over.
+Complexity: O(the length of TEXT)."
+  (flet ((blank-p (c) (or (char= c #\Space) (char= c #\Tab)))
+         (begins-p (prefix at end) (and (<= (+ at (length prefix)) end)
+                                        (string-equal prefix text :start2 at :end2 (+ at (length prefix))))))
+    (let ((length (length text)) (in-block nil))
+      (loop for start = 0 then (1+ end)
+            for end = (or (position #\Newline text :start start) length)
+            do (let ((at (or (position-if-not #'blank-p text :start start :end end) end)))
+                 (cond (in-block (when (begins-p "#+end_" at end) (setf in-block nil)))
+                       ((begins-p "#+begin_" at end) (setf in-block t))
+                       ((begins-p "#+" at end)
+                        (let ((colon (position #\: text :start at :end end)))
+                          (when (and colon (find-if (lambda (name)
+                                                      (string-equal name text :start2 (+ at 2) :end2 colon))
+                                                    names))
+                            (let* ((from (or (position-if-not #'blank-p text :start (1+ colon) :end end) end))
+                                   (to (if (< from end)
+                                           (1+ (position-if-not #'blank-p text :start from :end end :from-end t))
+                                           from)))
+                              (funcall function (subseq text from to))))))))
+            until (>= end length)))))
+
 (defun org-todo-keywords-of (text)
   "The TODO keywords TEXT's #+TODO:, #+SEQ_TODO: and #+TYP_TODO: lines set, as
-(NOT-DONE . DONE), or *ORG-STANDARD-TODO-KEYWORDS* when it has none."
+(NOT-DONE . DONE), or *ORG-STANDARD-TODO-KEYWORDS* when it has none; the
+lines of its blocks are passed over (MAP-ORG-KEYWORD-LINES)."
   (let ((not-done '()) (done '()) (found nil))
-    (cl-ppcre:do-register-groups (words) ("(?im)^[ \\t]*#\\+(?:TODO|SEQ_TODO|TYP_TODO):[ \\t]*(.*)$" text)
-      (setf found t)
-      (let* ((names (mapcar (lambda (w) (subseq w 0 (or (position #\( w) (length w))))
-                            (uiop:split-string (string-trim " " words) :separator *org-blanks*)))
-             (names (remove "" names :test #'string=))
-             (bar (position "|" names :test #'string=)))
-        (cond (bar (setf not-done (append not-done (subseq names 0 bar)) done (append done (subseq names (1+ bar)))))
-              (names (setf not-done (append not-done (butlast names)) done (append done (last names)))))))
+    (map-org-keyword-lines
+     (lambda (words)
+       (setf found t)
+       (let* ((names (mapcar (lambda (w) (subseq w 0 (or (position #\( w) (length w))))
+                             (uiop:split-string words :separator *org-blanks*)))
+              (names (remove "" names :test #'string=))
+              (bar (position "|" names :test #'string=)))
+         (cond (bar (setf not-done (append not-done (subseq names 0 bar)) done (append done (subseq names (1+ bar)))))
+               (names (setf not-done (append not-done (butlast names)) done (append done (last names)))))))
+     text '("TODO" "SEQ_TODO" "TYP_TODO"))
     (if found (cons not-done done) *org-standard-todo-keywords*)))
 
 (defparameter *org-children-by-halves* 32
@@ -1276,8 +1305,8 @@ are never closed."
       (let ((node (make-org-node 'table
                                  :contents-begin (if table-el nil start)
                                  :contents-end (if table-el nil contents-end)
-                                        :properties (append (list :type (if table-el 'table.el 'org))
-                                                            (and formulas (list :tblfm (reverse formulas)))))))
+                                 :properties (append (list :type (if table-el 'table.el 'org))
+                                                     (and formulas (list :tblfm (reverse formulas)))))))
         (org-finish (org-element-with-affiliated node position start affiliated) p limit)))))
 
 (defun org-table-row-parser (position limit)
@@ -1832,20 +1861,102 @@ its label the groups.")
 
 (defun org-links-as-labels (text)
   "TEXT with each bracket link written as it is shown: [[target][label]] as
-label, [[target]] as its target with the backslashes of its escapes taken off."
-  (if (search "[[" text)
-      (cl-ppcre:regex-replace-all *org-bracket-link-scanner* text
-                                  (lambda (match target label)
-                                    (declare (ignore match))
-                                    (or label (org-link-unescape target)))
-                                  :simple-calls t)
-      text))
+label, [[target]] as its target with the backslashes of its escapes taken off.
+The links are those *ORG-BRACKET-LINK-SCANNER* finds, a label ending at the
+first ]] on its line. Linear in TEXT's length."
+  (let ((n (length text))
+        (target-end -1)
+        (closing -1)
+        (line-end -1)
+        (copied 0)
+        (out nil)
+        (i (or (search "[[" text) (length text))))
+    (flet ((stop (from)
+             ;; the ] ending a target begun at FROM, or a backslash with nothing after it on its line; N for none
+             (loop with k = from
+                   while (< k n)
+                   do (case (char text k)
+                        (#\] (return k))
+                        (#\\ (if (and (< (1+ k) n) (char/= (char text (1+ k)) #\Newline))
+                                  (incf k 2)
+                                  (return k)))
+                        (t (incf k)))
+                   finally (return n))))
+      (loop while (< (1+ i) n)
+            do (if (and (char= (char text i) #\[) (char= (char text (1+ i)) #\[))
+                   (let* ((start (+ i 2))
+                          (q (progn (when (< target-end start) (setf target-end (stop start)))
+                                    target-end))
+                          (end nil)
+                          (label nil))
+                     (when (and (< q n) (char= (char text q) #\]) (< (1+ q) n))
+                       (case (char text (1+ q))
+                         (#\] (setf end (+ q 2)))
+                         (#\[ (when (< closing (+ q 2))
+                                (setf closing (or (search "]]" text :start2 (+ q 2)) n)))
+                              (when (< line-end (+ q 2))
+                                (setf line-end (or (position #\Newline text :start (+ q 2)) n)))
+                              (when (< closing line-end)
+                                (setf end (+ closing 2)
+                                      label (subseq text (+ q 2) closing))))))
+                     (cond (end (unless out (setf out (make-string-output-stream)))
+                                (write-string text out :start copied :end i)
+                                (write-string (or label (org-link-unescape (subseq text start q))) out)
+                                (setf copied end i end))
+                           (t (incf i))))
+                   (incf i))))
+    (cond (out (write-string text out :start copied)
+               (get-output-stream-string out))
+          (t text))))
+
+(defun org-emphasis-off (text)
+  "TEXT with the marks of emphasis (*bold*, /italic/, _under_, =code=,
+~verbatim~, +struck+) taken off. A mark opens after a space, a line's start or
+punctuation other than a mark, and before a character that is not a space; it
+closes at the first same mark on that line after a character that is not a
+space and before a space, punctuation or the end. What is inside is kept as
+written, marks and all. Linear in TEXT's length."
+  (let* ((marks "*/_=~+")
+         (n (length text))
+         (closers (make-array 6 :initial-element -1))
+         (line-end -1)
+         (copied 0)
+         (out nil))
+    (labels ((space-p (c) (find c '(#\Space #\Tab #\Linefeed #\Return #\Page)))
+             (edge-p (k)
+               (or (< k 0) (>= k n)
+                   (let ((c (char text k)))
+                     (not (or (alphanumericp c) (char= c #\_) (find c marks))))))
+             (closer-p (k m)
+               (and (char= (char text k) m) (not (space-p (char text (1- k)))) (edge-p (1+ k))))
+             (closer (index m from)
+               (when (< (aref closers index) from)
+                 (setf (aref closers index)
+                       (or (loop for k from from below n when (closer-p k m) return k) n)))
+               (aref closers index)))
+      (let ((i 0))
+        (loop while (< i n)
+              do (let* ((m (char text i))
+                        (index (position m marks)))
+                   (if (and index (edge-p (1- i)) (< (1+ i) n) (not (space-p (char text (1+ i)))))
+                       (let ((j (closer index m (+ i 2))))
+                         (when (< line-end i)
+                           (setf line-end (or (position #\Newline text :start i) n)))
+                         (cond ((< j line-end)
+                                (unless out (setf out (make-string-output-stream)))
+                                (write-string text out :start copied :end i)
+                                (write-string text out :start (1+ i) :end j)
+                                (setf copied (1+ j) i (1+ j)))
+                               (t (incf i))))
+                       (incf i))))))
+    (cond (out (write-string text out :start copied)
+               (get-output-stream-string out))
+          (t text))))
 
 (defun org-plain-text (text)
   "TEXT as words alone: links as they are shown (ORG-LINKS-AS-LABELS) and the
-marks of emphasis (*bold*, /italic/, _under_, =code=, ~verbatim~, +struck+) off."
-  (cl-ppcre:regex-replace-all "(?<![\\w*/_=~+])([*/_=~+])(\\S|\\S.*?\\S)\\1(?![\\w*/_=~+])"
-                              (org-links-as-labels text) "\\2"))
+marks of emphasis off (ORG-EMPHASIS-OFF). Linear in TEXT's length."
+  (org-emphasis-off (org-links-as-labels text)))
 
 (defun org-link-parser (p)
   "The link at P: [[TARGET][DESCRIPTION]], [[TARGET]], <TYPE:PATH> or a plain TYPE:PATH."

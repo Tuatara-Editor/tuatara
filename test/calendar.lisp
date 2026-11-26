@@ -69,7 +69,7 @@ each (YEAR MONTH WEEK-START TEXT)."
       (let ((tuatara-user:*calendar-months-per-row* 5))
         (is = 5 (titles 80))))
     ;; C-v then scrolls four: September to December, then January to April, on February's first
-    (is = (calendar-day 2027 2 1) (nth-value 2 (calendar-keys "C-v" :width 110))))
+    (is = (calendar-day 2027 2 1) (nth-value 2 (calendar-keys "<next>" :width 110))))
   (let ((tuatara-user:*calendar-months* 4))
     (multiple-value-bind (f editor) (calendar-keys "" :width 110)
       (declare (ignore editor))
@@ -77,7 +77,7 @@ each (YEAR MONTH WEEK-START TEXT)."
   ;; moving through a year's calendar: C-v scrolls as many months as are shown
   (let ((tuatara-user:*calendar-months* 12))
     (is = (calendar-day 2026 11 3) (nth-value 2 (calendar-keys "M-}")))
-    (is = (calendar-day 2027 10 1) (nth-value 2 (calendar-keys "C-v")))))
+    (is = (calendar-day 2027 10 1) (nth-value 2 (calendar-keys "<next>")))))
 
 (defun calendar-day (y m d)
   "The day number of Y-M-D."
@@ -108,11 +108,11 @@ calendar."
 (define-modal-test (calendar calendar-moving)
   (flet ((at (keys) (nth-value 2 (calendar-keys keys))))
     (is = (calendar-day 2026 10 3) (at ""))
-    (is = (calendar-day 2026 10 4) (at "C-f"))
-    (is = (calendar-day 2026 10 2) (at "C-b"))
-    (is = (calendar-day 2026 10 6) (at "C-u 3 C-f"))
-    (is = (calendar-day 2026 10 10) (at "C-n"))
-    (is = (calendar-day 2026 9 26) (at "C-p"))
+    (is = (calendar-day 2026 10 4) (at "<right>"))
+    (is = (calendar-day 2026 10 2) (at "<left>"))
+    (is = (calendar-day 2026 10 6) (at "C-u 3 <right>"))
+    (is = (calendar-day 2026 10 10) (at "<down>"))
+    (is = (calendar-day 2026 9 26) (at "<up>"))
     ;; the modal keys: h l a day, j k a week, J K a month, H L scroll, g h today, g l back as cd -
     (is = (calendar-day 2026 10 11) (at "l j"))
     (is = (calendar-day 2026 9 25) (at "h k"))
@@ -125,11 +125,10 @@ calendar."
     (is = (calendar-day 2026 10 3) (at "K K g h g l g l"))
     (is = (calendar-day 2026 11 3) (at "M-}"))
     (is = (calendar-day 2026 9 3) (at "M-{"))
-    (is = (calendar-day 2027 10 3) (at "C-x ]"))
-    (is = (calendar-day 2025 10 3) (at "C-x ["))
+    (is = (calendar-day 2027 10 3) (at "]"))
+    (is = (calendar-day 2025 10 3) (at "["))
     ;; the month's last day when the next is shorter
     (is = (calendar-day 2026 11 30) (at "M-e M-}"))
-    (is = (calendar-day 2026 9 28) (at "C-a"))
     (is = (calendar-day 2026 10 4) (at "C-e"))
     (is = (calendar-day 2026 10 1) (at "M-a"))
     (is = (calendar-day 2026 10 31) (at "M-e"))
@@ -137,9 +136,9 @@ calendar."
     (is = (calendar-day 2026 12 31) (at "M->"))
     ;; scrolling keeps the day while it is shown, else today, else the middle month's first
     (is = (calendar-day 2026 10 3) (at ">"))
-    (is = (calendar-day 2027 1 1) (at "C-v"))
-    (is = (calendar-day 2026 10 3) (at "C-v M-v"))
-    (is = (calendar-day 2026 10 3) (at "C-x ] ."))
+    (is = (calendar-day 2027 1 1) (at "<next>"))
+    (is = (calendar-day 2026 10 3) (at "<next> <prior>"))
+    (is = (calendar-day 2026 10 3) (at "] ."))
     (is = (calendar-day 2026 12 24) (at "g d 2 0 2 6 - 1 2 - 2 4 RET"))
     (is = (calendar-day 2027 3 1) (at "o m a r SPC 2 0 2 7 RET"))
     ;; a month as you write it: jan '26, jan 27, january 2027, jan alone, 2027-03, a date's month
@@ -159,12 +158,13 @@ calendar."
     (false (tuatara.buffer:buffer-mark-active-p (tuatara.buffer:find-buffer "*Calendar*"))))
   (let ((editor (nth-value 1 (calendar-keys "% y"))))
     (true (search "October 2026" (or (first (tuatara.command:editor-kill-ring editor)) ""))))
-  ;; with the modal editing off, h is not the calendar's (Emacs's calendar has it for holidays)
+  ;; with the modal editing off, h is not the calendar's
   (let ((tuatara-user:*modal-editing* nil))
     (is = (calendar-day 2026 10 3) (nth-value 2 (calendar-keys "h"))))
   ;; the week from Sunday
   (let ((tuatara-user:*calendar-week-start-day* 0))
-    (is = (calendar-day 2026 9 27) (nth-value 2 (calendar-keys "C-a"))))
+    (is = (calendar-day 2026 9 27)
+        (nth-value 2 (calendar-keys "M-x c a l e n d a r - b e g i n n i n g - o f - w e e k RET"))))
   ;; what it says, and its mode line
   (multiple-value-bind (f editor) (calendar-keys "p d")
     (declare (ignore editor))
@@ -178,7 +178,7 @@ calendar."
                               when (member :calendar-selected (if (listp face) face (list face)))
                                 collect text))))
     (is equal '(" 3") (selected (calendar-keys "")))
-    (is equal '(" 4") (selected (calendar-keys "C-f"))))
+    (is equal '(" 4") (selected (calendar-keys "<right>"))))
   ;; on the cursor's colour, as the support state's cursor has it; reversed when it has the text's
   (let ((tuatara-user:*tuatara-support-cursor-colour* "#ff0000"))
     (calendar-keys "")
@@ -204,7 +204,7 @@ calendar."
                                                   :test #'string=))))
   (is = 1 (length (tuatara.command:editor-windows (nth-value 1 (calendar-keys "q")))))
   ;; no cursor drawn over the day at point, which the calendar marks itself; back once it is closed
-  (is eq :hidden (tuatara.frontend.fake:fake-cursor-shape (calendar-keys "C-f")))
+  (is eq :hidden (tuatara.frontend.fake:fake-cursor-shape (calendar-keys "<right>")))
   (isnt eq :hidden (tuatara.frontend.fake:fake-cursor-shape (calendar-keys "q")))
   ;; SPC c below, SPC C in the window you are in, q bringing its buffer back
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 3 10 2026)))
@@ -236,7 +236,7 @@ calendar."
       (calendar-keys "u")
       (false (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*Calendar*") 'tuatara.defaults::calendar-marked))
       ;; a shows the agenda of the day's week, point on the day
-      (multiple-value-bind (f editor) (calendar-keys "C-f C-f a")
+      (multiple-value-bind (f editor) (calendar-keys "<right> <right> a")
         (declare (ignore editor))
         (true (tuatara.frontend.fake:fake-frame-showing f "Dentist"))
         (let ((agenda (tuatara.buffer:find-buffer "*Org Agenda*")))

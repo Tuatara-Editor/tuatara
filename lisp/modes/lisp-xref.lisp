@@ -32,10 +32,7 @@ where \\[xref-go-back] goes back to; the newest *HISTORY-KEPT* of them.")
   "Show MARKER's buffer in the selected window, point where MARKER's anchor is now."
   (destructuring-bind (b . anchor) marker
     (show-buffer b)
-    (goto-shown b (min (tuatara.buffer:buffer-size b)
-                       (or (ignoring-errors-reported ("finding a place in ~a" (tuatara.buffer:buffer-name b))
-                             (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version b)))
-                           0)))))
+    (goto-shown b (or (anchor-in b anchor) 0))))
 
 (defun live-marker-p (marker)
   "True when MARKER's buffer is still alive."
@@ -340,9 +337,7 @@ were evaluated from in this session."
                                      (let ((b b) (anchor anchor) (name (tuatara.buffer:buffer-name b)))
                                        (lambda ()
                                          (if (live-buffer-p b)
-                                             (values b (min (tuatara.buffer:buffer-size b)
-                                                            (tuatara.text:anchor-position
-                                                             anchor (tuatara.buffer:buffer-version b))))
+                                             (values b (or (anchor-in b anchor) 0))
                                              (values nil
                                                      (format nil "~a, where it was defined, has been killed" name))))))
                     out))))))

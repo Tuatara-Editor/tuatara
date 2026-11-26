@@ -13,7 +13,7 @@
 ;;;; else as *GLOBAL-SOFT-WRAP-MODE* says. Views laid out in fixed columns or by
 ;;;; the row (the agenda, the calendar, a terminal) never wrap. While it is on,
 ;;;; the keys that move up and down go by rows, and the row point is on is
-;;;; painted in :soft-wrap-row over the line's :hl-line, each of which the init
+;;;; painted in :soft-wrap-row over the line's :current-line, each of which the init
 ;;;; file may colour.
 
 (in-package #:tuatara.defaults)
@@ -83,11 +83,11 @@ indicator stands where a number would); 0 otherwise."
 (defun soft-wrap-row-range (editor window rows)
   "The row of WINDOW that point is on, as a list of one (START END :soft-wrap-row)
 range over ROWS, when its buffer wraps its lines and highlights the line point
-is on (HL-LINE-P): painted over the line's :hl-line, so that the two may be
+is on (HL-LINE-P): painted over the line's :current-line, so that the two may be
 coloured apart. NIL otherwise, and in windows not selected."
   (let ((buffer (tuatara.display:window-buffer window))
         (point (tuatara.display:window-point window)))
-    (when (and (eq window (editor-window editor)) (soft-wrap-p buffer) (hl-line-p buffer))
+    (when (and (eq window (editor-window editor)) (soft-wrap-p buffer) (current-line-p buffer))
       (loop for row across rows
             when (or (tuatara.display:row-column-of row point)
                      (and (<= (tuatara.display:row-start row) point) (< point (tuatara.display:row-end row))))

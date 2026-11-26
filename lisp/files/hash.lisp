@@ -82,28 +82,28 @@ given, which stopping ends. SOURCE is closed at the end, however it comes
                                    (if (eq digest :md5) 32 64) cancel done job))
     (close-source source)))
 
-(tuatara.io:define-c-function ("EVP_MD_CTX_new" evp-md-ctx-new) :pointer
+(tuatara.runtime:define-c-function ("EVP_MD_CTX_new" evp-md-ctx-new) :pointer
   "A new digest context of *HASH-LIBRARY*, a null pointer when none could be made.")
 
-(tuatara.io:define-c-function ("EVP_MD_CTX_free" evp-md-ctx-free) :void
+(tuatara.runtime:define-c-function ("EVP_MD_CTX_free" evp-md-ctx-free) :void
   "Let go of the digest context CONTEXT."
   (context :pointer))
 
-(tuatara.io:define-c-function ("EVP_sha256" evp-sha256) :pointer
+(tuatara.runtime:define-c-function ("EVP_sha256" evp-sha256) :pointer
   "The SHA-256 digest of *HASH-LIBRARY*.")
 
-(tuatara.io:define-c-function ("EVP_md5" evp-md5) :pointer
+(tuatara.runtime:define-c-function ("EVP_md5" evp-md5) :pointer
   "The MD5 digest of *HASH-LIBRARY*.")
 
-(tuatara.io:define-c-function ("EVP_DigestInit_ex" evp-digest-init) :int
+(tuatara.runtime:define-c-function ("EVP_DigestInit_ex" evp-digest-init) :int
   "Begin a sum by DIGEST in CONTEXT, ENGINE a null pointer; 1 when it began."
   (context :pointer) (digest :pointer) (engine :pointer))
 
-(tuatara.io:define-c-function ("EVP_DigestUpdate" evp-digest-update) :int
+(tuatara.runtime:define-c-function ("EVP_DigestUpdate" evp-digest-update) :int
   "Add the COUNT octets at DATA to the sum in CONTEXT."
   (context :pointer) (data :pointer) (count :size))
 
-(tuatara.io:define-c-function ("EVP_DigestFinal_ex" evp-digest-final) :int
+(tuatara.runtime:define-c-function ("EVP_DigestFinal_ex" evp-digest-final) :int
   "Write the sum in CONTEXT at OUT, SIZE a null pointer."
   (context :pointer) (out :pointer) (size :pointer))
 
@@ -253,14 +253,19 @@ said instead, except for the files the kernel makes up as they are read."
         (sb-posix:close fd)))
     started))
 
+(defun file-piece (size)
+  "Octets to read a file of SIZE octets into a piece at a time: as many as it
+holds, at least 4096 and at most *HASH-PIECE*."
+  (make-array (max 4096 (min *hash-piece* size)) :element-type '(unsigned-byte 8)))
+
 (defun fd-sha256 (fd path &key (cancel (list nil)) (done (list 0)) buffer)
   "The SHA-256 sum, in hex, of the file open as file descriptor (FD) (PATH,
 for messages), read from its start at explicit offsets on the thread that
 asks, as FILE-SHA256 sums; NIL when it cannot be read or CANCEL's car turns
 true first."
-  (let ((buffer (or buffer (make-array *hash-piece* :element-type '(unsigned-byte 8)))))
-    (ignoring-errors-reported ("summing ~a" path)
-      (sum-source (file-source fd path) buffer :cancel cancel :done done))))
+  (ignoring-errors-reported ("summing ~a" path)
+    (sum-source (file-source fd path) (or buffer (file-piece (tuatara.io:stamp-size (tuatara.io:fd-stamp fd path))))
+                :cancel cancel :done done)))
 
 (defun file-sha256 (path &key (cancel (list nil)) (done (list 0)) buffer)
   "The SHA-256 sum, in hex, of the file at PATH as it is on disk, summed on the
@@ -293,8 +298,7 @@ say) before anything is summed or copied; an error it signals stops the copy."
     (unwind-protect
          (let* ((before (progn (when check (funcall check (tuatara.io:fd-real-path in)))
                                (tuatara.io:fd-stamp in source)))
-                (buffer (make-array (max 4096 (min *hash-piece* (tuatara.io:stamp-size before)))
-                                    :element-type '(unsigned-byte 8))))
+                (buffer (file-piece (tuatara.io:stamp-size before))))
            (flet ((stopped ()
                     (tuatara.runtime:job-check-stop)
                     (return-from copy-file-checked nil))

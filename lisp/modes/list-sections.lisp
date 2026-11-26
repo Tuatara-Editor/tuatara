@@ -234,7 +234,12 @@ pieces added, in order, as RENDER-PIECES and PIECES-TEXT take them."
 (defun entry-member (entry)
   "The member ENTRY, a line of a list in sections (SECTIONED-PIECES), shows;
 NIL for a heading's or another line's."
-  (and (eq (first entry) :member) (second entry)))
+  (and (consp entry) (eq (first entry) :member) (second entry)))
+
+(defun entry-member-or-self (entry)
+  "The member ENTRY, a line of a list, shows when it is a section's member line
+\(ENTRY-MEMBER); else ENTRY itself, as a list without sections has it."
+  (if (and (consp entry) (eq (first entry) :member)) (second entry) entry))
 
 (defun list-member-at (list)
   "The member of a section on the current line of LIST (SECTIONED-PIECES), or

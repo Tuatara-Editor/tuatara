@@ -432,13 +432,14 @@ the debug log. Why not is said otherwise. True when the opening was started."
                     (t nil)))))))))
 
 (defun openings-tick (editor)
-  "Tick function: say how the openings in the desktop's programs went; T while one is under way."
+  "Tick function: say how the openings in the desktop's programs went; :WAITING
+while one is under way, each waking the editor as it ends (*TICK-FUNCTIONS*)."
   (declare (ignore editor))
   (dolist (opening (reverse *openings*))
     (when (cdr opening)
       (setf *openings* (remove opening *openings*))
       (message "~a" (cdr opening))))
-  (and *openings* t))
+  (and *openings* :waiting))
 
 (defun shown-file-argument (prompt)
   "The file a command works on, its native name: the one the current buffer
@@ -509,6 +510,16 @@ empty string when it has none."
   "True when ADDRESS is of a kind OPEN-ADDRESS hands on (*OPEN-ADDRESS-SCHEMES*)."
   (and (member (address-scheme address) *open-address-schemes* :test #'string=) t))
 
+(defun address-shown (address)
+  "ADDRESS short, for a question: its scheme and host when it has them
+\(https://example.org), else what comes before a question mark, cut to 60
+characters."
+  (let* ((slashes (search "://" address))
+         (host-end (and slashes (or (position-if (lambda (c) (find c "/?#")) address :start (+ slashes 3))
+                                    (length address))))
+         (short (subseq address 0 (or host-end (position #\? address) (length address)))))
+    (if (> (length short) 60) (concatenate 'string (subseq short 0 59) "…") short)))
+
 (defun open-address (address)
   "Hand ADDRESS, a web or mail address, to the desktop's program after asking
 \(a link followed in Org or a terminal),
@@ -522,9 +533,10 @@ kind (*OPEN-ADDRESS-SCHEMES*) is refused, and that is said."
       (cond ((not (open-address-p address))
              (message "Links of the kind ~a are not opened: ~a" (address-scheme address) address))
             ((null program) (message "~a" (opener-missing given type)))
-            ((not (yes-or-no-p* (format nil
-                                        "Open ~a in ~a, outside Tuatara?~:[ (the files it asked to attach left out)~;~]"
-                                        address label (string= address asked))))
+            ((not (yes-or-no-p* (format nil "Open ~a in ~a?" (address-shown address) label)
+                                :details (format nil "~a~%~%It opens outside Tuatara.~:[~%The files it asked to ~
+                                                      attach are left out.~;~]~%"
+                                                 address (string= address asked))))
              (message "Not opened"))
             (t (start-detached program (append arguments (list address)) :label "open address")
                (message "Opened ~a" address))))))

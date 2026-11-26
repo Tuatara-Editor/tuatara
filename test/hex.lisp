@@ -324,6 +324,16 @@
     (is = 100 (tuatara.defaults::hash-piece-octets 100))
     (is = 65536 (tuatara.defaults::hash-piece-octets 1000000))))
 
+(define-test (hex-and-sums small-file-summed-into-a-small-piece)
+  ;; summing a few octets reads them into a piece their size, not one of *HASH-PIECE*
+  (with-test-directory (dir)
+    (let ((path (namestring (put-file (merge-pathnames "ten.txt" dir) "0123456789"))))
+      (tuatara.defaults::file-sha256 path)
+      (multiple-value-bind (sum seconds octets) (tuatara.bench::measuring (tuatara.defaults::file-sha256 path))
+        (declare (ignore seconds))
+        (is string= "84d89877f0d4041efb6bf91a16f0248f2fd573e6af05c19f96bedb9f882f7882" sum)
+        (true (< octets 65536) "~d octets made to sum ten" octets)))))
+
 (define-test (hex-and-sums hex-rows-cheaply)
   ;; a row of the hex view is made without writing text through a stream per octet
   (let ((rope (tuatara.text:make-rope (coerce (loop for i below 4096 collect (mod i 256))

@@ -76,7 +76,8 @@ the jobs and drops those marked.")
     (with-background ()
       (let ((f (run-keys "r r % a / b RET M-x j o b s - m a n a g e r RET d C-p TAB x" :text "a a a" :width 150
                                                                                        :height 12)))
-        (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "Stop the job *scratch* (1 in a folded section)?")))
+        (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "Stop the job *scratch*?"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "It is in a folded section.")))
       (let ((list (tuatara.buffer:find-buffer "*Jobs*"))) (when list (tuatara.buffer:kill-buffer list)))
       (let ((f (run-keys "r r % a / b RET M-x j o b s - m a n a g e r RET" :text "a a a" :width 150 :height 12)))
         (true (tuatara.frontend.fake:fake-frame-showing f " M" "State"))))))
@@ -115,6 +116,40 @@ the jobs and drops those marked.")
                                                                 :width 150
                                                                 :height 12)
                                                       "No jobs in the background")))))
+
+(define-modal-test (jobs marked-waiting-job-keeps-its-place)
+  ;; marking a waiting job draws its row again with its own place in line, not one counted on from the full draw
+  (let ((list (tuatara.buffer:find-buffer "*Jobs*"))) (when list (tuatara.buffer:kill-buffer list)))
+  (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.3))))
+    (with-background ()
+      (let ((f (run-keys "r r % a / b RET r r % b / c RET r r % c / d RET M-x j o b s - m a n a g e r RET j j m q"
+                         :text "a a a" :width 150 :height 12)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "waiting, second in line" "Replacing c with d"))
+        (false (tuatara.frontend.fake:fake-frame-showing f "third in line"))))))
+
+(define-modal-test (jobs queued-case-follows-its-text)
+  ;; a case change queued behind a job that lengthens the text before it changes the text it was given, where
+  ;; that text stands when its turn comes, even on the text now
+  (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
+    (with-background ()
+      (sb-int:encapsulate 'tuatara.buffer:buffer-text-at 'unknown (lambda (function &rest arguments)
+                                                                      (declare (ignore function arguments))
+                                                                      nil))
+      (unwind-protect
+           (let ((editor (nth-value 1 (run-keys (list "r r % a / X X X X RET"
+                                                      (lambda ()
+                                                        (let ((b (session-buffer tuatara.command:*editor*)))
+                                                          (tuatara.defaults::select-bounds b 3 5)
+                                                          (funcall 'tuatara.defaults::upcase-region))))
+                                                :text (format nil "ab~%cd~%ef~%") :width 150))))
+             (is string= (format nil "XXXXb~%CD~%ef~%") (session-text editor)))
+        (sb-int:unencapsulate 'tuatara.buffer:buffer-text-at 'unknown)))))
+
+(define-test (jobs selection-commands-say-nothing-selected)
+  ;; the commands on the selection say alike that they were not run when nothing is selected
+  (dolist (command '("u p c a s e - r e g i o n" "k i l l - r e g i o n" "k i l l - r i n g - s a v e"))
+    (let ((f (run-keys (format nil "M-x ~a RET" command) :text "abc" :width 80)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "No selection:" "was not run")))))
 
 (define-test (jobs reports-say-alike)
   (is string= "in 1.5 seconds" (tuatara.defaults::job-done-words 1.5 0))

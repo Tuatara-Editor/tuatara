@@ -111,17 +111,6 @@ the commands made while the editor runs (TUATARA.COMMAND:INSTALL-COMMAND), such 
   (false (find-if (lambda (line) (search "  test/" line)) (reuse-index-lines))
          "The reuse index lists a definition from a test file."))
 
-(define-test (definitions reuse-index-leaves-out-commands-made-running)
-  ;; a command made while the editor runs, as an input method's key is, whatever test made it and left it
-  (let ((name (tuatara.defaults::input-method-key-command "reuseprobe" "swedish-postfix")))
-    (unwind-protect
-         (progn
-           (true (fboundp name))
-           (false (find-if (lambda (line) (search "input-method-reuseprobe" line)) (reuse-index-lines))))
-      (tuatara.command:forget-command name)
-      (fmakunbound name)
-      (unintern name :tuatara.defaults))))
-
 (defun reuse-index-report (&optional (stream *standard-output*))
   "Print to STREAM whether test/api/reuse-index.txt is what the loaded code defines, and if not the lines added and
 removed, after a line that counts them."

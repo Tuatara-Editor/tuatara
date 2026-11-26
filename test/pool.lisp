@@ -132,6 +132,41 @@ asleep), as Linux counts it."
         (setf told (sb-thread:semaphore-count tuatara.runtime::**stop-watch-wake**))))
     (true (< told 4) "the watching thread was told ~d times" told)))
 
+(define-test (pool watch-wakes-after-a-call-it-missed)
+  ;; a short call that begins and ends as the watching thread starts its look, its wake-up taken
+  ;; by the watch emptying its wakes, still leaves the watch woken by the next call: a slow one
+  ;; after it is cut short
+  (let ((watch-start nil) (played (list nil)))
+    (tuatara.runtime:stoppable-work ((list nil) :slow 1/20)
+      (tuatara.runtime:stoppable nil))
+    (setf watch-start tuatara.runtime::**stop-watch**)
+    (sb-int:encapsulate 'sb-thread:try-semaphore 'call-missed
+                        (lambda (function semaphore &rest arguments)
+                          (when (and (eq sb-thread:*current-thread* watch-start)
+                                     (eq semaphore tuatara.runtime::**stop-watch-wake**)
+                                     (null (car played)))
+                            (setf (car played) t)
+                            ;; what a short call does as it begins
+                            (when (sb-ext:compare-and-swap (symbol-value 'tuatara.runtime::**stop-watch-waiting**)
+                                                           t nil)
+                              (sb-thread:signal-semaphore semaphore)))
+                          (apply function semaphore arguments)))
+    (unwind-protect
+         (multiple-value-bind (value reason)
+             (tuatara.runtime:stoppable-work ((list nil) :slow 1/20)
+               ;; wakes the watch, which then looks
+               (tuatara.runtime:stoppable nil)
+               (loop repeat 200 until (car played) do (sleep 0.01))
+               ;; the watch asleep again before the slow call
+               (sleep 0.2)
+               (let ((deadline (+ (get-internal-real-time) (* 3 internal-time-units-per-second))))
+                 (tuatara.runtime:stoppable (loop until (> (get-internal-real-time) deadline))))
+               :finished)
+           (true (car played) "the short call was played")
+           (false value)
+           (is eq :slow reason))
+      (sb-int:unencapsulate 'sb-thread:try-semaphore 'call-missed))))
+
 (define-test (pool stopped-call-left-once)
   ;; a stoppable call cut short goes on leaving with its own clean-up done to the end, though
   ;; it is interrupted again on the way out, as the watch interrupts a thread still in a

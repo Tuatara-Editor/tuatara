@@ -293,6 +293,40 @@ STYLE, with KEYS typed, INIT (a string) as the init file, and ACTIONS, a list of
            tuatara.display:*current-theme*)
       (delete-file file))))
 
+;; a screen on /dev/null: ncurses writes its start there and reads nothing
+(defun open-null-stream (mode)
+  "The C library's stream on /dev/null opened for MODE (\"r\" or \"w\")."
+  (sb-alien:alien-funcall (sb-alien:extern-alien "fopen" (function sb-sys:system-area-pointer sb-alien:c-string
+                                                                   sb-alien:c-string))
+                          "/dev/null" mode))
+
+(define-test (themes terminal-keys-with-true-colour)
+  ;; started for 24-bit colour inside tmux, the screen still reads the keys tmux sends its own
+  ;; way (Home ESC [ 1 ~, End ESC [ 4 ~), and xterm's as before
+  (tuatara.frontend.tui::load-ncurses)
+  (let ((keys (tuatara.frontend.tui::terminal-key-strings "tmux-256color"))
+        (escape (string (code-char 27))))
+    (is equal (format nil "~a[1~~" escape) (cdr (assoc "khome" keys :test #'string=)))
+    (false (assoc "kmous" keys :test #'string=))
+    (false (tuatara.frontend.tui::terminal-key-strings "no-such-terminal"))
+    (let* ((out (open-null-stream "w"))
+           (in (open-null-stream "r"))
+           (screen (tuatara.frontend.tui::%newterm "xterm-direct256" out in))
+           (before (tuatara.frontend.tui::%set-term screen)))
+      (unwind-protect
+           (flet ((code (sequence) (tuatara.frontend.tui::%key-defined (format nil "~a~a" escape sequence))))
+             (tuatara.frontend.tui::%keypad (tuatara.frontend.tui::stdscr) t)
+             (tuatara.frontend.tui::define-terminal-keys keys)
+             (true (plusp (code "OH")))
+             (is = (code "OH") (code "[1~"))
+             (is = (code "OF") (code "[4~")))
+        (unless (tuatara.runtime:null-pointer-p before)
+          (tuatara.frontend.tui::%set-term before))
+        (tuatara.frontend.tui::%delscreen screen)
+        (dolist (stream (list out in))
+          (sb-alien:alien-funcall (sb-alien:extern-alien "fclose" (function sb-alien:int sb-sys:system-area-pointer))
+                                  stream))))))
+
 (define-test (themes follow-the-desktop)
   (with-theme-restored
     ;; the window's theme is the desktop's style: ao-light while it is light, ao-dark while dark

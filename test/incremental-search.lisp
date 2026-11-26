@@ -290,7 +290,7 @@ of matches made in the background."
     (is string= "a&b&c" (session-text editor)))
   ;; flags are refused, RET waits; C-g leaves the text alone
   (multiple-value-bind (f editor) (run-keys "r r o / 0 / g RET C-g" :text "foo" :width 200)
-    (true (tuatara.frontend.fake:fake-frame-showing f "[no flags here: a / in the pattern or the replacement is written \\/, and % in front replaces every match]"))
+    (true (tuatara.frontend.fake:fake-frame-showing f "[no flags here; mend it, or C-g gives up]"))
     (is string= "foo" (session-text editor)))
   ;; nothing to replace
   (multiple-value-bind (f editor) (run-keys "r r x / y RET" :text "foo")
@@ -638,7 +638,7 @@ case writes it."
     (is string= (format nil "f00~%boo~%") (session-text editor)))
   ;; no flags: they are refused, the question kept open, saying why
   (multiple-value-bind (f editor) (run-keys "r r o / 0 / g RET C-g" :text (format nil "foo~%boo~%") :width 200)
-    (true (tuatara.frontend.fake:fake-frame-showing f "no flags here: a / in the pattern or the replacement is written \\/, and % in front replaces every match"))
+    (true (tuatara.frontend.fake:fake-frame-showing f "no flags here"))
     (is string= (format nil "foo~%boo~%") (session-text editor)))
   ;; the word at point offered as the pattern, selected: RET takes it, typing replaces it
   (multiple-value-bind (f editor) (run-keys "l l r r RET x RET" :text (format nil "a kea kea~%kea~%") :width 120)
@@ -853,7 +853,8 @@ at most 20 seconds."
       (cursor-at-question '("M-% o RET 0 RET" :look "q") :text "foo boo" :width 60)
     (let ((question (string-right-trim " " (aref screen 7))))
       (true (search "Query replacing o with 0" question))
-      (is equal (cons 7 (length question)) cursor))
+      ;; after the space that ends the question
+      (is equal (cons 7 (1+ (length question))) cursor))
     (true (face-at-column-p (aref spans 0) 1 :search-current))
     (false (face-at-column-p (aref spans 0) 1 :region))
     (true (face-at-column-p (aref spans 0) 2 :cursor-inactive))))
@@ -1159,3 +1160,20 @@ than holding the run."
   ;; \r in a literal replacement is a line break, as in one for a regular expression
   (is string= (format nil "a~%b") (tuatara.defaults::literal-replacement "a\\rb"))
   (is string= (format nil "a~%b") (tuatara.defaults::expand-replacement "a\\rb" "x" nil)))
+
+(define-test (incremental-search query-replace-keys-in-words)
+  ;; asking at each match: the five keys in words beside the question, a long pattern shortened on its line;
+  ;; SPC answers as y does
+  (let ((long (make-string 50 :initial-element #\o)))
+    (multiple-value-bind (cursor screen)
+        (cursor-at-question (list (format nil "M-% ~a RET 0 RET" (key-string long)) :look "q")
+                            :text (format nil "~a x" long) :width 100 :height 24)
+      (declare (ignore cursor))
+      (let ((rows (coerce screen 'list)))
+        (dolist (words '("replace this one and all after it" "replace this one and stop" "skip this one" "stop"))
+          (true (find-if (lambda (row) (search words row)) rows) "~s beside the question" words))
+        (let ((question (find-if (lambda (row) (search "Query replacing" row)) rows)))
+          (true question)
+          (true (search "…" question) "~s" question)
+          (false (search long question) "~s" question)))))
+  (is string= "f0o" (session-text (nth-value 1 (run-keys "M-% o RET 0 RET SPC q" :text "foo")))))

@@ -225,14 +225,31 @@ it stands for: milliseconds, seconds, minutes, hours and days.")
 (defun seconds-in-words (words)
   "The seconds WORDS, a string, gives, as an exact rational number: a number,
 perhaps with a fraction, then perhaps a unit of *TIME-UNITS*, in either case,
-spaces allowed around: \"500ms\", \"90s\", \"1.5h\", \"30 m\", \"14d\". A
-second value is true when WORDS has a unit. NIL when WORDS is not such a time."
-  (multiple-value-bind (match groups)
-      (cl-ppcre:scan-to-strings "^\\s*([0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)\\s*([A-Za-z]*)\\s*$" words)
-    (when match
-      (let* ((unit (aref groups 1))
-             (scale (if (zerop (length unit)) 1 (cdr (assoc unit *time-units* :test #'string-equal)))))
-        (and scale (values (* (decimal-in-words (aref groups 0)) scale) (plusp (length unit))))))))
+spaces allowed around: \"500ms\", \"90s\", \"1.5h\", \"30 m\", \"14d\"; or
+several such, each with its unit, added up: \"1h30m\", \"1h 3m 10s\". A second
+value is true when WORDS has a unit. NIL when WORDS is not such a time.
+O(length of WORDS)."
+  (let ((words (string-trim '(#\Space #\Tab #\Newline #\Return #\Page) words)))
+    (multiple-value-bind (match groups)
+        (cl-ppcre:scan-to-strings "^([0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?>\\s*)([A-Za-z]*)$" words)
+      (if match
+          (let* ((unit (aref groups 1))
+                 (scale (if (zerop (length unit)) 1 (cdr (assoc unit *time-units* :test #'string-equal)))))
+            (and scale (values (* (decimal-in-words (aref groups 0)) scale) (plusp (length unit)))))
+          (let ((total 0) (at 0) (parts 0))
+            ;; several amounts, each with its unit, each read where the one before ended
+            (loop while (< at (length words))
+                  do (multiple-value-bind (start end starts ends)
+                         (cl-ppcre:scan "^([0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?>\\s*)([A-Za-z]+)(?>\\s*)" words
+                                        :start at)
+                       (let ((scale (and start
+                                         (cdr (assoc (subseq words (aref starts 1) (aref ends 1)) *time-units*
+                                                     :test #'string-equal)))))
+                         (unless scale (return-from seconds-in-words nil))
+                         (incf total (* (decimal-in-words (subseq words (aref starts 0) (aref ends 0))) scale))
+                         (incf parts)
+                         (setf at end))))
+            (and (> parts 1) (values total t)))))))
 
 (defun plain-number (number)
   "NUMBER, a rational, as a whole number when it is one, else as a float, as

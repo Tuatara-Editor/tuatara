@@ -43,7 +43,7 @@ batches, versions and anchors.")
    #:char-boundary-p
    ;; reading
    #:map-leaf-pieces #:piece-copy #:piece-octet #:rope-octets #:rope-copy-into #:rope-copy-to-sap #:rope-string
-   #:rope-octets-equal-p #:rope-ranges-equal-p #:rope-octet
+   #:rope-octets-equal-p #:rope-ranges-equal-p #:ropes-same-octets-p #:rope-octet
    #:rope-next-boundary #:rope-previous-boundary #:string-cluster-end #:string-cluster-start #:cluster-joins-p
    #:regional-indicator-code-p #:rope-char-start #:rope-char-at #:rope-find-octet #:rope-find-octet-backward
    #:rope-find-any-octet #:rope-bracket-match #:rope-escaped-p #:rope-skip-octets #:*blank-octets*
@@ -73,7 +73,8 @@ batches, versions and anchors.")
    #:check-rope #:summarise #:continuation-byte-p
    ;; strict UTF-8
    #:octets-decode #:octets-char-start-p #:octets-pending #:octets-string #:octets-first-line #:string-octets
-   #:put-string-octets #:string-octet-length #:char-octet-length #:lenient-string #:raw-byte-code-p #:raw-byte-octet #:raw-byte-char
+   #:put-string-octets #:string-octet-length #:string-octet-char-index
+   #:char-octet-length #:lenient-string #:raw-byte-code-p #:raw-byte-octet #:raw-byte-char
    #:file-advise #:control-code-p
    #:crlf-octets-p #:line-text-end #:rope-line-text-end #:rope-line-text-ends-p #:rope-line-start-p #:rope-crlf-p
    #:*openers* #:*closers* #:*opening-octets* #:*closing-octets* #:*bracket-octets* #:rope-invalid

@@ -487,6 +487,9 @@ in the private cache, not those of other sessions sharing the cache."
             (true (tuatara.git::git-reads-only-p (repo "trustedwt")))
             (run "trustedwt" '("status" "--porcelain"))
             (run "trustedwt" '("diff"))
+            ;; refused there for what it is, not as a repository not trusted
+            (let ((said (run "trustedwt" '("commit" "-q" "-m" "Changed"))))
+              (true (search "is of a repository looked at only" said) "~a" said))
             (is string= snapshot (repository-snapshot (repo "lookedat")))))
         (is equal '() (uiop:directory-files marks))))))
 
@@ -781,3 +784,52 @@ in the private cache, not those of other sessions sharing the cache."
              (tuatara.git::git-refused (c) (setf said (princ-to-string c))))
         (sb-posix:chmod from #o600))
       (true (and said (search "could not be opened" said)) "~a" said))))
+
+(define-test (git shadow-index-copied-again-within-bounds)
+  ;; an index copied again takes the place of its copy in what the shadow counts: read thirty times, it is never
+  ;; refused as taking the shadow past its bounds
+  (with-test-directory (dir)
+    (let* ((top (tuatara.io:native dir))
+           (gitdir (tuatara.io:path-join top "git/"))
+           (shadow (tuatara.git::make-git-shadow (tuatara.io:path-join top "shadow/")))
+           (tuatara.git::*git-shadow-most* 5000))
+      (ensure-directories-exist (merge-pathnames "shadow/" dir))
+      (put-file (ensure-directories-exist (merge-pathnames "git/index" dir)) (make-string 1000 :initial-element #\i))
+      (dotimes (i 30)
+        (setf (tuatara.git::git-shadow-index-stamps shadow) :none)
+        (tuatara.git::git-copy-index top gitdir shadow))
+      (is = 1000 (tuatara.git::git-shadow-copied shadow))
+      (is = 1000 (tuatara.io:stamp-size (tuatara.io:path-stamp (tuatara.io:path-join top "shadow/index")))))))
+
+(define-test (git shadow-logs-copied-again-whole)
+  ;; logs copied again are made beside the old copy and put in its place: the shadow counts them once, and no
+  ;; half-made copy is left
+  (with-test-directory (dir)
+    (let* ((top (tuatara.io:native dir))
+           (gitdir (tuatara.io:path-join top "git/"))
+           (shadow (tuatara.git::make-git-shadow (tuatara.io:path-join top "shadow/")))
+           (tuatara.git::*git-shadow-most* 5000))
+      (ensure-directories-exist (merge-pathnames "shadow/logs/" dir))
+      (dolist (log '(("HEAD" 600) ("refs/heads/main" 400)))
+        (put-file (ensure-directories-exist (merge-pathnames (concatenate 'string "git/logs/" (first log)) dir))
+                  (make-string (second log) :initial-element #\l)))
+      (dotimes (i 30)
+        (setf (tuatara.git::git-shadow-logs-stamps shadow) :none)
+        (tuatara.git::git-copy-logs top gitdir gitdir shadow :all))
+      (is = 1000 (tuatara.git::git-shadow-copied shadow))
+      (is = 400 (tuatara.io:stamp-size
+                 (tuatara.io:path-stamp (tuatara.io:path-join top "shadow/logs/refs/heads/main"))))
+      (is equal '("logs") (remove-if-not (lambda (name) (uiop:string-prefix-p "logs" name))
+                                         (mapcar #'first (tuatara.io:directory-entries
+                                                          (tuatara.io:path-join top "shadow/"))))))))
+
+(define-test (git submodule-status-read-where-looked-at-only)
+  ;; a submodule's status only reads, so it runs in a repository looked at only; adding one does not
+  (let ((buffer (tuatara.buffer:make-buffer "*git: looked at*" :text "")))
+    (setf (tuatara.buffer:buffer-local buffer :git-top) "/nowhere/looked-at/"
+          (tuatara.buffer:buffer-local buffer 'tuatara.git::git-look-only) "it is not trusted")
+    (unwind-protect
+         (progn
+           (false (tuatara.git::git-look-only-refusal 'tuatara.git::git-submodule-status buffer))
+           (true (tuatara.git::git-look-only-refusal 'tuatara.git::git-submodule-add buffer)))
+      (tuatara.buffer:kill-buffer buffer))))

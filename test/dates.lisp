@@ -10,6 +10,12 @@
   "The day NUMBER as a list (YEAR MONTH DAY)."
   (multiple-value-list (tuatara.dates:day-date number)))
 
+(define-test (dates format-time-in-universal-time)
+  ;; with :utc the time is written in universal time, whatever the local zone
+  (is string= "19000101T000000Z" (tuatara.dates:format-time "%Y%m%dT%H%M%SZ" 0 :utc t))
+  (is string= "2026-10-06 20:15:00 UTC"
+      (tuatara.dates:utc-time-words (+ (* 86400 (tuatara.dates:day-number 2026 10 6)) (* 20 3600) (* 15 60)))))
+
 (define-test (dates day-numbers)
   ;; 1900-01-01 is day 0, the days before it below 0, any year
   (is = 0 (tuatara.dates:day-number 1900 1 1))
@@ -191,6 +197,20 @@
       (is equal (list (day 2026 11 2) 9 0 10 0) (read-as "2026-11-02 <09:00-10:00>"))
       (is equal (list (day 2026 10 9) nil nil nil nil) (read-as "[fri]")))))
 
+(define-test (dates read-a-time-from-now)
+  ;; a time from now, given now: the minute it comes to, rounded up; m is minutes there, +1m a month on
+  (let* ((now (encode-universal-time 30 37 22 25 11 2026))
+         (today (tuatara.dates:day-number 2026 11 25)))
+    (flet ((read-as (text) (multiple-value-list (tuatara.dates:read-date-text text today now))))
+      (is equal (list today 23 28 nil nil) (read-as "50m"))
+      (is equal (list today 23 41 nil nil) (read-as "1h3m"))
+      (is equal (list today 22 38 nil nil) (read-as "10s"))
+      (is equal (list (1+ today) 0 8 nil nil) (read-as "90m"))
+      (is equal (list (tuatara.dates:day-number 2026 12 25) nil nil nil nil) (read-as "+1m"))
+      (is equal (list (tuatara.dates:day-number 2026 11 5) nil nil nil nil)
+          (multiple-value-list (tuatara.dates:read-date-text "5" (tuatara.dates:day-number 2026 10 25) now)))
+      (is equal '(nil) (multiple-value-list (tuatara.dates:read-date-text "50m" today))))))
+
 (define-test (dates days-and-times-that-do-not-exist)
   ;; a day or a time typed that does not exist names no date, never one rolled on
   (let ((today (tuatara.dates:day-number 2026 10 20)))
@@ -231,6 +251,13 @@
   (is equal '(nil) (multiple-value-list (tuatara.dates:iso-date-time "2024-03-0123")))
   (is equal (list (encode-universal-time 0 0 0 1 3 2024 0) nil)
       (multiple-value-list (tuatara.dates:iso-date-time "2024-03-01 and more"))))
+
+(define-test (dates file-date-with-a-broken-time-is-none)
+  ;; a date as a file writes it, its time begun and not written, names no date; the day alone names it
+  (is equal '(nil) (multiple-value-list (tuatara.dates:iso-date-time "2024-03-01T")))
+  (is equal '(nil) (multiple-value-list (tuatara.dates:iso-date-time "2024-03-01Tx")))
+  (is equal (list (encode-universal-time 0 0 0 1 3 2024 0) nil)
+      (multiple-value-list (tuatara.dates:iso-date-time "2024-03-01"))))
 
 (define-test (dates written-in-files-read-where-they-stand)
   ;; dates as XMP, ISO 8601 and PDF write them, read by the readers the search reads dates with

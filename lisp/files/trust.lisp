@@ -270,6 +270,18 @@ programs get a copy of, where a note's export takes files from and which
 projects run their own programs are all told by it alone."
   (and (untrusted-reason path) t))
 
+(defun read-here-p (path &optional buffer)
+  "True when Tuatara may read the file at PATH with its own readers in the
+editor, outside the sandbox (a zip's or an XML reader, a package's reader of
+mail, the pictures inside a picture): not while it is being visited safely or
+shown as a file from outside (*VISITING-SAFELY*), nor when it came from
+outside (UNTRUSTED-PATH-P), is or may be evidence (MAY-BE-EVIDENCE-P), or
+BUFFER, the list or view it is read from, is opened safely (SAFE-VISIT-P)."
+  (not (or *visiting-safely*
+           (and buffer (tuatara.io:safe-visit-p buffer))
+           (untrusted-path-p path)
+           (may-be-evidence-p path))))
+
 (defun mode-for-shown-text (path octets)
   "The major mode for OCTETS, the text of the file at PATH, shown in a buffer
 that is not the file's own (an older version of it, its preview): the mode
@@ -412,17 +424,14 @@ being looked through for evidence directories: the answer is to be asked again."
 
 (defun trust-question (real)
   "The question asked of the project at REAL, the same words whatever asks, as
-two values: the short prompt it is answered at, and its details, shown beside
-it (READ-ANSWER-KEY's DETAILS): all a yes allows, what look only does, and that
-no leaves it to be asked again."
-  (let ((path (abbreviated-path real)))
-    (values (format nil "Trust ~a? (y, l or n) " path)
-            (format nil "Trust ~a?~%~%~
-                         y: its language servers start by themselves and run its code, git runs the programs ~
-                         it names (hooks, filters), and its build commands run (M-x compile).~%~
-                         l: look only; git reads it, and nothing of it runs.~%~
-                         n: not now; you are asked again next time.~%"
-                    path))))
+two values: the short prompt it is answered at, and its choices as
+READ-KEY-CHOICE takes them, each key's words shown beside it: all a yes
+allows, what look only does, and that no leaves it to be asked again."
+  (values (format nil "Trust ~a?" (abbreviated-path real))
+          (list (cons "y" (format nil "its language servers start by themselves and run its code, git runs the ~
+                                       programs it names (hooks, filters), and its build commands run (M-x compile)."))
+                '("l" . "look only; git reads it, and nothing of it runs.")
+                '("n" . "not now; you are asked again next time."))))
 
 (defun forget-project-trust (root)
   "Forget what was answered of the project at ROOT, trusted or looked at only,
@@ -455,8 +464,8 @@ with AGAIN, it stays so)."
           ((and (not again) (project-trusted-p root)) :trusted)
           ((and (not again) (project-look-only-p root)) :look-only)
           ((null real) nil)
-          (t (case (multiple-value-bind (prompt details) (trust-question real)
-                     (read-answer-key prompt '(#\y #\l #\n) :fresh t :details details))
+          (t (case (multiple-value-bind (prompt choices) (trust-question real)
+                     (char (read-key-choice prompt choices :fresh t :fold-case t) 0))
                (#\y (when (yes-or-no-p* (format nil "Trust ~a to run its own programs?" (abbreviated-path real)))
                       (state-list-drop *look-only* (list real))
                       (state-list-put *trusted* (list real))

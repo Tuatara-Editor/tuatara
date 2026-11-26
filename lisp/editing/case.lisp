@@ -93,19 +93,18 @@ changed octet by octet, another read as text."
                            (and (string/= text changed) (tuatara.text:string-octets changed))))))
             (when new (funcall function a z new))))))))
 
-(defun region-case (how)
-  "Change the case of the region, or say there is none. A region of more than
-*REWRITE-THRESHOLD* octets is changed in the background, a line at a time."
+(defun region-case (how command)
+  "Change the case of the selected text, or say that COMMAND, the command's
+name, was not run, nothing being selected (SELECTED-REGION-OR-SAY). A
+selection of more than *REWRITE-THRESHOLD* octets is changed in the
+background, a line at a time."
   (let ((b (current-buffer)))
-    (multiple-value-bind (start end) (tuatara.buffer:buffer-region b)
-      (cond ((not (and start (tuatara.buffer:buffer-mark-active-p b))) (message "The mark is not active now"))
+    (multiple-value-bind (start end) (selected-region-or-say b command :change t)
+      (cond ((null start) nil)
             ((large-for-here-p start end)
-             (check-writable b)
              (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-             (start-line-job b
-                             (tuatara.buffer:buffer-line-start b start)
-                             (tuatara.buffer:buffer-line-end b (range-last-place b start end))
-                             (case-line how start end)
+             (start-line-job b start end
+                             (lambda (rope from to) (declare (ignore rope)) (case-line how from to))
                              :doing "Changing case" :what "Changing the case of the region"
                              :verb "change the case" :leaves "the case is as it was"
                              :report (case-report how)
@@ -130,24 +129,26 @@ point, point staying."
 
 (define-command upcase-region ()
   "Put the region in upper case."
-  (region-case :up))
+  (region-case :up 'upcase-region))
 
 (define-command downcase-region ()
   "Put the region in lower case."
-  (region-case :down))
+  (region-case :down 'downcase-region))
 
 (define-command capitalize-region ()
   "Capitalise each word of the region."
-  (region-case :capital))
+  (region-case :capital 'capitalize-region))
 
 (define-command upcase-dwim ()
   "Put the region in upper case, or with none the next word, as upcase-word does."
-  (if (tuatara.buffer:buffer-mark-active-p (current-buffer)) (region-case :up) (word-case :up)))
+  (if (tuatara.buffer:buffer-mark-active-p (current-buffer)) (region-case :up 'upcase-dwim) (word-case :up)))
 
 (define-command downcase-dwim ()
   "Put the region in lower case, or with none the next word, as downcase-word does."
-  (if (tuatara.buffer:buffer-mark-active-p (current-buffer)) (region-case :down) (word-case :down)))
+  (if (tuatara.buffer:buffer-mark-active-p (current-buffer)) (region-case :down 'downcase-dwim) (word-case :down)))
 
 (define-command capitalize-dwim ()
   "Capitalise the region, or with none the next word, as capitalize-word does."
-  (if (tuatara.buffer:buffer-mark-active-p (current-buffer)) (region-case :capital) (word-case :capital)))
+  (if (tuatara.buffer:buffer-mark-active-p (current-buffer))
+      (region-case :capital 'capitalize-dwim)
+      (word-case :capital)))

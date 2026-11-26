@@ -3,13 +3,13 @@
 ;;;; Read at every start, after the defaults, in the package TUATARA-USER.
 ;;;; Each setting has a paragraph above it saying what it does, and after
 ;;;; "Not set:" what it is when it is not set. Every setting is commented out
-;;;; but the tabs some languages' own tools require: take away the ;; in front
-;;;; of one to use it, from every line of it when it runs over several, or put
-;;;; it in front of one of those. Tuatara wrote this file once, the first time
-;;;; it ran without one; it is yours now, and never written again. An error
-;;;; here is shown on the echo row, and the editor still starts. A size may be
-;;;; given in words, "512M" or "20G" (in 1024s), and a time too, "90s", "30m"
-;;;; or "2h", in place of a number.
+;;;; but the tabs some languages' own tools require (*indent-with-tabs-modes*):
+;;;; take away the ;; in front of one to use it, from every line of it when it
+;;;; runs over several, or put it in front of one of those. Tuatara wrote this
+;;;; file once, the first time it ran without one; it is yours now, and never
+;;;; written again. An error here is shown on the echo row, and the editor
+;;;; still starts. A size may be given in words, "512M" or "20G" (in 1024s),
+;;;; and a time too, "90s", "30m" or "2h", in place of a number.
 ;;;;
 ;;;; Settings are kept together by what they are for, each group in a
 ;;;; load-package with the settings and keys after its :config: "tuatara" for
@@ -129,8 +129,8 @@
   ;; (bind-key "k K" 'delete-window :map :leader)
   ;; (bind-key "k k" 'kill-buffer-and-window :map :leader)
   ;; (bind-key "t" nil :map :leader :label "toggle")
-  ;; (bind-key "t h" 'hl-line-mode :map :leader)
-  ;; (bind-key "t |" 'cursor-column-mode :map :leader)
+  ;; (bind-key "t h" 'current-line-mode :map :leader)
+  ;; (bind-key "t |" 'current-column-mode :map :leader)
   ;; (bind-key "t l" 'soft-wrap-mode :map :leader)
   ;; (bind-key "t v" 'display-fill-column-mode :map :leader)
   ;; (bind-key "t c" 'centred-text-mode :map :leader)
@@ -139,6 +139,8 @@
   ;; (bind-key "i &" 'insert-digraph :map :leader)
   ;; (bind-key "i ." 'digraph-input-mode :map :leader)
   ;; (bind-key "i -" 'deactivate-input-method :map :leader)
+  ;; An input method of your own on a key: define a command that calls
+  ;; (turn-on-input-method "swedish-postfix" "swedish") and bind it here.
 
   ;;; Looks: themes, fonts, colours (M-x load-theme lists the themes)
 
@@ -328,55 +330,41 @@
   ;; (setf *tab-width* 8)
 
   ;; TAB and indentation put tabs in, not spaces. Not set: nil.
-  ;; (setf *indent-tabs-mode* t)
+  ;; (setf *indent-with-tabs* t)
 
   ;; TAB indents only, never completes. Not set: :complete.
-  ;; (setf *tab-always-indent* t)
+  ;; (setf *tab-key-action* t)
 
-  ;; For one major mode and those made from it.
-  ;; (set-tab-width 'c-mode 8)
-
-  ;; Tabs in shell scripts only (tsv-mode has them already)
-  ;; (set-indent-tabs-mode 'bash t)
-
-  ;; Tabs in LaTeX too.
-  ;; (set-indent-tabs-mode 'latex t)
+  ;; Tab stops for some major modes and those made from them, the nearest
+  ;; mode counting first. Not set: none: *tab-width* for all.
+  ;; (setf *tab-width-modes* '((c-mode . 8) (prog-mode . 2)))
 
   ;; C indented two columns a level (4)
   ;; (set-indentation 'c 2)
 
-  ;; tabs where a language's own tools require them, spaces everywhere else; a
-  ;; ;; in front of one gives it spaces
-
-  ;; Make: a recipe line must begin with a tab.
-  (set-indent-tabs-mode 'makefile t)
-
-  ;; Gofmt indents Go with tabs.
-  (set-indent-tabs-mode 'go t)
-
-  ;; go.mod.
-  (set-indent-tabs-mode 'go-mod t)
-
-  ;; And go.work.
-  (set-indent-tabs-mode 'go-work t)
-
-  ;; v fmt.
-  (set-indent-tabs-mode 'v t)
-
-  ;; Cue fmt.
-  (set-indent-tabs-mode 'cue t)
-
-  ;; Godot's style for GDScript, and gdformat.
-  (set-indent-tabs-mode 'gdscript t)
-
-  ;; Odinfmt.
-  (set-indent-tabs-mode 'odin t)
-
-  ;; The Linux kernel's checkpatch: Devicetree.
-  (set-indent-tabs-mode 'dts t)
-
-  ;; And Kconfig.
-  (set-indent-tabs-mode 'kconfig t)
+  ;; Tabs or spaces for some major modes and those made from them, the
+  ;; nearest mode counting first; tsv-mode has tabs unless this says
+  ;; otherwise. These are the languages whose own tools require tabs; a ;; in
+  ;; front of one gives it spaces, and (bash . t) or (latex . t) gives those
+  ;; tabs too. Not set: none: *indent-with-tabs* for all.
+  (setf *indent-with-tabs-modes*
+        '(;; Make: a recipe line must begin with a tab.
+          (makefile . t)
+          ;; Gofmt indents Go with tabs, go.mod and go.work too.
+          (go . t)
+          (go-mod . t)
+          (go-work . t)
+          ;; v fmt.
+          (v . t)
+          ;; Cue fmt.
+          (cue . t)
+          ;; Godot's style for GDScript, and gdformat.
+          (gdscript . t)
+          ;; Odinfmt.
+          (odin . t)
+          ;; The Linux kernel's checkpatch: Devicetree and Kconfig.
+          (dts . t)
+          (kconfig . t)))
 
   ;; New lines at column 0 (RET, o, O). Not set: t: indented as the mode
   ;; indents.
@@ -384,23 +372,23 @@
 
   ;; An ( typed puts ) after the cursor, and the other pairs the same. Not set:
   ;; nil.
-  ;; (setf *electric-pair-mode* t)
+  ;; (setf *auto-close-mode* t)
 
   ;; Every pair closes itself, : and ' too. Not set: :safe.
-  ;; (setf *electric-pair-typing* :all)
+  ;; (setf *auto-close-delimiters* :all)
 
   ;; :safe closes ' too.
-  ;; (setf *electric-pair-safe-exclusions*
-  ;;       (remove #\' *electric-pair-safe-exclusions*))
+  ;; (setf *auto-close-safe-exclusions*
+  ;;       (remove #\' *auto-close-safe-exclusions*))
 
   ;; A pair of your own: m i, wrapping, typing.
   ;; (setf *pair-delimiters* (cons '(#\# . #\#) *pair-delimiters*))
 
   ;; No showing the bracket that pairs with the one at point. Not set: t.
-  ;; (setf *show-paren-mode* nil)
+  ;; (setf *show-matching-bracket* nil)
 
   ;; Typing ) says nothing of its partner out of sight. Not set: t.
-  ;; (setf *blink-matching-paren* nil)
+  ;; (setf *say-matching-bracket* nil)
 
   ;; g q, g Q and M-q fill to column 72. Not set: 80.
   ;; (setf *fill-column* 72)
@@ -431,7 +419,7 @@
   ;; (setf *fill-ask-column* nil)
 
   ;; M-x sort-lines ignores case. Not set: nil.
-  ;; (setf *sort-fold-case* t)
+  ;; (setf *sort-ignores-case* t)
 
   ;;; Snippets (a key and TAB, or C-c y: text with fields to fill in)
 
@@ -457,11 +445,11 @@
   ;; (setf *clipboard-size-limit* (* 32 1024 1024))
 
   ;; The kill ring keeps the 60 newest kills. Not set: 120.
-  ;; (setf *kill-ring-max* 60)
+  ;; (setf *kill-ring-length* 60)
 
   ;; The kills kept hold 16 M characters at most together; past it the oldest
   ;; are forgotten. Not set: 64 M.
-  ;; (setf *kill-ring-max-size* (* 16 1024 1024))
+  ;; (setf *kill-ring-octets* (* 16 1024 1024))
 
   ;; Undo keeps at most 256 MB of changes a buffer; past it the oldest can no
   ;; longer be undone. Not set: nil, every change kept back to the file as
@@ -470,7 +458,7 @@
 
   ;; Marks kept a buffer, for C-u C-SPC to go back through, and across
   ;; buffers, for C-x C-SPC. Not set: 16.
-  ;; (setf *mark-ring-max* 32)
+  ;; (setf *mark-ring-length* 32)
 
   ;; C-u C-SPC, then C-SPC C-SPC ... go on back through the marks. Not set: nil.
   ;; (setf *set-mark-command-repeat-pop* t)
@@ -478,11 +466,6 @@
   ;; C-\ turns this input method on and off. Not set: nil: asked the first time;
   ;; C-x RET C-\ chooses.
   ;; (setf *default-input-method* "german-postfix")
-
-  ;; Input methods of your own under SPC i. Not set: none.
-  ;; (setf *input-method-keys*
-  ;;       '(("g" "german" "german-postfix")
-  ;;         ("f" "french" "french-postfix")))
 
   ;;; Questions and lists in the minibuffer; several cursors
 
@@ -570,23 +553,23 @@
   ;; (setf *line-numbers-modes* '((prog-mode . :relative) (org-mode . nil)))
 
   ;; The line point is on lit only where C-x T h says. Not set: t.
-  ;; (setf *global-hl-line-mode* nil)
+  ;; (setf *global-current-line-mode* nil)
 
   ;; The line lit by major mode, before the global setting.
-  ;; (setf *hl-line-modes* '((csv-mode . nil)))
+  ;; (setf *current-line-modes* '((csv-mode . nil)))
 
   ;; The line point is on, in a colour of your own.
-  ;; (set-face :hl-line :bg "#1f2937")
+  ;; (set-face :current-line :bg "#1f2937")
 
   ;; The column point is in lit down the window, everywhere C-x T c does not say
   ;; otherwise. Not set: nil.
-  ;; (setf *global-cursor-column-mode* t)
+  ;; (setf *global-current-column-mode* t)
 
   ;; The column lit by major mode, before the global setting.
-  ;; (setf *cursor-column-modes* '((prog-mode . t)))
+  ;; (setf *current-column-modes* '((prog-mode . t)))
 
-  ;; The column, in a colour of its own (:hl-line's)
-  ;; (set-face :cursor-column :bg "#1f2937")
+  ;; The column, in a colour of its own (:current-line's)
+  ;; (set-face :current-column :bg "#1f2937")
 
   ;; Long lines wrap at a word's edge in every buffer, as C-x T l does in one.
   ;; Not set: nil.
@@ -604,7 +587,7 @@
   ;; No mark beside the rows that go on. Not set: "↪".
   ;; (setf *soft-wrap-indicator* nil)
 
-  ;; The row point is on where lines wrap, apart from :hl-line (the same)
+  ;; The row point is on where lines wrap, apart from :current-line (the same)
   ;; (set-face :soft-wrap-row :bg "#254862")
 
   ;; The column of text C-x T o centres in the window. Not set: 80.
@@ -687,9 +670,13 @@
   ;; lisp-scratch makes one.
   ;; (setf *auto-scratch-buffers* '("*org-scratch*"))
 
+  ;; The scratch buffers' text kept between sessions, written with the
+  ;; auto-saves and as Tuatara quits. Not set: nil: it goes when Tuatara quits.
+  ;; (setf *scratch-text-kept* t)
+
   ;; Where a buffer with no file is: C-x C-f from it, M-s g. Not set: ~/; nil:
   ;; where Tuatara started.
-  ;; (setf *default-directory* "~/notes/")
+  ;; (setf *no-file-directory* "~/notes/")
 
   ;; Buffers keep up with their files changed on disk. Not set: nil: asked; M-x
   ;; follow-file for one.
@@ -788,7 +775,7 @@
 
   ;; C-x i (insert-formatted-note-template) reads other files of up to 64 MB.
   ;; Not set: 16 MB.
-  ;; (setf *insert-file-limit* "64M")
+  ;; (setf *note-template-file-limit* "64M")
 
   ;; Your name: an export's author without #+author:, %author% and $AUTHOR. Not
   ;; set: the system's.
@@ -898,7 +885,7 @@
   ;;; Messages and debugging
 
   ;; Lines *Messages* keeps. Not set: 1000.
-  ;; (setf *message-log-max* 5000)
+  ;; (setf *messages-kept* 5000)
 
   ;; Start in debug mode: what the editor does goes to *Debug*. Not set: nil;
   ;; M-x debug-mode, C-h E.
@@ -913,8 +900,8 @@
   ;; (setf *debug-log-limit* 50000)
 
   ;; An error shows the calls under way in *Backtrace*. Not set: nil; M-x
-  ;; toggle-debug-on-error.
-  ;; (setf *debug-on-error* t)
+  ;; toggle-backtrace-on-error.
+  ;; (setf *backtrace-on-error* t)
   )
 
 ;;;; ================================================================
@@ -1213,6 +1200,18 @@
   ;; "notify-send".
   ;; (setf *notify-program* "/usr/bin/notify-send")
 
+  ;; The alarms that go with an entry tagged :notify: as it is told. :flash
+  ;; flashes every mode line, then keeps it lit in :mode-line-alarm until a key
+  ;; is pressed: seen without being heard. :bell rings the bell on every
+  ;; screen: a terminal's, over ssh too, which it may show as a flash, or the
+  ;; desktop's for Tuatara's window. A sound file is played on this computer by
+  ;; the first of pw-play, paplay and aplay found. Not set: none.
+  ;; (setf *org-notify-alarms*
+  ;;       (list :flash :bell "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"))
+
+  ;; The colour of the flash (the theme's error colour unless set).
+  ;; (set-face :mode-line-alarm :bg "#d70000" :fg "#ffffff")
+
   ;; C-x a a a shows one day: :day :week :month :year or a number of days. Not
   ;; set: :week.
   ;; (setf *org-agenda-span* :day)
@@ -1289,8 +1288,8 @@
   :config
 
   ;;; Exporting: PDFs of Org and LaTeX files
-  ;; M-x org-export-latex-pdf and the -buffer, -xdg, -enhanced ones;
-  ;; export-latex-compile-pdf.
+  ;; M-x org-export-latex-pdf and the -buffer, -externally, -enhanced ones;
+  ;; latex-export-pdf.
 
   ;; Lualatex first, xelatex when it fails. Not set: '("xelatex" "lualatex");
   ;; full paths for programs elsewhere.

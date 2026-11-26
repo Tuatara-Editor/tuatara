@@ -532,10 +532,10 @@ taken down first."
           (editor-transient-exit editor) nil)
     (when exit (funcall exit))))
 
-(define-setting *debug-on-error* nil
+(define-setting *backtrace-on-error* nil
   "Whether a command or an evaluation that meets an error shows the calls under
 way, in *Backtrace*.
-\\[toggle-debug-on-error] switches it.
+\\[toggle-backtrace-on-error] switches it.
 - t: the calls under way are shown.
 - nil: only the error is said (the standard)."
   :values boolean)
@@ -679,9 +679,9 @@ a refusal) stops recorded keys that are playing."
       ((null function) (message "No command ~a" command))
       (refusal (message "~a" refusal))
       (t
-        (flet ((backtrace-shown-p () *debug-on-error*)
+        (flet ((backtrace-shown-p () *backtrace-on-error*)
                (call ()
-                 (let ((*current-buffer* nil) ; SET-BUFFER lasts until the command ends
+                 (let ((*current-buffer* nil)
                        (tuatara.buffer:*narrowing-in-force* undo-buffer)
                        (*command-notes* (list '()))
                        (*command-undo-since* undo-since))

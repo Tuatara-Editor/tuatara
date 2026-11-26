@@ -138,15 +138,18 @@ the current buffer, their programs ended with all they started."
   '((:name "poppler"
      :info ("pdfinfo" "fd://0")
      :text ("pdftotext" "-layout" "-enc" "UTF-8" "-l" :pages "fd://0" "-")
-     :page ("pdftoppm" "-cropbox" "-f" :page "-l" :page "-scale-to-x" :width "-scale-to-y" :height "fd://0")))
+     :page ("pdftoppm" "-cropbox" "-f" :page "-l" :page "-scale-to-x" :width "-scale-to-y" :height "fd://0")
+     :detach "pdfdetach"))
   "The programs known to take the text out of a PDF, the first found used. Each
-is a list of :NAME, the package they come in, and three more entries. :TEXT is
+is a list of :NAME, the package they come in, and four more entries. :TEXT is
 the program printing the text and its arguments (:PAGES standing for how many
 pages, the file read on standard input). :INFO is the one printing the number
 of pages, their size and the like, as lines of Name: value. :PAGE is the one
 drawing page :PAGE as a PPM or PAM image :WIDTH by :HEIGHT pixels (-1 for a
 height that keeps the page's proportions), the part of it a PDF program
-shows (its crop box), as :INFO gives its size.")
+shows (its crop box), as :INFO gives its size. :DETACH is the program listing
+the files embedded in a PDF read on standard input (-list) and taking one out
+\(-save N -o FILE).")
 
 (defparameter *pdf-text-pages* 50
   "The pages of a PDF whose text is taken out for a preview, from the first.")

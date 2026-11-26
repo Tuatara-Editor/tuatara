@@ -26,62 +26,56 @@ after the option of a named daemon and @TITLE@ for its name in the title.")
   "The names of the files of the desktop entries, by kind; a named daemon's
 entry is tuatara-daemon-NAME.desktop.")
 
-(defun exec-argument (argument &key plain)
+(defun exec-argument (argument)
   "ARGUMENT as one word of a desktop entry's Exec line. It is in double quotes,
 with \\, \", ` and $ escaped by a backslash, and that backslash and every other
 doubled again, as the line is read as a string first. % is written %%, so
-that it is no field code. With PLAIN, a word of letters, digits and - _ = .
-is left alone as it is. Refused for a word holding a control character, which
-no Exec line can hold."
+that it is no field code. Refused for a word holding a control character,
+which no Exec line can hold."
   (when (some (lambda (char) (< (char-code char) 32)) argument)
     (tuatara.runtime:refuse "~a holds a control character, which a desktop entry cannot start" (shown argument)))
-  (if (and plain (plusp (length argument))
-           (every (lambda (char) (or (and (< (char-code char) 128) (alphanumericp char)) (find char "-_=."))) argument))
-      argument
-      (with-output-to-string (out)
-        (write-char #\" out)
-        (loop for char across argument
-              do (case char
-                   (#\\ (write-string "\\\\\\\\" out))
-                   ((#\" #\` #\$) (write-string "\\\\" out) (write-char char out))
-                   (#\% (write-string "%%" out))
-                   (t (write-char char out))))
-        (write-char #\" out))))
+  (with-output-to-string (out)
+    (write-char #\" out)
+    (loop for char across argument
+          do (case char
+               (#\\ (write-string "\\\\\\\\" out))
+               ((#\" #\` #\$) (write-string "\\\\" out) (write-char char out))
+               (#\% (write-string "%%" out))
+               (t (write-char char out))))
+    (write-char #\" out)))
 
-(defun desktop-entry (kind &key (program "tuatara") arguments name)
+(defun desktop-entry (kind &key (program "tuatara") name)
   "The text of the desktop entry of KIND (*DESKTOP-TEMPLATES*) starting
-PROGRAM, tuatara as the PATH finds it or a path, with ARGUMENTS before the
-template's own, each word quoted as the Exec line wants it (EXEC-ARGUMENT);
-for a daemon, the one NAME names when given."
-  (let ((exec (format nil "~a~{ ~a~}" (if (string= program "tuatara") program (exec-argument program))
-                      (mapcar (lambda (word) (exec-argument word :plain t)) arguments)))
+PROGRAM, tuatara as the PATH finds it or a path, quoted as the Exec line wants
+it (EXEC-ARGUMENT); for a daemon, the one NAME names when given."
+  (let ((exec (if (string= program "tuatara") program (exec-argument program)))
         (text (cdr (assoc kind *desktop-templates*))))
     (loop for (key . value) in `(("@EXEC@" . ,exec) ("@NAME@" . ,(if name (format nil "=~a" name) ""))
                                  ("@TITLE@" . ,(if name (format nil " (~a)" name) "")))
           do (setf text (cl-ppcre:regex-replace-all key text (list value))))
     text))
 
-(defun write-application-entries (directory program &rest arguments)
+(defun write-application-entries (directory program)
   "Write the application entries, Tuatara's and \"Tuatara (client)\", into
-DIRECTORY (made when it is not there), each starting PROGRAM with ARGUMENTS
-first (DESKTOP-ENTRY), over the ones there; the paths written. What
+DIRECTORY (made when it is not there), each starting PROGRAM (DESKTOP-ENTRY),
+over the ones there; the paths written. What
 tools/install-desktop.sh and the packages' scripts have the program do,
 asked by TUATARA_DESKTOP_ENTRIES naming DIRECTORY in its environment."
   (let ((directory (tuatara.io:slash-ended directory)))
     (tuatara.io:ensure-directories directory)
     (loop for kind in '(:application :client)
           for path = (tuatara.io:path-join directory (cdr (assoc kind *desktop-entry-files*)))
-          do (tuatara.io:replace-file path (desktop-entry kind :program program :arguments arguments) :mode #o600)
+          do (tuatara.io:replace-file path (desktop-entry kind :program program) :mode #o600)
           collect path)))
 
 (defun desktop-entries-refusal (directory arguments &key (self tuatara.io:*saved-program*))
   "Why the request to write desktop entries into DIRECTORY for ARGUMENTS is not
-taken, in words, or NIL when it is. ARGUMENTS are the program they start and
-the words before the entries' own. DIRECTORY must be named from the root. The
-program must be tuatara, or named from the root and be this program SELF (the
-AppImage's path when it runs from one) or the launcher tools/tuatara-tui.sh of
-the checkout SELF was built in. Every other word must be an option (--dark),
-so that no file named on the command line becomes a program the desktop runs."
+taken, in words, or NIL when it is. ARGUMENTS hold the program they start and
+nothing else. DIRECTORY must be named from the root. The program must be
+tuatara, or named from the root and be this program SELF (the AppImage's path
+when it runs from one) or the launcher tools/tuatara-tui.sh of the checkout
+SELF was built in, so that no file named on the command line becomes a
+program the desktop runs."
   (flet ((real (path) (and path (tuatara.runtime:ignoring-errors-reported ("finding ~a" path)
                                   (tuatara.io:real-path path)))))
     (let* ((program (first arguments))
@@ -96,24 +90,24 @@ so that no file named on the command line becomes a program the desktop runs."
             ((not (or (equal program "tuatara")
                       (and real-program (member real-program (list (real self) (real launcher)) :test #'equal))))
              (format nil "~a is not this program" (or program "no program")))
-            ((notevery (lambda (word) (cl-ppcre:scan "^--?[a-z][a-z0-9-]*$" word)) (rest arguments))
-             "a word after the program is not an option")))))
+            ((rest arguments)
+             "a word follows the program")))))
 
 (defun desktop-entries-child (arguments)
   "Write the application entries as the environment asks, TUATARA_DESKTOP_ENTRIES
 naming the directory (WRITE-APPLICATION-ENTRIES), ARGUMENTS the program the
-entries start and the words before the entries' own; each path written said
+entries start; each path written said
 on the standard output. The exit code: 0 when written, 1 when not, why said
 on the error output. A request not taken (DESKTOP-ENTRIES-REFUSAL) is said on
 the error output and NIL returned: the program starts as it would without it."
-  (let* ((directory (tuatara.io:own-variable "TUATARA_DESKTOP_ENTRIES"))
+  (let* ((directory (tuatara.runtime:own-variable "TUATARA_DESKTOP_ENTRIES"))
          (why (desktop-entries-refusal directory arguments)))
     (sb-posix:unsetenv "TUATARA_DESKTOP_ENTRIES")
     (if why
         (progn (format *error-output* "tuatara: TUATARA_DESKTOP_ENTRIES left alone: ~a~%" (shown why))
                nil)
         (handler-case
-            (progn (dolist (path (apply #'write-application-entries directory arguments))
+            (progn (dolist (path (write-application-entries directory (first arguments)))
                      (format t "Wrote ~a~%" path))
                    0)
           (error (condition)

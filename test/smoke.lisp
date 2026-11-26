@@ -70,7 +70,7 @@
   ;; every option --help lists is one the program takes, or one the AppImage's launcher takes
   (let ((out (with-output-to-string (*standard-output*)
                (tuatara.terminal:main '("--help"))))
-        (launcher '("--install-desktop" "--remove-desktop" "--dark" "--light" "--dynamic-space-size")))
+        (launcher '("--install-desktop" "--remove-desktop" "--dynamic-space-size")))
     (loop with start = 0
           for at = (search "  -" out :start2 start)
           while at
@@ -82,17 +82,13 @@
                      "~a is listed but not taken" option)
                (setf start end)))))
 
-(define-test (smoke options-by-appimage)
-  ;; --dark and --light are listed by the legacy AppImage alone, whose launcher takes them; the other
-  ;; AppImage's window follows the desktop's light or dark style, and bash completes them nowhere
-  (flet ((help (appimage)
-           (let ((tuatara.io:*appimage* appimage))
-             (with-output-to-string (*standard-output*)
-               (tuatara.terminal:main '("--help"))))))
-    (true (search "--dark, --light" (help "legacy")))
-    (false (search "--dark" (help "current")))
-    (false (search "--dark" (help nil)))
-    (true (search "--install-desktop" (help "current"))))
+(define-test (smoke no-title-bar-style-options)
+  ;; --dark and --light went with the legacy AppImage: --help and bash completion do not list them
+  (let ((help (with-output-to-string (*standard-output*)
+                (tuatara.terminal:main '("--help")))))
+    (false (search "--dark" help))
+    (false (search "--light" help))
+    (true (search "--install-desktop" help)))
   (false (assoc "--dark" (tuatara.terminal::completion-options) :test #'string=))
   (true (assoc "--gui" (tuatara.terminal::completion-options) :test #'string=)))
 

@@ -15,6 +15,7 @@ descriptions.")
            #:event-queue #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p #:queue-input-p #:tick-p
            #:frontend-start #:frontend-stop #:frontend-size #:frontend-read-event #:frontend-read-event-timeout
            #:frontend-input-pending-p #:frontend-wake #:frontend-another #:frontend-frame #:frontend-raise
+           #:frontend-bell
            #:frontend-scales-rows-p #:frontend-ask-another
            #:frontend-colour-count #:frontend-description #:frontend-health #:frontend-set-clipboard
            #:frontend-terminal-device #:frontend-lend-terminal #:frontend-clipboard #:frontend-set-title
@@ -24,6 +25,9 @@ descriptions.")
            #:frontend-begin-frame #:frontend-put-row #:frontend-set-cursor #:frontend-end-frame
            #:image #:image-p #:make-image #:image-width #:image-height #:image-fit-scale #:image-channels #:image-pixels
            #:image-id
+           #:clipboard-kept #:clipboard-kept-p #:make-clipboard-kept #:clipboard-kept-text #:clipboard-kept-known
+           #:clipboard-kept-reads #:clipboard-kept-ended #:clipboard-kept-lock #:clipboard-kept-wake
+           #:clipboard-read-begun #:clipboard-read-done #:clipboard-kept-end
            #:frontend-primary-selection #:frontend-set-primary-selection #:frontend-images-p #:frontend-reorders-text-p
            #:frontend-cell-pixels #:frontend-put-image #:*kitty-marks* #:+kitty-placeholder+
            ;; frontends in another process (src/frontend/remote.lisp)
@@ -33,7 +37,8 @@ descriptions.")
            #:request #:make-request #:request-p #:request-directory #:request-terminal #:request-environment
            #:request-files #:request-safe #:request-hex #:request-standard-input #:request-diff #:request-merge
            #:request-frames #:request-wait #:request-stop #:request-joins #:request-far #:frontend-focused-p
-           #:request-agent #:request-notes #:greet-editor #:*starting-seconds* #:take-window-asked-for
+           #:request-agent #:request-notes #:greet-editor #:ask-editor-status
+           #:*starting-seconds* #:take-window-asked-for
            #:windows-not-come #:*window-seconds* #:+most-client-windows+ #:remote-pid #:decline-window
            #:remote-client-painted #:+protocol+
            ;; the octets of a connection, sent and received, for other protocols over a local socket too

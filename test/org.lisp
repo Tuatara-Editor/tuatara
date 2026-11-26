@@ -670,13 +670,10 @@ seconds; the editor draws after it as it does when woken."
     ;; a macro the note declares, by its name
     (is string= (format nil "#+macro: kbd @@latex:\\texttt{$1}@@~%Press {{{kbd(C-x)}}} now.~%")
         (after "j l l l l l l C-c m k b d RET" (format nil "#+macro: kbd @@latex:\\texttt{$1}@@~%Press C-x now.~%")))
-    ;; in a call: another macro, or none, the text alone again
+    ;; in a call: another macro
     (is string=
         (format nil "Met {{{P(John)}}} today.~%")
         (after "g g l l l l l l l l C-c m P RET" (format nil "Met {{{R(John)}}} today.~%")))
-    (is string=
-        (format nil "Met John today.~%")
-        (after "g g l l l l l l l l C-c m n o n e RET" (format nil "Met {{{redact(John)}}} today.~%")))
     ;; C-c M: the call point is in taken away, any macro's
     (is string=
         (format nil "Met John Otago and C-x.~%")

@@ -9,7 +9,7 @@
 
 (defpackage #:tuatara.gtk
   (:use #:cl)
-  (:import-from #:tuatara.io #:define-c-function #:null-pointer #:null-pointer-p #:sap-string)
+  (:import-from #:tuatara.runtime #:define-c-function #:null-pointer #:null-pointer-p #:sap-string)
   (:documentation "The calls into GTK4, GDK, GLib, GObject, GIO, Pango and Cairo that Tuatara's
 window makes, loaded when a window is opened.")
   (:export #:load-gtk-libraries #:+pango-scale+ #:with-gtk-float-traps #:callback
@@ -27,7 +27,8 @@ window makes, loaded when a window is opened.")
            #:gtk-overlay-new #:gtk-overlay-set-child #:gtk-overlay-add-overlay #:gtk-widget-realize
            #:gtk-native-get-renderer #:g-type-name-from-instance #:g-set-prgname #:g-set-application-name
            #:gtk-window-new #:gtk-window-set-title #:gtk-window-set-default-size #:gtk-window-set-child
-           #:gtk-window-present #:gtk-window-destroy #:gtk-drawing-area-new #:gtk-drawing-area-set-draw-func
+           #:gtk-window-present
+           #:gtk-widget-error-bell #:gtk-window-destroy #:gtk-drawing-area-new #:gtk-drawing-area-set-draw-func
            #:gtk-widget-set-focusable #:gtk-widget-grab-focus #:gtk-widget-queue-draw #:gtk-widget-add-controller
            #:gtk-widget-get-width #:gtk-widget-get-height #:gtk-widget-set-cursor-from-name
            #:gtk-event-controller-key-new #:gtk-event-controller-key-set-im-context
@@ -281,6 +282,11 @@ RGB24 on this kind of processor); the graphics card holds it once drawn."
 (define-c-function ("gtk_widget_set_can_target" gtk-widget-set-can-target) :void
   "Whether the pointer's events reach WIDGET, or pass through it to what is below."
   (widget :pointer) (can :boolean))
+
+(define-c-function ("gtk_widget_error_bell" gtk-widget-error-bell) :void
+  "Ring the desktop's bell for WIDGET, as its sound and accessibility settings
+say: a sound, or a flash of the screen."
+  (widget :pointer))
 
 (define-c-function ("gtk_widget_set_visible" gtk-widget-set-visible) :void
   "Show WIDGET, or hide it."
@@ -593,7 +599,7 @@ for the A key, whatever AltGr or Shift make it give); NIL for none."
 
 (defun pango-layout-set-text (layout text)
   "Make TEXT what LAYOUT holds."
-  (tuatara.io:with-c-string (octets text :length length)
+  (tuatara.runtime:with-c-string (octets text :length length)
     (%pango-layout-set-text layout octets length)))
 
 (define-c-function ("pango_layout_get_pixel_size" %pango-layout-get-pixel-size) :void

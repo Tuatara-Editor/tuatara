@@ -123,6 +123,12 @@ the last, and set its cell size from them."
       (gtk-window-present (gtk-window f))))
   nil)
 
+(define-callback on-bell :boolean ((data :pointer))
+  (let ((f (data-window data)))
+    (when (and f (gtk-window f))
+      (gtk-widget-error-bell (gtk-window f))))
+  nil)
+
 (define-callback on-editor-ended :boolean ((data :pointer))
   ;; nothing to do: GTK's loop looks again whether it has anything left
   (declare (ignore data))
@@ -187,17 +193,13 @@ them, or NIL when the clipboard held no text."
 (define-callback on-clipboard-kept :void ((source :pointer) (result :pointer) (data :pointer))
   (let ((f (data-window data))
         (text (finished-clipboard-text source result)))
-    (when f
-      (sb-thread:with-mutex ((gtk-lock f))
-        (setf (gtk-clipboard-kept f) text
-              (gtk-clipboard-reads f) (max 0 (1- (or (gtk-clipboard-reads f) 1))))
-        (sb-thread:condition-broadcast (gtk-changed f))))))
+    (when (and f (gtk-clipboard-kept f))
+      (tuatara.frontend:clipboard-read-done (gtk-clipboard-kept f) text))))
 
 (defun read-changed-clipboard (f)
   "Read the clipboard's text into F's keeping (GTK-CLIPBOARD-KEPT) in the
 background, on GTK's thread, a paste meanwhile waiting for it."
-  (sb-thread:with-mutex ((gtk-lock f))
-    (setf (gtk-clipboard-reads f) (1+ (or (gtk-clipboard-reads f) 0))))
+  (tuatara.frontend:clipboard-read-begun (gtk-clipboard-kept f))
   (gdk-clipboard-read-text-async (clipboard) (null-pointer) (callback on-clipboard-kept) (window-data f)))
 
 (define-callback on-clipboard-changed :void ((clipboard :pointer) (data :pointer))
@@ -354,10 +356,10 @@ tuatara, as the desktop's launcher does (tools/install-desktop.sh)."
 started. The GSK_RENDERER set here stays for as long as Tuatara runs, GTK
 reading it as each window opens; the programs Tuatara starts are not given
 it (TUATARA.IO:*OWN-VARIABLES*)."
-  (cond ((tuatara.io:own-variable "TUATARA_RENDERER_CHOSEN")
+  (cond ((tuatara.runtime:own-variable "TUATARA_RENDERER_CHOSEN")
          (sb-posix:unsetenv "TUATARA_RENDERER_CHOSEN")
-         (setf *window-renderer* (tuatara.io:own-variable "GSK_RENDERER")))
-        ((tuatara.io:own-variable "GSK_RENDERER")
+         (setf *window-renderer* (tuatara.runtime:own-variable "GSK_RENDERER")))
+        ((tuatara.runtime:own-variable "GSK_RENDERER")
          (setf *window-renderer* :environment))
         (t
          (setf *window-renderer* (renderer-name *gui-renderer*))
@@ -584,7 +586,7 @@ terminal shows it (LOG-STDERR-UNLESS-TERMINAL)."
                            (unless (gtk-done window) (tuatara.frontend:frontend-stop window)))
                          (wake-gtk-loop)))
                      :name "editor")))
-        (let ((out (tuatara.io:own-variable "TUATARA_MEASURE_DRAWING")))
+        (let ((out (tuatara.runtime:own-variable "TUATARA_MEASURE_DRAWING")))
           (when out (measure-drawing f out)))
         (run-gtk-loop (lambda () (and ended (null (open-windows)))))
         (sb-thread:join-thread editor :default nil)

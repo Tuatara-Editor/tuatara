@@ -1,10 +1,9 @@
 ;;;; lisp/calendar/calendar.lisp --- The calendar: three months at a time, moved by day, week, month and year.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's M-x calendar: *Calendar* shows the month point is in with the
-;;;; one before and the one after, laid out as Emacs lays them out, and point
-;;;; on a day moves by days, weeks, months and years, the months scrolling as
-;;;; it goes. Today is marked, and the days other parts of the editor name
+;;;; *Calendar* shows the month point is in with the one before and the one
+;;;; after, and point on a day moves by days, weeks, months and years, the
+;;;; months scrolling as it goes. Today is marked, and the days other parts of the editor name
 ;;;; (*CALENDAR-MARK-FUNCTIONS*: the days with agenda entries) are marked as
 ;;;; they are worked out in the background. Days are numbered as Org's agenda
 ;;;; numbers them, from 1900-01-01, any year at all.
@@ -162,8 +161,8 @@ day, \\[calendar-forward-week] and \\[calendar-backward-week] a week,
 \\[calendar-beginning-of-month], \\[calendar-end-of-month],
 \\[calendar-beginning-of-year] and \\[calendar-end-of-year] to the week's,
 month's or year's ends; \\[calendar-scroll-left] and \\[calendar-scroll-right]
-scroll a month, \\[calendar-scroll-left-three-months] and
-\\[calendar-scroll-right-three-months] three. \\[calendar-goto-today] goes to
+scroll a month, \\[calendar-next-months] and
+\\[calendar-previous-months] three. \\[calendar-goto-today] goes to
 today, \\[calendar-goto-date] a date asked for, \\[calendar-other-month] a month
 asked for; \\[calendar-print-day-of-year] and \\[calendar-iso-print-date] say
 which day of the year and which ISO week it is. \\[calendar-mark-days] and
@@ -398,12 +397,12 @@ goes to today when today is, else to the first day of the middle month."
   "Show the month before, the months moving right; with a count, that many."
   (calendar-scroll (- (prefix))))
 
-(define-command calendar-scroll-left-three-months ()
+(define-command calendar-next-months ()
   "Show the months after those shown, as many as are shown (*CALENDAR-MONTHS*,
 three as standard); with a count, that many times as many."
   (calendar-scroll (* (tuatara.buffer:buffer-local (current-buffer) 'calendar-count 3) (prefix))))
 
-(define-command calendar-scroll-right-three-months ()
+(define-command calendar-previous-months ()
   "Show the months before those shown, as many as are shown (*CALENDAR-MONTHS*,
 three as standard); with a count, that many times as many."
   (calendar-scroll (* (- (tuatara.buffer:buffer-local (current-buffer) 'calendar-count 3)) (prefix))))
@@ -488,27 +487,39 @@ year."
 
 ;;; A date asked for
 
-(defun read-date (prompt &key (now (get-universal-time)) (shown #'date-time-text) follow other typed keymap details)
+(defun date-parts-typed (input today empty now)
+  "The day number, hour, minute, end hour and end minute INPUT names as
+READ-DATE-TEXT reads it from TODAY, a time from now from the universal time
+NOW, a list; EMPTY, such a list, when INPUT is blank and EMPTY is given."
+  (if (and empty (zerop (length (string-trim '(#\Space #\Tab) input))))
+      empty
+      (multiple-value-list (read-date-text input today now))))
+
+(defun read-date (prompt &key (now (get-universal-time)) (shown #'date-time-text) follow other typed keymap details
+                            empty)
   "Ask PROMPT for a date, read as READ-DATE-TEXT reads it (tomorrow, fri, +3d,
-sep 30, 2026-12-24 14:00, 3pm), the date it reads shown below as it is typed, as
-SHOWN, a function of its day number, hour, minute, end hour and end minute,
-writes it (2026-12-24 Thu 14:00 unless given), \\`RET' taking it. FOLLOW, when
-given, a function of the same, is called as each is read. NOW is the universal
-time taken as now. OTHER, when given, reads what is typed when it is no date:
-a function of it giving what it reads and the words shown for it, or NIL.
-TYPED, when given, a function of what is typed, is called each time it
-changes: while it returns true, nothing is offered to take. KEYMAP, when
-given, holds keys of the question's own. Returns the universal time of the
-date in local time, at midnight when no time is given, and as the values after
-it its day number, hour, minute, end hour and end minute; when what was typed
-is no date, what OTHER read of it, or NIL. DETAILS are shown beside the
-question while it is asked (CALL-WITH-QUESTION-DETAILS)."
+sep 30, 2026-12-24 14:00, 3pm, 50m from now), the date it reads shown below
+as it is typed, as SHOWN, a function of its day number, hour, minute, end
+hour and end minute, writes it (2026-12-24 Thu 14:00 unless given), \\`RET'
+taking it. FOLLOW, when given, a function of the same, is called as each is
+read. NOW is the universal time taken as now. OTHER, when given, reads what
+is typed when it is no date: a function of it giving what it reads and the
+words shown for it, or NIL. TYPED, when given, a function of what is typed,
+is called each time it changes: while it returns true, nothing is offered to
+take. KEYMAP, when given, holds keys of the question's own. Returns the
+universal time of the date in local time, at midnight when no time is given,
+and as the values after it its day number, hour, minute, end hour and end
+minute; when what was typed is no date, what OTHER read of it, or NIL.
+DETAILS are shown beside the question while it is asked
+\(CALL-WITH-QUESTION-DETAILS). EMPTY, when given, a list of a day number,
+hour, minute, end hour and end minute, is what nothing typed names, in place
+of today."
   (let* ((today (nth-value 0 (time-day now)))
          (chosen (completing-read prompt
                                   (lambda (input)
                                     (if (and typed (funcall typed input))
                                         '()
-                                        (let ((parts (multiple-value-list (read-date-text input today))))
+                                        (let ((parts (date-parts-typed input today empty now)))
                                           (cond ((first parts)
                                                  (when follow (apply follow parts))
                                                  (list (make-candidate (apply shown parts)
@@ -520,7 +531,7 @@ question while it is asked (CALL-WITH-QUESTION-DETAILS)."
                                                                                     :annotation "RET takes it")))))))))
                                   :filter nil :keymap keymap :details details)))
     (cond ((and (consp chosen) (eq (first chosen) :other)) (second chosen))
-          (t (let ((parts (if (consp chosen) chosen (multiple-value-list (read-date-text chosen today)))))
+          (t (let ((parts (if (consp chosen) chosen (date-parts-typed chosen today empty now))))
                (cond ((first parts)
                       (destructuring-bind (day hour minute end-hour end-minute) parts
                         (values (day-universal-time day (or hour 0) (or minute 0))
@@ -548,6 +559,7 @@ last said there, else as *CALENDAR-MARK-DAYS* says."
   :verb "mark the days"
   :left-words "the days are not marked"
   :at-exit :quiet)
+
 (defmethod tuatara.runtime:job-holds-queue-p ((job calendar-marks))
   "False: the calendar's marks, worked out in the background, keep no other job of its buffer waiting."
   nil)
@@ -726,18 +738,15 @@ as it is, the window kept for it and selected; mark its days as they are
 worked out, today on a bright ground and the day at point on the cursor's
 colour."
   (let ((keymap (mode-keymap 'calendar-mode)))
-    (define-keys keymap '(("C-f" calendar-forward-day) ("<right>" calendar-forward-day)
-                          ("C-b" calendar-backward-day) ("<left>" calendar-backward-day)
-                          ("C-n" calendar-forward-week) ("<down>" calendar-forward-week)
-                          ("C-p" calendar-backward-week) ("<up>" calendar-backward-week)
+    (define-keys keymap '(("<right>" calendar-forward-day) ("<left>" calendar-backward-day)
+                          ("<down>" calendar-forward-week) ("<up>" calendar-backward-week)
                           ("M-}" calendar-forward-month) ("M-{" calendar-backward-month)
-                          ("C-x ]" calendar-forward-year) ("C-x [" calendar-backward-year)
-                          ("C-a" calendar-beginning-of-week) ("C-e" calendar-end-of-week)
+                          ("]" calendar-forward-year) ("[" calendar-backward-year)
+                          ("C-e" calendar-end-of-week)
                           ("M-a" calendar-beginning-of-month) ("M-e" calendar-end-of-month)
                           ("M-<" calendar-beginning-of-year) ("M->" calendar-end-of-year)
                           (">" calendar-scroll-left) ("<" calendar-scroll-right)
-                          ("C-v" calendar-scroll-left-three-months) ("<next>" calendar-scroll-left-three-months)
-                          ("M-v" calendar-scroll-right-three-months) ("<prior>" calendar-scroll-right-three-months)
+                          ("<next>" calendar-next-months) ("<prior>" calendar-previous-months)
                           ("." calendar-goto-today) ("g d" calendar-goto-date) ("o" calendar-other-month)
                           ("p d" calendar-print-day-of-year) ("p c" calendar-iso-print-date)
                           ("m" calendar-mark-days) ("u" calendar-unmark) ("RET" calendar-open-day))))
@@ -746,7 +755,7 @@ colour."
                      'calendar-forward-month 'calendar-backward-month 'calendar-forward-year 'calendar-backward-year
                      'calendar-beginning-of-week 'calendar-end-of-week 'calendar-beginning-of-month
                      'calendar-end-of-month 'calendar-beginning-of-year 'calendar-end-of-year 'calendar-scroll-left
-                     'calendar-scroll-right 'calendar-scroll-left-three-months 'calendar-scroll-right-three-months
+                     'calendar-scroll-right 'calendar-next-months 'calendar-previous-months
                      'calendar-goto-today 'calendar-jump-back 'calendar-goto-date 'calendar-open-day
                      'calendar-other-month 'calendar-print-day-of-year 'calendar-iso-print-date
                      'calendar-mark-days 'calendar-unmark)

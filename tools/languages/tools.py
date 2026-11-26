@@ -40,6 +40,7 @@ def main():
             config = dict(server['config'])
             if config.get('hostInfo') == 'helix':
                 config['hostInfo'] = 'tuatara'  # servers shape their behaviour by the client's name
+            config.pop('isHttpEnabled', None)  # metals would serve a web page on a port of its own
             parts.append(':options ' + lisp_string(json.dumps(config, separators=(',', ':'), ensure_ascii=False)))
         if server.get('environment'):
             parts.append(':environment ' + lisp_list(f'{k}={v}' for k, v in sorted(server['environment'].items())))

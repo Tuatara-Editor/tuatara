@@ -112,7 +112,7 @@ that calls for none, or a file visited safely."
 
 (defun save-target (buffer path)
   "The file a save of BUFFER writes: PATH, read relative to the buffer's
-directory (or *DEFAULT-DIRECTORY*) with a leading ~ for the home directory, or
+directory (or *NO-FILE-DIRECTORY*) with a leading ~ for the home directory, or
 the buffer's own file."
   (if (null path)
       (tuatara.buffer:buffer-file buffer)
@@ -230,22 +230,26 @@ changed on disk, write-protected, another file's name): the save is refused."
   (case (tuatara.buffer:buffer-local buffer :follow-file)
     (:on t) (:off nil) (t *reload-changed-files*)))
 
-(define-record (reload-job (:include tuatara.runtime:job) (:constructor make-reload-job (buffer content old))
+(define-record (reload-job (:include tuatara.runtime:job)
+                           (:constructor make-reload-job (buffer content old &optional asked))
                            (:copier nil))
   "The file of BUFFER read again on a thread of its own, another program
-having rewritten it (CATCH-UP), a job: CONTENT is the number of the buffer's
-text when it began, OLD that text; OPENED is the file as read
-\(TUATARA.IO:READ-FILE-AGAIN), MAPPING the two functions taking positions in
-OLD to the new text and back (TEXT-MAPPING), once read."
+having rewritten it (CATCH-UP) or ASKED true for \\[revert-buffer], a job:
+CONTENT is the number of the buffer's text when it began, OLD that text;
+OPENED is the file as read (TUATARA.IO:READ-FILE-AGAIN), MAPPING the two
+functions taking positions in OLD to the new text and back (TEXT-MAPPING),
+once read."
   (content 0 :read-only t :documentation "The number of the text of RELOAD-JOB's buffer when it began.")
   (old nil :read-only t :documentation "The text of RELOAD-JOB's buffer when it began.")
+  (asked nil :read-only t :documentation "True when RELOAD-JOB was asked for, not begun by a change on disk.")
   (opened nil :documentation "The file RELOAD-JOB read, once read.")
   (mapping nil
            :documentation "The two functions taking positions in RELOAD-JOB's old text to the new and back, a list."))
 
 (tuatara.runtime:define-job-words reload-job
   :doing "Reading again"
-  :description (format nil "Reading ~a again, changed on disk" (tuatara.runtime:job-buffer-name job))
+  :description (format nil "Reading ~a again~:[, changed on disk~;~]" (tuatara.runtime:job-buffer-name job)
+                       (reload-job-asked job))
   :verb "read it again"
   :left-words "the buffer stays as it was")
 
@@ -274,10 +278,10 @@ said they did, joined in one string, or NIL."
     (values buffer (and (plusp (length said)) said))))
 
 (defmethod tuatara.runtime:job-take-in ((job reload-job))
-  "Make the file read again the text of the job's buffer (RELOAD-BUFFER) and
-say so; when the buffer was edited meanwhile, the edit is kept and that is
-said, and when it was killed or is being saved, or the reading failed, the
-file read is let go of."
+  "Make the file read again the text of the job's buffer (RELOAD-BUFFER), its
+grammar parsing it afresh when it was asked for, and say so; when the buffer
+was edited meanwhile, the edit is kept and that is said, and when it was
+killed or is being saved, or the reading failed, the file read is let go of."
   (let ((buffer (tuatara.runtime:job-buffer job))
         (opened (reload-job-opened job)))
     (cond ((not (eq (tuatara.runtime:job-status job) :done))
@@ -287,28 +291,36 @@ file read is let go of."
                       (tuatara.runtime:job-ending-words job))))
           ((or (not (tuatara.buffer:live-buffer-p buffer)) (tuatara.io:saving-p buffer))
            (tuatara.io:discard-opened-file opened))
+          ((and (/= (reload-job-content job) (tuatara.buffer:buffer-content-number buffer)) (reload-job-asked job))
+           (tuatara.io:discard-opened-file opened)
+           (message (substitute-command-keys "~a was not read again, edited meanwhile: \\[revert-buffer] reads it again"
+                                             :marks t :for-format t)
+                    (tuatara.buffer:buffer-name buffer)))
           ((/= (reload-job-content job) (tuatara.buffer:buffer-content-number buffer))
            (tuatara.io:discard-opened-file opened)
            (message (substitute-command-keys "~a changed on disk but is not read again, edited meanwhile: ~
                                               \\[revert-buffer] takes the disk's, \\[save-buffer] writes yours over it"
                                              :marks t :for-format t)
                     (tuatara.buffer:buffer-name buffer)))
-          (t (handler-case (progn (reload-buffer buffer job)
-                                  (setf (tuatara.buffer:buffer-local buffer :disk-state-said) nil)
-                                  (message "Read ~a again, changed on disk (undo takes it back)"
-                                           (tuatara.buffer:buffer-name buffer)))
+          (t (handler-case (let ((said (nth-value 1 (reload-buffer buffer job))))
+                             (setf (tuatara.buffer:buffer-local buffer :disk-state-said) nil)
+                             (if (reload-job-asked job)
+                                 (progn (parse-afresh buffer)
+                                        (message "Read ~a again~@[; ~a~]" (tuatara.buffer:buffer-name buffer) said))
+                                 (message "Read ~a again, changed on disk (undo takes it back)"
+                                          (tuatara.buffer:buffer-name buffer))))
                (refusal (condition)
                  (tuatara.io:discard-opened-file opened)
                  (message "~a was not read again: ~a" (tuatara.buffer:buffer-name buffer) condition)))))))
 
-(defun start-reload (buffer)
+(defun start-reload (buffer &key asked)
   "Read BUFFER's file again on a thread of its own (RELOAD-JOB), the text
-taken in once read; one still reading for it is stopped, for this one reads
-what is on disk now."
+taken in once read, ASKED true when \\[revert-buffer] asked for it; one still
+reading for it is stopped, for this one reads what is on disk now."
   (dolist (job (jobs-of buffer :running t))
     (when (reload-job-p job) (tuatara.runtime:job-stop job)))
   (let ((job (make-reload-job buffer (tuatara.buffer:buffer-content-number buffer)
-                              (tuatara.buffer:buffer-text buffer))))
+                              (tuatara.buffer:buffer-text buffer) asked)))
     (tuatara.runtime:start-job-thread
      job (lambda (job)
            (multiple-value-bind (opened text) (tuatara.io:read-file-again buffer)
@@ -337,10 +349,7 @@ of its own, or the file is gone)."
 
 (defun buffer-names (buffers)
   "The names of BUFFERS for a message: a, a and b, a, b and c, a, b, c and 2 more."
-  (let ((names (mapcar #'tuatara.buffer:buffer-name buffers)))
-    (if (> (length names) 4)
-        (format nil "~{~a~^, ~} and ~d more" (subseq names 0 3) (- (length names) 3))
-        (format nil "~{~a~#[~; and ~:;, ~]~}" names))))
+  (names-shown buffers :most 3 :name-of #'tuatara.buffer:buffer-name :separator :words))
 
 (defun react-to-disk (buffers &key visited)
   "Take in what the watcher found about BUFFERS, whose files changed on disk:
@@ -499,8 +508,10 @@ background."
 (define-command revert-buffer ()
   "Read the current buffer's file again, replacing its text: one step that undo
 takes back, unless the text could no longer be trusted (then the history goes
-too). Point and the window stay on the same text. A file that only grew has
-just what it grew by added. Asks first when the buffer has changes not saved.
+too). The file is read in the background and the text taken in once read; an
+edit made meanwhile is kept, the file not taken. Point and the window stay on
+the same text. A file that only grew has just what it grew by added. Asks
+first when the buffer has changes not saved.
 In a buffer a command made (a list, help, a report), make it again from what
 it shows, point staying on its entry or its line: \\`r' and \\`g r' there.
 A narrowed buffer is widened: all of it is read again. A grammar that went
@@ -523,14 +534,20 @@ wrong on its text before is tried on it again, the text parsed afresh."
                                            (tuatara.buffer:buffer-name buffer)))))
            (message "Not reverted"))
           (t (tuatara.buffer:widen-buffer buffer)
-             (let* ((added (and (not (tuatara.buffer:buffer-modified-p buffer))
-                                (tuatara.io:append-from-disk buffer)))
-                    (said (and (not added) (nth-value 1 (reload-buffer buffer)))))
-               (setf (tuatara.buffer:buffer-local buffer :disk-state-said) nil)
-               (parse-afresh buffer)
-               (if added
-                   (message "Read what ~a grew by on disk (~a)" (tuatara.buffer:buffer-name buffer) (octets-words added))
-                   (message "Read ~a again~@[; ~a~]" (tuatara.buffer:buffer-name buffer) said)))))))
+             (let ((added (and (not (tuatara.buffer:buffer-modified-p buffer))
+                               (tuatara.io:append-from-disk buffer))))
+               (cond (added
+                      (setf (tuatara.buffer:buffer-local buffer :disk-state-said) nil)
+                      (parse-afresh buffer)
+                      (message "Read what ~a grew by on disk (~a)" (tuatara.buffer:buffer-name buffer)
+                               (octets-words added)))
+                     ((null (tuatara.buffer:buffer-local buffer :reread))
+                      (start-reload buffer :asked t)
+                      (message "Reading ~a again" (tuatara.buffer:buffer-name buffer)))
+                     (t (let ((said (nth-value 1 (reload-buffer buffer))))
+                          (setf (tuatara.buffer:buffer-local buffer :disk-state-said) nil)
+                          (parse-afresh buffer)
+                          (message "Read ~a again~@[; ~a~]" (tuatara.buffer:buffer-name buffer) said)))))))))
 
 (define-command follow-file ()
   "Keep the current buffer up with its file on disk, or stop. What another
@@ -637,7 +654,7 @@ HOSTS name (in any case); only file:///PATH and file://HOST/PATH are taken."
   "The environment that has a program shut in the sandbox write times in
 your time zone, a list of (NAME VALUE): TZ as yours is set, or as the zone
 /etc/localtime names; NIL when neither says one."
-  (let ((zone (or (tuatara.io:own-variable "TZ") (system-time-zone-name))))
+  (let ((zone (or (tuatara.runtime:own-variable "TZ") (system-time-zone-name))))
     (and zone (plusp (length zone)) (list (list "TZ" zone)))))
 
 (defun visit-safely-reason (path &optional stamp usual)

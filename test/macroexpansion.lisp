@@ -5,11 +5,11 @@
 
 (define-test macroexpansion
   :description "C-c C-m shows what the macro call at point expands to once, C-c M-m all the way down,
-in *Pp Macroexpand Output*; with C-u the expansion goes in after the call.")
+in *Macro expansion*; with C-u the expansion goes in after the call.")
 
 (defun expansion-shown ()
-  "The text of *Pp Macroexpand Output*, or NIL when there is none."
-  (let ((b (tuatara.buffer:find-buffer "*Pp Macroexpand Output*")))
+  "The text of *Macro expansion*, or NIL when there is none."
+  (let ((b (tuatara.buffer:find-buffer "*Macro expansion*")))
     (and b (tuatara.buffer:buffer-string b))))
 
 (defun squeezed (text)
@@ -30,7 +30,7 @@ in *Pp Macroexpand Output*; with C-u the expansion goes in after the call.")
 
 (define-modal-test (macroexpansion from-the-keys)
   (flet ((expanded (keys)
-           (let ((old (tuatara.buffer:find-buffer "*Pp Macroexpand Output*")))
+           (let ((old (tuatara.buffer:find-buffer "*Macro expansion*")))
              (when old (tuatara.buffer:kill-buffer old)))
            (nth-value 1 (fresh-start keys :width 120 :height 20))))
     ;; once, the call before point
@@ -158,7 +158,7 @@ in *Pp Macroexpand Output*; with C-u the expansion goes in after the call.")
   (with-test-directory (dir)
     (let ((file (namestring (put-file (merge-pathnames "hostile.lisp" dir) (format nil "(when a b)~%")))))
       (dolist (keys '("C-c C-m" "C-c M-m"))
-        (let ((old (tuatara.buffer:find-buffer "*Pp Macroexpand Output*")))
+        (let ((old (tuatara.buffer:find-buffer "*Macro expansion*")))
           (when old (tuatara.buffer:kill-buffer old)))
         (let ((f (run-keys (list (format nil "C-u C-x C-f C-a C-k ~a RET M-x l i s p - m o d e RET" (key-string file))
                                  (format nil "M-< ~a" keys))

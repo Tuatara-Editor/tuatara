@@ -92,12 +92,14 @@ newest_tag() {
 newest_date_tag() {
   sed -n 's|^[0-9a-f]*\trefs/tags/\([0-9]\{8\}\)$|\1|p' | sort | tail -1
 }
+# git, over https alone and never asking for a password, giving up after a minute
+https_git() { GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=https timeout 60 git "$@"; }
 # one line NAME<TAB>PINNED<TAB>NEWEST for repository $2 pinned at commit $3, or
 # nothing when the pin is its newest commit; $4, when given, is the prefix of
 # the tags that count (vt-)
 check_repository() {
   local name="$1" repository="$2" commit="$3" refs head tag pinned
-  if ! refs="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote "$repository" 2>/dev/null)"; then
+  if ! refs="$(https_git ls-remote "$repository" 2>/dev/null)"; then
     printf '%s\t%s\t%s\n' "$name" "${commit:0:12}" "(not reachable)"
     return
   fi
@@ -108,7 +110,7 @@ check_repository() {
   pinned="$(awk -v c="$commit" '$1 == c && $2 ~ /^refs\/tags\// { sub(/^refs\/tags\//, "", $2); sub(/\^\{\}$/, "", $2); print $2; exit }' <<<"$refs")"
   printf '%s\t%s\t%s\n' "$name" "${pinned:-${commit:0:12}}" "${head:0:12}${tag:+ (newest tag $tag)}"
 }
-export -f check_repository newest_tag
+export -f https_git check_repository newest_tag
 
 # the grammars and tree-sitter, eight at a time; one line per repository and commit
 grep -v '^#' "$root/syntax/grammars.tsv" |
@@ -119,13 +121,13 @@ grep -v '^#' "$root/syntax/grammars.tsv" |
 # the tree-sitter program: its release, from the address it is fetched from
 cli_url="$(awk -F'\t' '$1 == "tree-sitter-cli" { print $2 }' "$root/syntax/grammars.tsv")"
 cli_pinned="$(sed -n 's|.*/releases/download/\([^/]*\)/.*|\1|p' <<<"$cli_url")"
-cli_newest="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags https://github.com/tree-sitter/tree-sitter 2>/dev/null | newest_tag || true)"
+cli_newest="$(https_git ls-remote --tags https://github.com/tree-sitter/tree-sitter 2>/dev/null | newest_tag || true)"
 
 pin="$root/lisp/terminal/library.pin"
 field() { awk -F'\t' -v k="$1" '$1 == k { print $2 }' "$pin"; }
 check_repository ghostty "$(field repository)" "$(field commit)" vt- > "$work/ghostty"
 zig_pinned="$(field zig)"
-zig_newest="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags https://codeberg.org/ziglang/zig 2>/dev/null | newest_tag || true)"
+zig_newest="$(https_git ls-remote --tags https://codeberg.org/ziglang/zig 2>/dev/null | newest_tag || true)"
 
 # whether commit or tag $2 of GitHub repository $1 holds commit or tag $3:
 # true when it does, 1 when it does not, 2 when GitHub did not say
@@ -195,7 +197,7 @@ ql_pinned="$(sed -n 's|^dist_url=.*/||p' "$root/tools/lisp-archives.sh")"
 ql_newest="$(https_get https://beta.quicklisp.org/dist/quicklisp.txt | sed -n 's/^version: //p')"
 
 sbcl_pinned="$("$root/build/tuatara" --version 2>/dev/null | sed -n 's/.* on SBCL \([0-9.]*\).*/\1/p' || true)"
-sbcl_newest="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags https://github.com/sbcl/sbcl 2>/dev/null |
+sbcl_newest="$(https_git ls-remote --tags https://github.com/sbcl/sbcl 2>/dev/null |
   sed -n 's|^[0-9a-f]*\trefs/tags/sbcl-\([0-9.]*\)$|\1|p' | sort -V | tail -1 || true)"
 
 sbcl_ci_pinned="$(sed -n 's|^sbcl_url=.*/sbcl/\([0-9.]*\)/.*|\1|p' "$root/tools/ci-setup.sh")"
@@ -204,14 +206,16 @@ sbcl_ci_pinned="$(sed -n 's|^sbcl_url=.*/sbcl/\([0-9.]*\)/.*|\1|p' "$root/tools/
 # runtime's, the commit of the list of libraries left out, and the Ubuntu image, by its digest
 appimage_field() { sed -n "s|^$1=||p" "$root/tools/appimage.sh"; }
 appimagetool_pinned="$(appimage_field appimagetool_url | sed -n 's|.*/releases/download/\([^/]*\)/.*|\1|p')"
-appimagetool_newest="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags https://github.com/AppImage/appimagetool 2>/dev/null | newest_tag || true)"
+appimagetool_newest="$(https_git ls-remote --tags https://github.com/AppImage/appimagetool \
+  2>/dev/null | newest_tag || true)"
 runtime_pinned="$(appimage_field runtime_url | sed -n 's|.*/releases/download/\([^/]*\)/.*|\1|p')"
-runtime_newest="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags https://github.com/AppImage/type2-runtime 2>/dev/null | newest_date_tag || true)"
+runtime_newest="$(https_git ls-remote --tags https://github.com/AppImage/type2-runtime \
+  2>/dev/null | newest_date_tag || true)"
 excludelist_commit="$(appimage_field excludelist_url | sed -n 's|.*/pkg2appimage/\([0-9a-f]\{40\}\)/.*|\1|p')"
 check_repository "AppImage exclude list" https://github.com/AppImageCommunity/pkg2appimage "$excludelist_commit" > "$work/excludelist"
 # the images packages are made in, each a line as version_line writes
 . "$root/tools/containers.sh"
-for image in "$ubuntu_current_image" "$ubuntu_image" "$fedora_image" "$arch_image"; do
+for image in "$ubuntu_image" "$fedora_image" "$arch_image"; do
   pinned="${image##*@sha256:}"
   if ! command -v skopeo >/dev/null; then
     printf '%s\t%s\t%s\n' "${image%@*} image" "${pinned:0:12}" "(skopeo not installed)"
@@ -239,7 +243,7 @@ grep -rhoE 'uses: +[^ ]+@[0-9a-f]{40} +# .*' "$root/.github/workflows" | sed 's/
     slug="${reference%@*}"; commit="${reference#*@}"
     repository="https://github.com/$(cut -d/ -f1,2 <<<"$slug")"
     if [[ "$comment" =~ ^v[0-9]+(\.[0-9]+)*$ ]]; then
-      refs="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags "$repository" 2>/dev/null || true)"
+      refs="$(https_git ls-remote --tags "$repository" 2>/dev/null || true)"
       at="$(awk -v t="refs/tags/$comment" '$2 == t "^{}" { print $1; found = 1 } $2 == t && !found { plain = $1 } END { if (!found) print plain }' <<<"$refs")"
       if [ -z "$refs" ]; then printf '%s\t%s\t%s\n' "action $slug" "$comment" "(not reachable)"
       elif [ -z "$at" ]; then printf '%s\t%s\t%s\n' "action $slug" "$comment (${commit:0:12})" "tag gone"

@@ -3,9 +3,10 @@
 ;;;;
 ;;;; A directory on another machine, /ssh:HOST:/directory/, is listed with rimu as a
 ;;;; directory of the disk is, read through SFTP (sftp.lisp) on rimu's own thread:
-;;;; its names, kinds, sizes and times, where its links lead. Nothing else is
-;;;; worked out for it: no git column, no sizes of directories, no preview, and it
-;;;; is not watched for changes. Its files are copied (C), renamed (R) and
+;;;; its names, kinds, sizes and times, where its links lead, and with S the sizes
+;;;; of its directories, each walked through the same connection. Nothing else is
+;;;; worked out for it: no git column, no preview to begin with, and it is not
+;;;; watched for changes. Its files are copied (C), renamed (R) and
 ;;;; deleted (D, x) through the client, as rimu does those on the disk, a job
 ;;;; whose every request has *REMOTE-SECONDS*; copies go from here to there,
 ;;;; from there to here, and between two directories there. A server keeps no
@@ -182,9 +183,15 @@ and one larger than *REMOTE-PREVIEW-SIZE-LIMIT*."
   "The preview off to begin with: each file it shows has to come from the server."
   (setf (list-preview-p buffer) nil))
 
-(defmethod rimu-source-changes ((source remote-rimu-source))
-  "Copies, moves within the machine, renames and deletions."
-  '(rimu-copy rimu-move rimu-rename list-delete-marked list-execute))
+(defmethod rimu-source-commands ((source remote-rimu-source))
+  "Copies, moves within the machine, renames and deletions; the home directory
+there, the directory listed before, and the sizes column, read through SFTP."
+  '(rimu-copy rimu-move rimu-rename list-delete-marked list-execute rimu-home rimu-last-directory
+    rimu-toggle-sizes))
+
+(defmethod rimu-source-home ((source remote-rimu-source))
+  "The home directory on the machine, /ssh:HOST:, its path asked of the server as the list reads it."
+  (remote-name (remote-rimu-source-host source) ""))
 
 (defmethod rimu-source-refusal-words ((source remote-rimu-source) command)
   "COMMAND works on files here only."
@@ -421,3 +428,31 @@ into itself, under any name of its machine."
         (t (refuse "rimu does not ~a files on another machine" (rimu-verb-words verb :verb))))
     (tuatara.runtime:job-stopped ()
       (refuse "stopped; the file under way taken away"))))
+
+;;; Sizes
+
+(defun remote-tree-size (host directory &key wanted)
+  "The octets the files in DIRECTORY on HOST, a path ending in /, and under it
+take, hidden ones too, read a directory at a time through the connection to
+HOST (REMOTE-LISTING), nothing run there. Links are not followed. SFTP tells
+of no file's identity nor drive, so a file with several names is counted once
+for each, and a drive mounted below is counted in. A directory that cannot be
+read, or lies more than *REMOTE-TREE-DEPTH* levels down, adds nothing; one of
+more than *SFTP-MOST-LISTED* entries adds those listed. WANTED, a function of
+no arguments, is asked before each directory whether the sum is still wanted:
+NIL is given when it says no. A connection lost or not answering in time is
+signalled (TUATARA.IO:FILE-SYSTEM-ERROR)."
+  (let ((total 0) (pending (list (cons directory 0))))
+    (loop while pending
+          do (destructuring-bind (path . depth) (pop pending)
+               (when (and wanted (not (funcall wanted)))
+                 (return-from remote-tree-size nil))
+               (dolist (entry (handler-case (remote-listing host path)
+                                (sftp-refusal () '())))
+                 (destructuring-bind (name . attributes) entry
+                   (when (tuatara.io:entry-name-p name)
+                     (case (remote-kind attributes)
+                       (:file (incf total (or (getf attributes :size) 0)))
+                       (:directory (when (< depth *remote-tree-depth*)
+                                     (push (cons (concatenate 'string path name "/") (1+ depth)) pending)))))))))
+    total))

@@ -1,10 +1,10 @@
 ;;;; lisp/modes/lisp-macroexpand.lisp --- What a macro call expands to: C-c C-m, C-c M-m.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's pp-macroexpand-last-sexp, with SLIME's keys for Common Lisp:
+;;;; With SLIME's keys for Common Lisp:
 ;;;; C-c C-m expands the macro call at point once (MACROEXPAND-1), C-c M-m all
 ;;;; the way down (every macro inside too), and the expansion is shown
-;;;; pretty-printed in *Pp Macroexpand Output*, beside; with C-u it goes in
+;;;; pretty-printed in *Macro expansion*, beside; with C-u it goes in
 ;;;; after point instead. The call is the expression beginning at point when
 ;;;; an opening bracket is there, else the one before point. The expanding runs
 ;;;; as an evaluation does, on a thread of its own that C-g stops.
@@ -33,8 +33,8 @@ itself written #1= ... #1#, so that printing it ends."
       (error (e) (format nil "~%;; the expansion cannot be printed: ~a~%" (tuatara.runtime:failure-words e :said t))))))
 
 (defun show-expansion (text)
-  "Show TEXT in *Pp Macroexpand Output*, in Lisp mode, beside the window in use."
-  (let ((b (find-or-make-buffer "*Pp Macroexpand Output*" :mode 'lisp-mode)))
+  "Show TEXT in *Macro expansion*, in Lisp mode, beside the window in use."
+  (let ((b (find-or-make-buffer "*Macro expansion*" :mode 'lisp-mode)))
     (setf (buffer-kind b) :macroexpansion)
     (tuatara.buffer:widen-buffer b)
     (tuatara.buffer:buffer-replace b 0 (tuatara.buffer:buffer-size b) (string-left-trim '(#\Newline) text))
@@ -100,24 +100,24 @@ prefix argument put it in after the call."
                 (when result
                   (say-settings-put-back result)))))))))
 
-(define-command pp-macroexpand-last-expression ()
+(define-command lisp-macroexpand ()
   "Show what the macro call at point expands to, once (MACROEXPAND-1),
-pretty-printed in *Pp Macroexpand Output*: the call beginning at point when an
+pretty-printed in *Macro expansion*: the call beginning at point when an
 opening bracket is there, else the one before point. With a prefix argument
 (\\[universal-argument]), put the expansion in after the call instead.
-\\<lisp-mode>\\[pp-macroexpand-last-expression] in Lisp buffers."
+\\<lisp-mode>\\[lisp-macroexpand] in Lisp buffers."
   (macroexpand-at-point nil))
 
-(define-command pp-macroexpand-all-last-expression ()
+(define-command lisp-macroexpand-all ()
   "Show what the macro call at point expands to, every macro in it expanded
-too (SB-CLTL2:MACROEXPAND-ALL), pretty-printed in *Pp Macroexpand Output*;
+too (SB-CLTL2:MACROEXPAND-ALL), pretty-printed in *Macro expansion*;
 with a prefix argument (\\[universal-argument]), put it in after the call
-instead. \\<lisp-mode>\\[pp-macroexpand-all-last-expression] in Lisp buffers."
+instead. \\<lisp-mode>\\[lisp-macroexpand-all] in Lisp buffers."
   (macroexpand-at-point t))
 
 (defun install-macroexpand ()
   "Bind \\`C-c C-m' and \\`C-c M-m' in Lisp buffers."
   (let ((map (mode-keymap 'lisp-mode)))
-    (define-key map "C-c C-m" 'pp-macroexpand-last-expression)
-    (define-key map "C-c RET" 'pp-macroexpand-last-expression)
-    (define-key map "C-c M-m" 'pp-macroexpand-all-last-expression)))
+    (define-key map "C-c C-m" 'lisp-macroexpand)
+    (define-key map "C-c RET" 'lisp-macroexpand)
+    (define-key map "C-c M-m" 'lisp-macroexpand-all)))

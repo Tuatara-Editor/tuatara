@@ -484,7 +484,8 @@ are not in, or NIL for those on no remote at all, a branch with none. DOING is
 what git is in the middle of: :AM, :MERGE, :REBASE, :CHERRY-PICK, :REVERT,
 :BISECT, or NIL. SUBMODULES are each (PATH STATE). IGNORED are the files it
 ignores, each (PATH KIND), KIND the word ignored, a directory ignored whole being
-one entry ending in /. STASH-STAMP is the stamp of git's list of stashes when
+one entry ending in /; IGNORED-READ is true when they were read with the rest,
+false when they are those of the state read before. STASH-STAMP is the stamp of git's list of stashes when
 they were read, NIL when there was none."
   (branch nil :documentation "The branch of GIT-STATE, NIL when detached.")
   (commit nil :documentation "The commit of GIT-STATE, \"(initial)\" before the first.")
@@ -512,6 +513,9 @@ entry ending in /.")
   (ignored '()
            :documentation "The files git ignores, each (PATH KIND); a directory ignored whole is one entry ending in
 /.")
+  (ignored-read t
+                :documentation "True when the files ignored were read with the rest of GIT-STATE, false when they are
+those of the state read before.")
   (stash-stamp nil :documentation "The stamp of git's list of stashes when they were read, NIL when there was none."))
 
 (defun git-state-unborn-p (state)
@@ -631,17 +635,24 @@ without git (GIT-REAL-DIRECTORY), for git there reads a shadow of it."
         when (some (lambda (file) (tuatara.io:path-kind (concatenate 'string directory file) :follow nil)) files)
           return operation))
 
-(defun git-read-state (job top directory &key previous)
+(defun git-read-state (job top directory &key previous (ignored t))
   "On JOB's thread, read the repository at TOP, git's own DIRECTORY, as a
 GIT-STATE. The state is read by git status (taking no lock that git run
-elsewhere would meet). The files it ignores are found in the same walk of its
-tree, a directory ignored whole being one entry. Its latest commits are read by git
-log, and its stashes by git stash list when it has any, kept from PREVIOUS, the
-state read before, while their list is as it was then."
-  (let ((state (parse-git-status (git-job-output job top (list "status" "--porcelain=v2" "--branch" "-z"
-                                                               "--untracked-files=normal" "--ignored=traditional")
-                                                 :environment (list "GIT_OPTIONAL_LOCKS=0"))))
-        (stamp (git-stash-stamp directory)))
+elsewhere would meet). With IGNORED, or with no PREVIOUS state, the files it
+ignores are found in the same walk of its tree, a directory ignored whole being
+one entry; else they are kept from PREVIOUS, the state read before, and no
+directory ignored is walked. Its latest commits are read by git log, and its
+stashes by git stash list when it has any, kept from PREVIOUS while their list
+is as it was then."
+  (let* ((walk (or ignored (null previous)))
+         (state (parse-git-status (git-job-output job top (list* "status" "--porcelain=v2" "--branch" "-z"
+                                                                 "--untracked-files=normal"
+                                                                 (and walk (list "--ignored=traditional")))
+                                                  :environment (list "GIT_OPTIONAL_LOCKS=0"))))
+         (stamp (git-stash-stamp directory)))
+    (unless walk
+      (setf (git-state-ignored state) (git-state-ignored previous)
+            (git-state-ignored-read state) nil))
     (setf (git-state-doing state) (git-operation directory)
           (git-state-submodules state) (git-submodules job top)
           (git-state-stash-stamp state) stamp)
@@ -1036,7 +1047,10 @@ entries (ENTRY-LINES), when it shows only some of them: how many more files
   "Fill BUFFER, a status, with its repository's state as last read: why it
 is looked at only, when it is (GIT-LOOK-ONLY-LINE), its head, then its sections (GIT-STATUS-SECTIONS),
 each under a heading saying how many it holds and folded as in any list in
-sections (SECTIONED-PIECES)."
+sections (SECTIONED-PIECES). The files ignored, kept from an earlier reading
+while their section was folded, are read again once it is open
+\(GIT-READ-IGNORED-WHEN-OPEN)."
+  (git-read-ignored-when-open buffer)
   (let ((state (tuatara.buffer:buffer-local buffer 'git-state))
         (shown (tuatara.buffer:buffer-local buffer 'git-shown))
         (limits (or (tuatara.buffer:buffer-local buffer 'git-shown-limits)
@@ -1102,7 +1116,8 @@ changes."
         (shown (mapcar (lambda (key) (cons key (git-shown-paths buffer key)))
                        (alexandria:hash-table-keys (tuatara.buffer:buffer-local buffer 'git-shown))))
         (directory (tuatara.buffer:buffer-local buffer 'git-directory))
-        (previous (tuatara.buffer:buffer-local buffer 'git-state)))
+        (previous (tuatara.buffer:buffer-local buffer 'git-state))
+        (ignored (not (member :ignored (list-folded buffer) :test #'equal))))
     (setf (tuatara.buffer:buffer-local buffer 'git-reading) t
           (tuatara.buffer:buffer-local buffer 'git-read-at) (get-internal-real-time))
     (start-git-job "Reading the repository"
@@ -1110,7 +1125,7 @@ changes."
                      (when fresh (forget-git-shadow top))
                      (let* ((look-only (git-look-only-reason top))
                             (directory (or directory (git-directory job top)))
-                            (state (git-read-state job top directory :previous previous))
+                            (state (git-read-state job top directory :previous previous :ignored ignored))
                             (diffs (loop for (key . paths) in shown
                                          collect (cons key (git-read-diff job top (car key) paths)))))
                        (values state diffs directory (git-stamps directory) (git-directories-of directory)
@@ -1130,8 +1145,20 @@ changes."
                              (tuatara.buffer:buffer-local buffer 'git-elsewhere) elsewhere)
                        (git-status-render buffer)))
                    :after (lambda ()
-                            (when (live-buffer-p buffer) (setf (tuatara.buffer:buffer-local buffer 'git-reading) nil)))
+                            (when (live-buffer-p buffer)
+                              (setf (tuatara.buffer:buffer-local buffer 'git-reading) nil)
+                              (git-read-ignored-when-open buffer)))
                    :quiet t :buffer buffer)))
+
+(defun git-read-ignored-when-open (buffer)
+  "Read BUFFER's repository again (GIT-REFRESH-STATUS) when its section of files
+ignored is open but they were kept from an earlier reading, made while it was
+folded, and it is not being read now."
+  (let ((state (tuatara.buffer:buffer-local buffer 'git-state)))
+    (when (and state (not (git-state-ignored-read state))
+               (not (tuatara.buffer:buffer-local buffer 'git-reading))
+               (not (member :ignored (list-folded buffer) :test #'equal)))
+      (git-refresh-status buffer))))
 
 (define-setting *git-watch-seconds* 2
   "The least time between two readings of a status on the screen when git
@@ -1677,33 +1704,34 @@ Complexity: O(log n)."
 point, as git has the file on disk, in the background."
   (let* ((buffer (current-buffer))
          (file (tuatara.buffer:buffer-file buffer))
-         (top (and file (git-top-said buffer)))
-         (line (git-line-of buffer (tuatara.buffer:buffer-point buffer))))
-    (cond ((null top))
+         (top (and file (git-top-said buffer))))
+    (cond ((null file) (message "No file here"))
+          ((null top))
           ((tuatara.buffer:buffer-modified-p buffer)
            (message "Save it first: git takes the hunk from the file on disk"))
           ((ask-project-trust top)
-           (start-git-job (if (eq how :stage) "Staging" "Unstaging")
-                          (lambda (job)
-                            (let* ((directory (tuatara.io:parent-path file))
-                                   (diff (git-read-diff job directory (if (eq how :stage) :unstaged :staged)
-                                                        (list (tuatara.io:native-file-name file))))
-                                   (hunk (find-if (lambda (h) (git-hunk-covers-p h line)) (rest diff))))
-                              (when hunk
-                                (git-job-output job top (git-apply-arguments how)
-                                                :input (git-patch (first diff) (list hunk))))
-                              (and hunk t)))
-                          (lambda (done)
-                            (message (if done
-                                         (if (eq how :stage)
-                                             "Staged the hunk at line ~d"
-                                             "Unstaged the hunk at line ~d")
-                                         (if (eq how :stage)
-                                             "No change at line ~d left to stage"
-                                             "No change staged at line ~d"))
-                                     line)
-                            (git-refresh-repository top))
-                          :buffer buffer)))))
+           (let ((line (git-line-of buffer (tuatara.buffer:buffer-point buffer))))
+             (start-git-job (if (eq how :stage) "Staging" "Unstaging")
+                            (lambda (job)
+                              (let* ((directory (tuatara.io:parent-path file))
+                                     (diff (git-read-diff job directory (if (eq how :stage) :unstaged :staged)
+                                                          (list (tuatara.io:native-file-name file))))
+                                     (hunk (find-if (lambda (h) (git-hunk-covers-p h line)) (rest diff))))
+                                (when hunk
+                                  (git-job-output job top (git-apply-arguments how)
+                                                  :input (git-patch (first diff) (list hunk))))
+                                (and hunk t)))
+                            (lambda (done)
+                              (message (if done
+                                           (if (eq how :stage)
+                                               "Staged the hunk at line ~d"
+                                               "Unstaged the hunk at line ~d")
+                                           (if (eq how :stage)
+                                               "No change at line ~d left to stage"
+                                               "No change staged at line ~d"))
+                                       line)
+                              (git-refresh-repository top))
+                            :buffer buffer))))))
 
 (define-command git-stage-hunk ()
   "Stage the hunk at point: in the status (\\[git]) the one on point's line,
@@ -1812,7 +1840,7 @@ changes, in another window, selected unless SELECT is NIL."
 
 (defparameter *git-look-only-commands*
   '(git git-toggle-diff git-next-section git-previous-section git-visit git-toggle-full-menus git-run-command
-    git-blame git-diff-file git-stash-show git-worktree-status
+    git-blame git-diff-file git-stash-show git-worktree-status git-submodule-status
     git-log git-log-other git-log-branches git-log-all git-log-file git-reflog git-show-refs
     git-diff git-diff-staged git-diff-unstaged git-diff-revision git-diff-range git-diff-commit
     git-rewind git-rewind-older git-rewind-newer git-rewind-to git-rewind-show-commit git-rewind-copy-hash)
@@ -1820,17 +1848,6 @@ changes, in another window, selected unless SELECT is NIL."
 anywhere; its menus open there too. Every other command whose name begins
 with git- is refused there and dimmed in its menus and key hints
 \(GIT-LOOK-ONLY-REFUSAL).")
-
-(defun git-look-only-reason (top)
-  "Why git only reads the repository at TOP, a phrase, or NIL when you trust
-it and git reads its own directory (GIT-READS-ONLY-P): it is evidence or
-answered look only (PROJECT-LOOK-ONLY-REASON), its .git leads into a
-repository that is, or it is not trusted at all."
-  (and (git-reads-only-p top)
-       (or (project-look-only-reason top)
-           (and (project-trusted-p top)
-                (format nil "its git directory ~a is of a repository looked at only" (git-directory-elsewhere top)))
-           "it is not trusted")))
 
 (defun git-elsewhere-notes (top)
   "The lines a status of the repository at TOP says first of what git reads

@@ -461,15 +461,15 @@ frame."
         (unless (eq index :picture)
           (tuatara.text:octets-put-integer header (getf frame :width) 4 :at 0 :big-endian t)
           (tuatara.text:octets-put-integer header (getf frame :height) 4 :at 4 :big-endian t))
-        (apply #'concatenate '(simple-array (unsigned-byte 8) (*))
-               (coerce #(137 80 78 71 13 10 26 10) '(simple-array (unsigned-byte 8) (*)))
-               (png-chunk-octets "IHDR" header)
-               (append (nreverse kept)
-                       (loop for (start . end) in (if (eq index :picture)
-                                                      (reverse (getf frame :data))
-                                                      (getf frame :data))
-                             collect (png-chunk-octets "IDAT" (subseq octets start end)))
-                       (list (png-chunk-octets "IEND" #()))))))))
+        (let ((pieces (tuatara.io:make-octet-pieces)))
+          (flet ((add (octets) (tuatara.io:add-octet-piece pieces octets)))
+            (add (coerce #(137 80 78 71 13 10 26 10) '(simple-array (unsigned-byte 8) (*))))
+            (add (png-chunk-octets "IHDR" header))
+            (mapc #'add (nreverse kept))
+            (loop for (start . end) in (if (eq index :picture) (reverse (getf frame :data)) (getf frame :data))
+                  do (add (png-chunk-octets "IDAT" (subseq octets start end))))
+            (add (png-chunk-octets "IEND" #())))
+          (tuatara.io:joined-octets pieces))))))
 
 (defun apng-inner-pictures (fd head size)
   "The pictures of the animated PNG open as file descriptor (FD), whose first
@@ -868,7 +868,7 @@ them said to be not."
           (and (inner-picture-width picture) (inner-picture-height picture)
                (tuatara.io:size-words (inner-picture-width picture) (inner-picture-height picture)))))
 
-(defun inner-pictures-metadata (path kind &key fd size)
+(defun inner-pictures-metadata (path kind &key fd size &allow-other-keys)
   "A list of the one section \"Pictures inside\" of the note of the file at
 PATH, of KIND, open as file descriptor (FD), of SIZE octets, when it keeps
 more pictures than the one shown: each with what it is, its size, where it

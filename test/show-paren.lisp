@@ -6,7 +6,7 @@
 (define-test show-paren
   :description "The bracket before point that closes, or else after it that opens, and its partner are
 shown in :paren-match; one of another kind or none in :paren-mismatch; brackets in strings and
-comments count for nothing; M-x show-paren-mode switches it.")
+comments count for nothing; M-x show-matching-bracket-mode switches it.")
 
 (define-test (show-paren partners)
   (flet ((partner (text at &optional spans)
@@ -93,10 +93,11 @@ comments count for nothing; M-x show-paren-mode switches it.")
       (false (member :paren-match (faces-at f row 3)))
       (false (member :paren-mismatch (faces-at f row 3))))
     ;; switched off (here for this test alone)
-    (let ((tuatara-user:*show-paren-mode* t))
-      (let* ((f (fresh-start (format nil "M-x s h o w - p a r e n - m o d e RET o ~a" (key-string "(a)")) :width 80))
+    (let ((tuatara-user:*show-matching-bracket* t))
+      (let* ((f (fresh-start (format nil "M-x ~a RET o ~a" (key-string "show-matching-bracket-mode") (key-string "(a)"))
+                             :width 80))
              (row (row-showing f "(a)")))
-        (true (showing f "Show-Paren mode disabled"))
+        (true (showing f "Matching brackets not shown"))
         (false (member :paren-match (faces-at f row 0)))))))
 
 (define-test (show-paren brackets-inside-a-node)
@@ -170,6 +171,6 @@ comments count for nothing; M-x show-paren-mode switches it.")
   ;; in sight: nothing said, the brackets shown
   (false (showing (fresh-start (format nil "o ~a" (key-string "(a)")) :width 120) "Matches"))
   ;; off
-  (let ((tuatara-user:*blink-matching-paren* nil))
+  (let ((tuatara-user:*say-matching-bracket* nil))
     (false (showing (fresh-start (format nil "o ~a" (key-string "a)")) :width 120) "No matching parenthesis found"))))
 

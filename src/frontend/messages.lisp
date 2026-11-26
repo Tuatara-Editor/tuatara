@@ -13,7 +13,7 @@
 
 ;;; Kinds and bounds
 
-(defconstant +protocol+ 7
+(defconstant +protocol+ 8
   "The number of the messages' format, said first both ways: a client and an
 editor of different numbers, or of different builds, do not talk.")
 
@@ -21,12 +21,13 @@ editor of different numbers, or of different builds, do not talk.")
   '((:hello 1 1024 1024)
     ;; from a client to the editor
     (:attach 2 1048576 nil) (:facts 3 65536 nil) (:event 4 65536 nil) (:answer 5 65536 nil) (:detach 6 64 nil)
-    (:no-window 7 2048 nil) (:picture-taken 8 64 nil)
+    (:no-window 7 2048 nil) (:picture-taken 8 64 nil) (:status-asked 9 64 nil)
     ;; from the editor to a client
     (:frame 16 nil 16777216) (:names 17 nil 1048576) (:faces 18 nil 1048576) (:picture 19 nil 64)
     (:title 20 nil 65536) (:selection 21 nil 16777216) (:toggle 22 nil 64) (:raise 23 nil 64)
     (:ask 24 nil 65536) (:exit 25 nil 2048) (:refused 26 nil 4096) (:take-back 27 nil 64) (:settings 28 nil 4096)
-    (:another 29 nil 256) (:picture-begin 30 nil 64) (:picture-piece 31 nil 32864) (:picture-forget 32 nil 64))
+    (:another 29 nil 256) (:picture-begin 30 nil 64) (:picture-piece 31 nil 32864) (:picture-forget 32 nil 64)
+    (:bell 33 nil 64) (:status 34 nil 64))
   "Each kind of message as (NAME CODE FROM-CLIENT FROM-EDITOR): its name, its
 number on the wire, and the most octets it may take as the editor reads it
 from a client and as a client reads it from the editor, NIL where it is never
@@ -643,6 +644,32 @@ opened, why being WORDS."
 ASCII letters and digits."
   (and (stringp word) (<= 1 (length word) +most-word+) (every (lambda (c) (and (< (char-code c) 128) (alphanumericp c))) word)))
 
+(defconstant +unix-epoch+ 2208988800 "The universal time of 1970-01-01 00:00 UTC.")
+
+(defun put-status-asked (box)
+  "Add to BOX the message that asks the editor how it stands (PUT-STATUS), in
+place of attaching."
+  (end-message box (begin-message box :status-asked)))
+
+(defun put-status (box status)
+  "Add to BOX the message that says how the editor stands, STATUS a plist:
+:PID its process id, :STARTED the universal time it started, :CLIENTS how
+many clients show it and :UNSAVED how many of its buffers hold changes not
+saved."
+  (let ((at (begin-message box :status)))
+    (put-number box (getf status :pid) 4)
+    (put-number box (max 0 (- (getf status :started) +unix-epoch+)) 4)
+    (put-number box (getf status :clients) 4)
+    (put-number box (getf status :unsaved) 4)
+    (end-message box at)))
+
+(defun take-status (inbox)
+  "Read the editor's status from INBOX, whose message has begun, as PUT-STATUS
+put it: the same plist."
+  (prog1 (list :pid (take-number inbox 4) :started (+ (take-number inbox 4) +unix-epoch+)
+               :clients (take-number inbox 4) :unsaved (take-number inbox 4))
+    (message-read inbox)))
+
 (defun take-path (inbox what)
   "An absolute path read from INBOX, of at most +MOST-PATH+ octets with no
 NUL in it; malformed otherwise, WHAT naming it in the reason."
@@ -879,19 +906,21 @@ piece of it, MORE true when more follows) or an integer."
     (etypecase answer
       (null (put-number box 0 1))
       (string (put-number box 1 1) (put-number box (if more 1 0) 1) (put-text box answer +text-piece+))
-      (integer (put-number box 2 1) (put-number box (max -64 (min 64 answer)) 2)))
+      (integer (put-number box 2 1) (put-number box (max (- +most-font-steps+) (min +most-font-steps+ answer)) 2)))
     (end-message box at)))
 
 (defun take-answer (inbox)
   "Read an answer from INBOX, as PUT-ANSWER put it: its request's number, the
-answer, and true when it is a piece of text with more to follow."
+answer, and true when it is a piece of text with more to follow. An integer
+is taken within the bounds of a font's steps (+MOST-FONT-STEPS+ either way),
+whatever was sent."
   (let ((request (take-number inbox 4)))
     (multiple-value-prog1
         (ecase (take-bounded inbox 1 0 2 "an answer's kind")
           (0 (values request nil nil))
           (1 (let ((more (= 1 (take-bounded inbox 1 0 1 "an answer's flag"))))
                (values request (take-text inbox +text-piece+) more)))
-          (2 (values request (take-signed inbox 2) nil)))
+          (2 (values request (max (- +most-font-steps+) (min +most-font-steps+ (take-signed inbox 2))) nil)))
       (message-read inbox))))
 
 ;;; Face names, numbered for each connection

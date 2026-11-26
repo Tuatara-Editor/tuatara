@@ -9,20 +9,18 @@ to the next stop; the width and the choice are set for all and for a major mode;
 NORMAL state but in Org.")
 
 (defmacro with-mode-tabs ((&rest settings) &body body)
-  "Run BODY with the tab SETTINGS, each (MODE :WIDTH N) or (MODE :TABS BOOLEAN), made
-for major modes, and the settings made for modes before it put back afterwards."
-  (let ((widths (gensym)) (tabs (gensym)))
-    `(let ((,widths (alexandria:copy-hash-table tuatara.defaults::*mode-tab-widths*))
-           (,tabs (alexandria:copy-hash-table tuatara.defaults::*mode-indent-tabs*)))
-       (unwind-protect
-            (progn
-              ,@(loop for (mode key value) in settings
-                      collect (ecase key
-                                (:width `(tuatara-user:set-tab-width ',mode ,value))
-                                (:tabs `(tuatara-user:set-indent-tabs-mode ',mode ,value))))
-              ,@body)
-         (setf tuatara.defaults::*mode-tab-widths* ,widths
-               tuatara.defaults::*mode-indent-tabs* ,tabs)))))
+  "Run BODY with the tab SETTINGS, each (MODE :WIDTH N) or (MODE :TABS BOOLEAN), added
+to *tab-width-modes* and *indent-with-tabs-modes*, the settings for modes as
+they were before put back afterwards."
+  `(let ((tuatara-user:*tab-width-modes* tuatara-user:*tab-width-modes*)
+         (tuatara-user:*indent-with-tabs-modes* tuatara-user:*indent-with-tabs-modes*))
+     ,@(loop for (mode key value) in settings
+             collect (ecase key
+                       (:width `(push (cons (tuatara.defaults::mode-named ',mode) ,value)
+                                      tuatara-user:*tab-width-modes*))
+                       (:tabs `(push (cons (tuatara.defaults::mode-named ',mode) ,(and value t))
+                                     tuatara-user:*indent-with-tabs-modes*))))
+     ,@body))
 
 (define-modal-test (tabs tab-key)
   ;; spaces to the next stop, 4 columns apart
@@ -34,17 +32,18 @@ for major modes, and the settings made for modes before it put back afterwards."
       (format nil "~cx   y" #\Tab)
       (session-text (nth-value 1 (run-keys "l l i TAB" :text (format nil "~cxy" #\Tab)))))
   ;; tabs where they are wanted
-  (let ((tuatara-user:*indent-tabs-mode* t))
+  (let ((tuatara-user:*indent-with-tabs* t))
     (is string= (format nil "~cabc" #\Tab) (session-text (nth-value 1 (run-keys "i TAB" :text "abc")))))
   (let ((tuatara-user:*tab-width* 8))
     (is string= "        abc" (session-text (nth-value 1 (run-keys "i TAB" :text "abc")))))
   ;; C-q TAB puts a tab character in whatever the settings say, C-q C-l a form feed
   (is string= (format nil "~cabc" #\Tab) (session-text (nth-value 1 (run-keys "i C-q TAB" :text "abc"))))
   (is string= (format nil "~cabc" (code-char 12)) (session-text (nth-value 1 (run-keys "i C-q C-l" :text "abc"))))
-  ;; M-x indent-tabs-mode switches one buffer
-  (multiple-value-bind (f editor) (run-keys "M-x i n d e n t - t a b s - m o d e RET i TAB" :text "abc" :width 80)
+  ;; M-x indent-with-tabs-mode switches one buffer
+  (multiple-value-bind (f editor) (run-keys (format nil "M-x ~a RET i TAB" (key-string "indent-with-tabs-mode"))
+                                            :text "abc" :width 80)
     (is string= (format nil "~cabc" #\Tab) (session-text editor))
-    (true (tuatara.frontend.fake:fake-frame-showing f "Indent-Tabs mode enabled in current buffer"))))
+    (true (tuatara.frontend.fake:fake-frame-showing f "Indent with tabs on in this buffer"))))
 
 (define-modal-test (tabs normal-state)
   ;; TAB changes no text in NORMAL state
@@ -82,11 +81,23 @@ for major modes, and the settings made for modes before it put back afterwards."
   (with-mode-tabs ((makefile :tabs t))
     (is string=
         (format nil "~cabc" #\Tab)
-        (session-text (nth-value 1 (run-keys "M-x m a k e f i l e - m o d e RET i C-z TAB" :text "abc")))))
-  ;; names are checked
-  (fail (tuatara-user:set-tab-width 'no-such 4) error)
-  (fail (tuatara-user:set-tab-width 'org 0) error)
-  (fail (tuatara-user:set-tab-width 'org 65) error))
+        (session-text (nth-value 1 (run-keys "M-x m a k e f i l e - m o d e RET i C-z TAB" :text "abc"))))))
+
+(define-modal-test (tabs widths-and-tabs-by-mode-settings)
+  ;; the settings by mode as an init file sets them
+  (flet ((typed (keys) (session-text (nth-value 1 (run-keys keys :text "abc")))))
+    (let ((tuatara-user:*tab-width-modes* '((c-mode . 8))))
+      (is string= "        abc" (typed "M-x c - m o d e RET i C-z TAB"))
+      (is string= "    abc" (typed "i C-z TAB")))
+    (let ((tuatara-user:*indent-with-tabs-modes* '((c . t))))
+      (is string= (format nil "~cabc" #\Tab) (typed "M-x c - m o d e RET i C-z TAB")))
+    ;; tab-separated data keeps its tabs whatever the setting leaves out
+    (let ((tuatara-user:*indent-with-tabs-modes* '((c . t))))
+      (is string= (format nil "~cabc" #\Tab) (typed "M-x t s v - m o d e RET i C-z TAB")))
+    (with-mode-tabs ((c :width 3) (c :tabs t))
+      (is equal '(3) (mapcar #'cdr tuatara-user:*tab-width-modes*))
+      (true (tuatara.modes:mode-setting 'tuatara.defaults::c-mode tuatara-user:*indent-with-tabs-modes*))
+      (is string= (format nil "~cabc" #\Tab) (typed "M-x c - m o d e RET i C-z TAB")))))
 
 (define-test (tabs mode-width-limited-as-the-setting)
   ;; a mode's width is taken from 1 to 64, as *tab-width* is
@@ -95,9 +106,7 @@ for major modes, and the settings made for modes before it put back afterwards."
          (dolist (width '(1 17 64))
            (with-mode-tabs ((fundamental :width width))
              (is = width (tuatara.defaults::buffer-tab-width b))))
-      (tuatara.buffer:kill-buffer b)))
-  (dolist (width '(0 65 2.5))
-    (fail (tuatara-user:set-tab-width 'org width) error)))
+      (tuatara.buffer:kill-buffer b))))
 
 (define-test (tabs tab-characters-shown)
   ;; a tab shows to the next stop, 4 columns apart unless set
@@ -115,10 +124,10 @@ for major modes, and the settings made for modes before it put back afterwards."
   (flet ((typed (keys) (session-text (nth-value 1 (run-keys keys :text "")))))
     (let ((keys (format nil "M-x l i s p - m o d e RET i ~a RET" (key-string "(let ((a 1)"))))
       (is string= (format nil "(let ((a 1)~%      ") (typed keys))
-      (let ((tuatara-user:*indent-tabs-mode* t))
+      (let ((tuatara-user:*indent-with-tabs* t))
         (is string= (format nil "(let ((a 1)~%~c  " #\Tab) (typed keys)))
       ;; less than a tab's columns is spaces
-      (let ((tuatara-user:*indent-tabs-mode* t) (tuatara-user:*tab-width* 8))
+      (let ((tuatara-user:*indent-with-tabs* t) (tuatara-user:*tab-width* 8))
         (is string= (format nil "(let ((a 1)~%      ") (typed keys))))))
 
 (define-test (tabs lisp-indent-reads-a-bounded-way-back)
@@ -158,19 +167,20 @@ for major modes, and the settings made for modes before it put back afterwards."
     (is string=
         (format nil "fn f() {~%    x~%}")
         (typed "M-x r u s t - m o d e RET j i TAB" (format nil "fn f() {~%x~%}")))
-    ;; indented already: TAB completes the name at point (*tab-always-indent* :complete, as standard)
-    (true (search "(buffer-substring" (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (buffer-subs"))))
+    ;; indented already: TAB completes the name at point (*tab-key-action* :complete, as standard)
+    (true (search "(buffer-forward-line"
+                  (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (buffer-forward-l"))))
     ;; but not where no name is being typed
     (is string=
         (format nil "(progn~%  (foo ")
         (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (foo ")))
     ;; T only indents
-    (let ((tuatara-user:*tab-always-indent* t))
+    (let ((tuatara-user:*tab-key-action* t))
       (is string=
-          (format nil "(progn~%  (buffer-subs")
-          (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (buffer-subs"))))
+          (format nil "(progn~%  (buffer-forward-l")
+          (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (buffer-forward-l"))))
     ;; NIL: in the line's text, the next tab stop
-    (let ((tuatara-user:*tab-always-indent* nil))
+    (let ((tuatara-user:*tab-key-action* nil))
       ;; point at column 5, the stop at 8
       (is string=
           (format nil "(progn~%  (x)   ")

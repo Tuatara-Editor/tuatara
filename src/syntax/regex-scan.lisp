@@ -151,18 +151,10 @@ there."
   (declare (type tuatara.text:octets octets needle) (type fixnum filled from) (optimize speed))
   (let ((at (scan-chunk octets needle fold from filled filled)))
     (when at
-      (flet ((ends-line-p (i)
-               (declare (type fixnum i))
-               (let ((b (aref octets i)))
-                 (or (= b 10) (and (= b 13) (< (1+ i) filled) (/= 10 (aref octets (1+ i))))))))
-        (declare (inline ends-line-p))
-        (let ((start (loop for i of-type fixnum from (1- (the fixnum at)) downto from
-                           when (ends-line-p i) return (1+ i)
-                           finally (return from)))
-              (end (loop for i of-type fixnum from at below filled
-                         when (ends-line-p i) return (1+ i)
-                         finally (return filled))))
-          (values start end))))))
+      (let ((before (tuatara.text:octets-line-end-position-backward octets from at filled))
+            (after (tuatara.text:octets-line-end-position octets at filled nil)))
+        (values (if before (1+ (the fixnum before)) from)
+                (if after (1+ (the fixnum after)) filled))))))
 
 (defun line-start-within (rope position floor)
   "Where the line holding POSITION of ROPE starts, or FLOOR when that is

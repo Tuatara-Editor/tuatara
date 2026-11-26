@@ -99,8 +99,7 @@ JOB-MATCH-SHADING tells it."
                          (lambda (function from to)
                            (funcall (rewrite-mapper job)
                                     (lambda (a z m g)
-                                      (declare (ignore g))
-                                      (unless (eq m :passed) (funcall function a z))
+                                      (unless (eq m :passed) (funcall function a z m g))
                                       nil)
                                     from to nil))
                          (if edited
@@ -131,50 +130,66 @@ stretch from S to E, the ends of both included."
   (let ((i (tuatara.runtime:bisect (mid 0 (length spans)) (< (cdr (aref spans mid)) s))))
     (and (< i (length spans)) (<= (car (aref spans i)) e))))
 
-(defun changes-in-view (rope finder stretches all &key (low 0))
+(defun changes-in-view (rope finder stretches all &key (low 0) keep)
   "What a job at matches changes within STRETCHES, (START . END) of ROPE's text
 shown, as (START END) ranges in order. They are the matches FINDER finds, a
-function of (FUNCTION FROM TO) calling FUNCTION with each match's start and end
-from FROM below TO. Without ALL, only the first on each line is shown, looked
-for from the line's start (not before LOW, where the replacement begins). A
-match of no length is shown on the character after it. As a second value :SLOW,
-the ranges NIL, when the pattern is too slow on this text to tell them. The one
-way the shading of a replacement or a split's job, running or waiting, finds
-what it marks."
+function of (FUNCTION FROM TO) calling FUNCTION with each match's start, end,
+text matched and groups from FROM below TO. Without ALL, only the first on
+each line is shown, looked for from the line's start, not before LOW, where
+the replacement begins: a position, or a function of a stretch's start giving
+one. A match of no length is shown on the character after it. With KEEP, a
+function of a match's start, end, text and groups, what it gives for each
+match in place of its range, the match not cut at the stretch's end. As a
+second value :SLOW, the ranges NIL, when the pattern is too slow on this text
+to tell them. The one way the matches a replacement changes are found for
+what is shown: lit while it is asked for, and shaded while its job, or a
+split's, runs or waits."
   (multiple-value-bind (ranges cut)
       (tuatara.runtime:stoppable-work ((list nil) :slow tuatara.runtime:*slow-call-seconds*)
         (let ((out '()) (size (tuatara.text:rope-octet-length rope)))
           (loop for (start . end) in stretches
-                do (let ((allowed (if all start (max low (tuatara.text:rope-line-start rope start)))))
+                do (let* ((from (if all
+                                    start
+                                    (max (if (functionp low) (funcall low start) low)
+                                         (tuatara.text:rope-line-start rope start))))
+                          (gate (if all (constantly t) (first-on-line-gate rope from))))
                      (funcall finder
-                              (lambda (a z)
-                                (when (>= a allowed)
-                                  (when (and (>= a start) (< a end))
-                                    (push (list a (if (< a z) (min z end) (min size (1+ a)))) out))
-                                  (unless all (setf allowed (next-line-start-after rope z a)))))
-                              allowed end)))
+                              (lambda (a z m g)
+                                (when (and (funcall gate a z) (>= a start))
+                                  (push (if keep
+                                            (funcall keep a z m g)
+                                            (list a (if (< a z) (min z end) (min size (1+ a)))))
+                                        out)))
+                              from end)))
           (nreverse out)))
     (if (eq cut :slow) (values nil :slow) (values ranges nil))))
+
+(defun matcher-shading (rope matcher stretches all &key (low 0))
+  "What a job at the matches of MATCHER in ROPE changes within STRETCHES, (START
+. END) of the text shown, as (START END) ranges in order (CHANGES-IN-VIEW),
+the first on each line only without ALL, looked for from no further back
+than LOW; the whole stretches when the pattern is too slow on this text to
+light the matches. Looks at the text shown only, so that it may be asked for
+each frame."
+  (multiple-value-bind (ranges slow)
+      (changes-in-view rope (lambda (function from to)
+                              (stretch-matches (lambda (a z m g) (funcall function a z m g) nil)
+                                               rope matcher from to nil nil nil))
+                       stretches all :low low)
+    (if slow (loop for (start . end) in stretches collect (list start end)) ranges)))
 
 (defun matches-shade (buffer line regex flags)
   "A SHADE (QUEUE-IF-BUSY) for LINE's replacement waiting its turn in BUFFER:
 what it will change in the text shown, as the text stands now
-\(CHANGES-IN-VIEW); the whole stretch when the pattern is too slow on this
-text to light it; nothing for a count."
+\(MATCHER-SHADING); nothing for a count."
   (let ((matcher (search-line-matcher line regex))
         (all (every-match-flags-p flags)))
     (lambda (positions from to)
       (destructuring-bind (low high &rest more) positions
         (declare (ignore more))
-        (let ((rope (tuatara.buffer:buffer-text buffer))
-              (start (max low from)) (end (min high to)))
+        (let ((start (max low from)) (end (min high to)))
           (when (and (< start end) (not (counting-flags-p flags)))
-            (multiple-value-bind (ranges slow)
-                (changes-in-view rope (lambda (function from to)
-                                        (loop for (a z) in (line-matches rope matcher regex from to)
-                                              do (funcall function a z)))
-                                 (list (cons start end)) all :low low)
-              (if slow (list (list start end)) ranges))))))))
+            (matcher-shading (tuatara.buffer:buffer-text buffer) matcher (list (cons start end)) all :low low)))))))
 
 (defun start-rewrite (buffer line regex low high words flags &key slow skip joins report)
   "Start replacing, or with the n flag counting, LINE's matches between LOW and

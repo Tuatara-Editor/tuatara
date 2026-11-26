@@ -513,9 +513,13 @@ those that read in the sandbox too when SANDBOXED."
   ;; by the opener itself, never asked about nor handed to the desktop
   (with-test-directory (dir)
     (with-stand-in-opener (record dir)
-      (let ((asked '()))
+      (let ((asked '()) (details nil))
         (sb-int:encapsulate 'tuatara.command:yes-or-no-p* 'record-asking
-                            (lambda (function prompt) (declare (ignore function)) (push prompt asked) nil))
+                            (lambda (function prompt &key ((:details said)))
+                              (declare (ignore function))
+                              (push prompt asked)
+                              (setf details said)
+                              nil))
         (unwind-protect
              (let ((f (auto-save-session (list (lambda () (tuatara.defaults::open-address "file:///etc/passwd"))
                                                (lambda () (tuatara.defaults::open-address "SMB://host/share"))
@@ -527,8 +531,14 @@ those that read in the sandbox too when SANDBOXED."
                (true (tuatara.frontend.fake:fake-frame-showing f "Links of the kind smb are not opened")))
           (sb-int:unencapsulate 'tuatara.command:yes-or-no-p* 'record-asking))
         (is = 1 (length asked))
-        (true (search "HTTPS://example.org/" (first asked)))
-        (false (probe-file record))))))
+        ;; the question names the host; the whole address is in its details
+        (true (search "Open HTTPS://example.org in" (first asked)))
+        (true (search "HTTPS://example.org/" details))
+        (false (probe-file record)))))
+  (is string= "https://example.org" (tuatara.defaults::address-shown "https://example.org/a/b?c=d"))
+  (is string= "mailto:a@b" (tuatara.defaults::address-shown "mailto:a@b?subject=Hi"))
+  (let ((long (concatenate 'string "mailto:" (make-string 100 :initial-element #\a) "@b")))
+    (is = 60 (length (tuatara.defaults::address-shown long)))))
 
 (define-test (external from-a-pdf-view)
   (with-test-directory (dir)

@@ -1080,55 +1080,47 @@ in the document as \\hyperref with its description. One with none shows what
 it leads to by its number (3, by \\ref), and in the enhanced export by its kind
 and number (section 3, Table 2, Figure 1, by \\autoref); one to a heading with no
 number by its title, to a target with none by its words. Anything else as its
-description."
-  (let* ((type (org-property node :type))
-         (path (org-property node :path))
-         (description (and (org-node-contents-begin node) (org-latex-objects-text node))))
-    (cond ((org-latex-image-link-p node)
-           (write-string (org-latex-image node (org-export-attributes (org-node-parent node) "latex")) out))
-          ((org-link-address type path)
-           (let ((url (org-link-address type path)))
-             (if description
-                 (format out "\\href{~a}{~a}" (latex-url url) description)
-                 (format out "\\url{~a}" (latex-url url)))))
-          ((string= type "file")
-           (format out "\\href{~a}{~a}" (latex-url (org-export-file-address path))
-                   (or description (latex-escape path))))
-          (t
-           (let ((target (org-export-link-target node)))
-             (cond ((and target (null description)
-                         (if (eq (org-node-type target) 'headline)
-                             (org-export-numbered-p target)
-                             ;; an element has a number when captioned, a target that of where it stands
-                             (or (not (org-export-enhanced *org-export*)) (org-latex-caption target))))
-                    (format out "\\~:[ref~;autoref~]{~a}" (org-export-enhanced *org-export*) (org-latex-label target)))
-                   ((and target (eq (org-node-type target) 'headline))
-                    (format out "\\hyperref[~a]{~a}" (org-latex-label target)
-                            (or description (with-output-to-string (s)
-                                              (let ((*org-export-text* *org-export-text*))
-                                                (org-latex-objects-between (org-property target :title)
-                                                                           (org-property target :title-begin)
-                                                                           (org-property target :title-end) s))))))
-                   (target
-                    (format out "\\hyperref[~a]{~a}" (org-latex-label target) (or description (latex-escape path))))
-                   ;; a note by its identifier, or a link leading nowhere here: its description, else its target
-                   ((uiop:string-prefix-p "denote:" path)
-                    (write-string (or description (latex-escape (subseq path 7))) out))
-                   (t (write-string (or description (latex-escape path)) out))))))))
+description (ORG-EXPORT-LINK-KIND)."
+  (let ((path (org-property node :path))
+        (description (and (org-node-contents-begin node) (org-latex-objects-text node))))
+    (multiple-value-bind (kind value) (org-export-link-kind node #'org-latex-image-link-p)
+      (ecase kind
+        (:picture (write-string (org-latex-image node (org-export-attributes (org-node-parent node) "latex")) out))
+        (:address (if description
+                      (format out "\\href{~a}{~a}" (latex-url value) description)
+                      (format out "\\url{~a}" (latex-url value))))
+        (:file (format out "\\href{~a}{~a}" (latex-url (org-export-file-address value))
+                       (or description (latex-escape value))))
+        ((:heading :target)
+         (cond ((and (null description)
+                     (if (eq kind :heading)
+                         (org-export-numbered-p value)
+                         ;; an element has a number when captioned, a target that of where it stands
+                         (or (not (org-export-enhanced *org-export*)) (org-latex-caption value))))
+                (format out "\\~:[ref~;autoref~]{~a}" (org-export-enhanced *org-export*) (org-latex-label value)))
+               ((eq kind :heading)
+                (format out "\\hyperref[~a]{~a}" (org-latex-label value)
+                        (or description (with-output-to-string (s)
+                                          (let ((*org-export-text* *org-export-text*))
+                                            (org-latex-objects-between (org-property value :title)
+                                                                       (org-property value :title-begin)
+                                                                       (org-property value :title-end) s))))))
+               (t (format out "\\hyperref[~a]{~a}" (org-latex-label value) (or description (latex-escape path))))))
+        (:plain (write-string (or description (latex-escape value)) out))))))
 
 (defun org-latex-footnote (node out)
   "Write the footnote reference NODE to OUT as \\footnote with its definition."
-  (let ((definition (with-org-export-expanding (:footnote (or (org-property node :label) node)) (nil)
-                       (if (eq (org-property node :type) 'inline)
-                           (org-latex-objects-text node)
-                           (let ((found (gethash (org-property node :label)
-                                                 (org-export-footnotes *org-export*))))
-                             (and found
-                                  (string-trim '(#\Newline #\Space)
-                                               (with-output-to-string (s)
-                                                 (org-latex-elements found s)))))))))
+  (let ((definition (org-export-footnote-text node #'org-latex-objects-text
+                                               (lambda (found)
+                                                 (string-trim '(#\Newline #\Space)
+                                                              (with-output-to-string (s)
+                                                                (org-latex-elements found s)))))))
     (when (org-export-option "f")
       (format out "\\footnote{~a}" (or definition "")))))
+
+(defun org-latex-as-written (node)
+  "The object NODE as it stands in the text, without the spaces after it, as LaTeX."
+  (latex-escape (subseq *org-export-text* (org-node-begin node) (- (org-node-end node) (org-node-post-blank node)))))
 
 (defun org-latex-object (node out)
   "Write the object NODE to OUT."
@@ -1143,9 +1135,7 @@ description."
               (if (and entry (org-export-option "e"))
                   (format out (if (cdr entry) "\\(~a\\)" "~a~:[~;{}~]") (car entry)
                           (and (not (cdr entry)) (alpha-char-p (char (car entry) (1- (length (car entry)))))))
-                  (write-string (latex-escape (subseq *org-export-text* (org-node-begin node)
-                                                      (- (org-node-end node) (org-node-post-blank node))))
-                                out))))
+                  (write-string (org-latex-as-written node) out))))
     (latex-fragment (write-string (org-property node :value) out))
     ;; \relax, as a line after the break beginning with [ would be read as a length
     (line-break (format out "\\\\\\relax~%"))
@@ -1159,30 +1149,16 @@ description."
                  (format out "\\textit{~a}" (latex-escape (org-property node :raw-value)))))
     (statistics-cookie (write-string (latex-escape (org-property node :value)) out))
     ((subscript superscript)
-     (let ((script (org-export-option "^" (if (org-export-enhanced *org-export*) (org-option-default "^") t)))
-           (contents (org-latex-objects-text node)))
-       (if (or (null script) (and (equal script "{}") (not (org-property node :use-brackets-p))))
-           (write-string (latex-escape (subseq *org-export-text*
-                                               (org-node-begin node)
-                                               (- (org-node-end node) (org-node-post-blank node)))) out)
-           (format out (if (eq (org-node-type node) 'subscript) "\\textsubscript{~a}" "\\textsuperscript{~a}")
-                   contents))))
+     (if (org-export-script-p node (if (org-export-enhanced *org-export*) (org-option-default "^") t))
+         (format out (if (eq (org-node-type node) 'subscript) "\\textsubscript{~a}" "\\textsuperscript{~a}")
+                 (org-latex-objects-text node))
+         (write-string (org-latex-as-written node) out)))
     ((inline-babel-call) nil)
     ;; a call in a keyword's value (the text's own are expanded before it is read)
-    (macro (let ((value (org-export-macro-value node))
-                 (written (subseq *org-export-text*
-                                  (org-node-begin node)
-                                  (- (org-node-end node) (org-node-post-blank node)))))
-             (if value
-                 (with-org-export-expanding (:macro (org-property node :key))
-                   ((write-string (latex-escape written) out))
-                   (write-string (org-latex-string value) out))
-                 (write-string (latex-escape written) out))))
+    (macro (write-string (org-export-macro-expansion node (org-latex-as-written node) #'org-latex-string) out))
     (citation (org-latex-citation node out))
     ;; what is left as written: a macro not known
-    (t (write-string (latex-escape (subseq *org-export-text*
-                                           (org-node-begin node)
-                                           (- (org-node-end node) (org-node-post-blank node)))) out))))
+    (t (write-string (org-latex-as-written node) out))))
 
 ;;; Citations
 

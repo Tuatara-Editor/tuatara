@@ -127,7 +127,7 @@ when it would be empty.
 | Stashes          | Work you put aside (see The stash below).                          |
 | Unpushed to ...  | Commits the remote does not have yet.                              |
 | Recent commits   | The latest commits of the branch.                                  |
-| Ignored files    | Files git was told to leave alone. Folded until you open it.       |
+| Ignored files    | Files git was told to leave alone. Folded, and read, when opened.  |
 
 The status is a list in sections, like the buffer list of chapter 7, and the
 same keys fold it. These are the keys in the order you are likely to need

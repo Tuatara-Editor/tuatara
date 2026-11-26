@@ -72,7 +72,7 @@ from."
                          (list "--disable-ldb"))))
     (if tuatara.io:*saved-program*
         (let* ((program (sb-posix:readlink "/proc/self/exe"))
-               (top (and (equal (tuatara.io:own-variable "APPIMAGE") tuatara.io:*saved-program*)
+               (top (and (equal (tuatara.runtime:own-variable "APPIMAGE") tuatara.io:*saved-program*)
                          (tuatara.io:parent-path (tuatara.io:parent-path program)))))
           (values (cons program runtime)
                   (list (or top program))

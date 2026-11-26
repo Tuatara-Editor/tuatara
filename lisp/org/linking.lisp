@@ -39,7 +39,7 @@ REGION is NIL, point after it."
 selected, else asked for, SUGGESTED offered selected, to take or type over."
   (if region
       (tuatara.buffer:buffer-string buffer :start (first region) :end (second region))
-      (read-string "Link LABEL: " :initial suggested :select-initial t)))
+      (read-string "Label: " :initial suggested :select-initial t)))
 
 (defun link-label-problem (label)
   "Why LABEL cannot be an Org link's label, or NIL: one holding ]] or ending in ] would end the link early."

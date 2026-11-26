@@ -334,7 +334,7 @@ question names the new signer, and your ~y~ makes it the one remembered. Think
 before you press it. If you do not know why the key changed, ask the author.
 
 A version signed with a GPG key your keyring lacks is refused, and Tuatara
-remembers the key's fingerprint. Import the key with ~M-x gpg-import-keys~ and
+remembers the key's fingerprint. Import the key with ~M-x gpg-keys-import~ and
 run ~M-x package-update~. Versions signed by that key, or by the key it
 belongs to, are then taken.
 
@@ -344,7 +344,7 @@ it expires, so a lapsed key no longer vouches for new versions. The author
 renews the key, or signs the version again, and you run ~M-x package-update~.
 Naming the key in =:signers= (below) does not change this.
 
-#+table: commands package-trust-again gpg-import-keys
+#+table: commands package-trust-again gpg-keys-import
 
 *** Naming the signers yourself
 
@@ -701,3 +701,17 @@ table of every line of a file, asks =heap-budget= first. Called with no
 argument it gives the octets the work may use now, a quarter of the memory
 free; given a number, such as a setting of the package's own, it gives that
 number. Keep within it, or work in smaller parts.
+
+A package that reads a file with its own reader, not shut in by the sandbox,
+asks =read-here-p= first. It answers no for a file from outside, for evidence,
+and for a file shown in a list or view opened safely. A package that reads a
+photograph's EXIF uses =exif-tags=, which reads it within the bounds given, with
+=exif-tag=, =exif-thumbnail-place= and =exif-resolution= for the values most
+often wanted. A question a package asks before acting on entries of its list
+takes the two values of =list-question=: the short question, and the counts and
+places to show beside it; =names-shown= gives the first names of a long list and
+how many more, for those details. A question of one key from a set is
+=read-key-choice=; it takes other keys that answer as one of them, and can take
+a capital letter as its small one. A package that writes into a file's buffer
+and saves it asks =buffer-modified-p= first, and leaves unsaved changes of yours
+unsaved.

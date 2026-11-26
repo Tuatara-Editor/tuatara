@@ -295,11 +295,11 @@ three runs."
   ;; the number of a line is read from the text's index, not by counting newlines
   (let ((b (tuatara.buffer:make-buffer "*line numbers*" :text (format nil "a~%b~%c~%d~%"))))
     (unwind-protect
-         (let ((tuatara.command::*current-buffer* b))
+         (progn
            (tuatara.buffer:ensure-indexed b)
            (multiple-value-bind (number calls)
-               (counting-calls (tuatara.text:rope-count-newlines) (tuatara-user:line-number-at-pos 5))
-             (is = 3 number)
+               (counting-calls (tuatara.text:rope-count-newlines) (tuatara:buffer-line-number b 4))
+             (is = 2 number)
              (is = 0 calls)))
       (tuatara.buffer:kill-buffer b))))
 

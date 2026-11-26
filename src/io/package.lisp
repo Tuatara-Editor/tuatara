@@ -9,7 +9,7 @@
   (:import-from #:tuatara.text #:octet-at #:octets-integer #:octets-signed #:octets-put-integer #:octets-at-p
                 #:base64-octets #:base64-string #:octets-ascii #:octets-search #:octets-find
                 #:command-words #:software-version-numbers #:software-version-at-least-p #:octets-words #:drop-cached)
-  (:import-from #:tuatara-user #:*default-directory* #:*cache-directory* #:*state-directory* #:*sandbox*
+  (:import-from #:tuatara-user #:*no-file-directory* #:*cache-directory* #:*state-directory* #:*sandbox*
                 #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-memory-copy-limit*
                 #:*sandbox-total-memory*
                 #:*sandbox-seccomp* #:*program-output-limit* #:*directory-tree-depth-limit*
@@ -20,8 +20,8 @@ disk, and reverting. It works on every Linux file system, with faster paths wher
 file system offers them. It also copies, moves, deletes and wipes files and directories,
 keeps the trash, and runs programs, shut in a sandbox when they read files from
 elsewhere.")
-  (:export #:buffer-file-stamp #:buffer-plaintext-p)
   (:export
+   #:buffer-file-stamp #:buffer-plaintext-p
    ;; errors
    #:file-system-error #:file-system-error-operation #:file-system-error-path #:file-system-error-reason
    #:file-system-error-errno
@@ -66,11 +66,11 @@ elsewhere.")
    #:memory-file #:call-with-memory-file #:sealed-file-size #:sandbox-run-on-file #:sandbox-find-program
    #:system-program #:sandbox-filtered-p #:mark-shut-in
    #:*sandbox-path* #:*sandbox-file-limit* #:find-program #:program-search-path #:*default-program-path*
-   #:program-missing #:program-output #:program-environment #:*own-variables* #:program-variable #:own-variable
+   #:program-missing #:program-output #:program-environment #:*own-variables* #:program-variable
    #:own-directory #:variable-listed-p #:listed-environment #:host-program-environment #:start-program #:in-starter
-   #:holding-starter #:call-with-program #:done-with-program #:user-shell #:session-command #:session-leader
-   #:session-processes #:signal-session #:process-unreaped-p #:filter-through-program #:*program-said-limit*
-   #:setpriv-command #:terminal-p #:desktop-p #:askpass-program #:*askpass-programs*
+   #:holding-starter #:call-with-program #:done-with-program #:end-unwanted-program #:user-shell #:session-command
+   #:session-leader #:session-processes #:signal-session #:process-unreaped-p #:filter-through-program
+   #:*program-said-limit* #:setpriv-command #:terminal-p #:desktop-p #:askpass-program #:*askpass-programs*
    #:*restricted-variables* #:restricted-environment
    #:rename-path #:make-directory #:path-join #:parent-path #:copy-path-tree #:delete-tree #:move-path #:trash-path
    #:walk-directory #:tree-size #:remove-special-entries
@@ -84,7 +84,7 @@ elsewhere.")
    #:sync-directory #:run-program-again #:*saved-program* #:*appimage* #:slash-ended #:directory-name #:setsid-command
    #:drive-trash-sound-p
    #:ensure-private-directory #:path-kind #:fd-kind #:fd-size #:clean-path #:dot-entry-name-p #:entry-name-p #:fit-name
-   #:remove-file-if-there #:environment-without #:duplicate-fd #:path-directory-and-name #:owner-name #:owner-group-name
+   #:remove-file-if-there #:environment-without #:path-directory-and-name #:owner-name #:owner-group-name
    #:user-font-directories
    ;; new names, and what a program shut in came to
    #:random-name #:numbered-name #:create-free-file #:copy-to-free-name #:call-with-free-file #:append-to-file
@@ -92,8 +92,7 @@ elsewhere.")
    #:fd-octets #:crc32 #:zip-octets #:zip-entries #:zip-entry-octets #:zip-locked-p #:inflate #:deflate #:zlib-deflate #:zip-error
    #:*zip-largest-entry* #:*zip-largest-ratio*
    ;; memory outside Lisp
-   #:with-octets-sap #:with-foreign-memory #:sap-octets #:null-pointer #:null-pointer-p
-   #:sap-string #:with-c-string #:c-type #:define-c-function #:%read #:%free #:%send #:%realloc
+   #:with-octets-sap #:with-foreign-memory #:sap-octets #:%read #:%free #:%send #:%realloc
    ;; visiting, checking, saving, reverting
    #:*memory-read-limit* #:*lease-large-files* #:*clone-large-files* #:*snapshot-large-files* #:*snapshot-free-margin*
    #:open-for-reading #:open-for-writing #:open-file-text #:visit-file #:buffer-for-file #:copy-descriptor-to-scratch

@@ -290,6 +290,12 @@ only one. The default keeps none.")
 typed in. The default does nothing: a terminal is where it is.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
+(defgeneric frontend-bell (frontend)
+  (:documentation "Ring FRONTEND's bell: a terminal's, which it may show as a flash or
+a mark on its tab, or the desktop's for a window of its own. The default does
+nothing.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
 (defgeneric frontend-scales-rows-p (frontend)
   (:documentation "True when FRONTEND draws a row of more than one row's height where
 a face asks for it (a window of its own, not a terminal): the rows of its frames
@@ -353,7 +359,8 @@ FUNCTION.")
 
 (defgeneric frontend-set-clipboard (frontend text)
   (:documentation "Put TEXT on the system clipboard, where other programs paste it
-from. True when it is there. Must not hang. The default has no clipboard.")
+from. True when it is there or on its way there, given to work in the
+background. Must not hang. The default has no clipboard.")
   (:method (frontend text) (declare (ignore frontend text)) nil))
 
 (defgeneric frontend-clipboard (frontend)
@@ -372,6 +379,44 @@ middle button pastes in other programs. Must not hang. The default has none.")
 selection (what the middle button pastes), or NIL when there is none or it
 cannot be read. Must not hang, as FRONTEND-CLIPBOARD. The default has none.")
   (:method (frontend) (declare (ignore frontend)) nil))
+
+(define-record (clipboard-kept (:constructor make-clipboard-kept ()) (:copier nil))
+  "The clipboard's text kept up to date in the background by a frontend told
+each time the clipboard changes, so that a paste need not ask the program
+owning the clipboard: TEXT as last read, KNOWN once a read has come in, READS
+the reads of a change under way, ENDED once it is kept no more. LOCK guards
+them; WAKE is signalled when they change. A frontend fills it
+\(CLIPBOARD-READ-BEGUN, CLIPBOARD-READ-DONE, CLIPBOARD-KEPT-END); a paste
+reads it with TUATARA.COMMAND:WAIT-FOR-CLIPBOARD-TEXT."
+  (text nil :documentation "The clipboard's text as last read, or NIL when it held none or could not be read.")
+  (known nil :documentation "True once a read of the clipboard has come in.")
+  (reads 0 :type fixnum :documentation "How many reads of the changed clipboard are under way.")
+  (ended nil :documentation "True once the clipboard is kept up to date no more.")
+  (lock (sb-thread:make-mutex :name "clipboard kept") :documentation "The mutex guarding the clipboard kept.")
+  (wake (sb-thread:make-semaphore :name "clipboard kept")
+        :documentation "The semaphore signalled each time the clipboard kept changes."))
+
+(defun clipboard-read-begun (kept)
+  "Note in KEPT (CLIPBOARD-KEPT) that a read of the changed clipboard has
+begun: a paste meanwhile waits for it."
+  (sb-thread:with-mutex ((clipboard-kept-lock kept))
+    (incf (clipboard-kept-reads kept))))
+
+(defun clipboard-read-done (kept text)
+  "Keep TEXT, the clipboard's text just read (NIL for none), in KEPT
+\(CLIPBOARD-KEPT), one read fewer under way, and wake a paste waiting."
+  (sb-thread:with-mutex ((clipboard-kept-lock kept))
+    (setf (clipboard-kept-text kept) text
+          (clipboard-kept-known kept) t
+          (clipboard-kept-reads kept) (max 0 (1- (clipboard-kept-reads kept)))))
+  (sb-thread:signal-semaphore (clipboard-kept-wake kept)))
+
+(defun clipboard-kept-end (kept)
+  "Note in KEPT (CLIPBOARD-KEPT) that the clipboard is kept up to date no
+more, and wake a paste waiting: the clipboard is then read when pasted."
+  (sb-thread:with-mutex ((clipboard-kept-lock kept))
+    (setf (clipboard-kept-ended kept) t))
+  (sb-thread:signal-semaphore (clipboard-kept-wake kept)))
 
 (defgeneric frontend-font-steps (frontend)
   (:documentation "How many steps FRONTEND's font is scaled from the size it

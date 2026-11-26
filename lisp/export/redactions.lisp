@@ -5,14 +5,14 @@
 ;;;; LaTeX file, is no secret when it is written out plainly elsewhere in the
 ;;;; same file. M-x export-check-redactions gathers what the buffer hides and lists in
 ;;;; *Redactions* every other place it shows, RET on one showing it; the
-;;;; enhanced export and export-latex-compile-pdf look first, and ask before making a
+;;;; enhanced export and latex-export-pdf look first, and ask before making a
 ;;;; PDF that would give a hidden text away.
 
 (in-package #:tuatara.export)
 
 (define-setting *latex-redaction-commands* '("R" "D" "redact")
   "The LaTeX commands that hide their argument in your LaTeX files, \\R{John
-Otago} for one. \\[export-check-redactions] and \\[export-latex-compile-pdf]
+Otago} for one. \\[export-check-redactions] and \\[latex-export-pdf]
 look for them in a LaTeX file, as hidden text to be found nowhere else.
 - a list of texts: the commands' names without the backslash, \"R\", \"D\" and
   \"redact\" as standard."
@@ -28,7 +28,10 @@ the text it hides, and the name of the call (redact). In Org, the calls of
 redact and protect, by their short names R and P too, of the kinds its
 export hides (ORG-HIDDEN-KINDS: redact unless redact:nil, protect with
 protect:t, in #+OPTIONS: or a setup file's, DIRECTORY the note's directory); in
-LaTeX, those of *LATEX-REDACTION-COMMANDS*."
+LaTeX, those of *LATEX-REDACTION-COMMANDS*: an argument holding groups of
+its own (\\R{John \\textbf{Otago}}) hides all of them, INSIDE the words it
+shows (LATEX-PLAIN-TEXT), and one never closed hides the rest of its
+paragraph. Complexity: O(length of TEXT)."
   (let ((found '()))
     (ecase kind
       (:org
@@ -39,12 +42,72 @@ LaTeX, those of *LATEX-REDACTION-COMMANDS*."
                                      (push (list start end (subseq text from to) name) found))))
                                text)))
       (:latex
-       (let ((names (format nil "~{~a~^|~}" (mapcar #'cl-ppcre:quote-meta-chars *latex-redaction-commands*))))
+       (let ((names (format nil "~{~a~^|~}" (mapcar #'cl-ppcre:quote-meta-chars *latex-redaction-commands*)))
+             (groups nil)
+             (at 0))
          (when (plusp (length names))
-           (cl-ppcre:do-scans (start end rs re (format nil "\\\\(~a)\\{([^{}]*)\\}" names) text)
-             (push (list start end (subseq text (aref rs 1) (aref re 1)) (subseq text (aref rs 0) (aref re 0)))
-                   found))))))
+           ;; an argument may hold groups of its own (\R{John \textbf{Otago}}): it reaches its closing brace,
+           ;; and the next call is looked for after it, so that a call inside another is part of that one
+           (let ((scanner (cl-ppcre:create-scanner (format nil "\\\\(~a)[ \\t]*\\n?[ \\t]*\\{" names))))
+             (loop
+               (multiple-value-bind (start open rs re) (cl-ppcre:scan scanner text :start at)
+                 (unless start (return))
+                 (let ((close (and (evenp (loop for i downfrom (1- start) to 0 while (char= #\\ (char text i))
+                                                count t))
+                                   (gethash (1- open) (or groups (setf groups (latex-groups text)))))))
+                   (if (null close)
+                       ;; \\R{...}, a line break and then letters, or a call in a comment: nothing hidden
+                       (setf at open)
+                       (let* ((inside-end (if (eq close :unclosed)
+                                              (or (cl-ppcre:scan "\\n[ \\t]*\\n" text :start open) (length text))
+                                              close))
+                              (end (if (eq close :unclosed) inside-end (1+ close))))
+                         (push (list start end (latex-plain-text (subseq text open inside-end))
+                                     (subseq text (aref rs 0) (aref re 0)))
+                               found)
+                         (setf at end)))))))))))
     (nreverse found)))
+
+(defun latex-groups (text)
+  "The groups of LaTeX TEXT, a table from where each opening brace is to where
+its closing brace is, or :UNCLOSED for one never closed. A brace written \\=\\{
+or \\=\\}, or in a comment (from % to the end of its line), is none. One pass
+through TEXT. Complexity: O(length of TEXT)."
+  (let ((groups (make-hash-table)) (open '()) (n (length text)) (i 0))
+    (loop while (< i n)
+          do (case (char text i)
+               (#\\ (incf i))
+               (#\% (setf i (1- (or (position #\Newline text :start i) n))))
+               (#\{ (push i open))
+               (#\} (when open (setf (gethash (pop open) groups) i))))
+             (incf i))
+    (dolist (brace open groups)
+      (setf (gethash brace groups) :unclosed))))
+
+(defun latex-plain-text (latex)
+  "The words LATEX, a piece of a LaTeX file, shows, as one line: the names of
+its commands (\\textbf) left out, a character written as a command (\\&) as
+itself, a space written as one (\\, or \\\\) as a space, braces and comments left
+out, and each run of blanks, line breaks and ties (~) one space."
+  (let ((out (make-string-output-stream)) (n (length latex)) (i 0))
+    (loop while (< i n)
+          do (let ((c (char latex i)))
+               (cond ((and (char= c #\\) (< (1+ i) n) (alpha-char-p (char latex (1+ i))))
+                      (setf i (or (position-if-not #'alpha-char-p latex :start (1+ i)) n))
+                      (when (and (< i n) (char= (char latex i) #\*)) (incf i))
+                      (write-char #\Space out))
+                     ((char= c #\\)
+                      ;; a space of its own (\, \  \\), a break allowed (\- \/), or a character as itself (\&)
+                      (when (< (1+ i) n)
+                        (let ((next (char latex (1+ i))))
+                          (cond ((find next "\\ ,;:>!") (write-char #\Space out))
+                                ((not (find next "-/")) (write-char next out)))))
+                      (incf i 2))
+                     ((char= c #\%) (setf i (or (position #\Newline latex :start i) n)))
+                     ((find c "{}") (incf i))
+                     ((find c '(#\~ #\Space #\Tab #\Newline #\Return)) (write-char #\Space out) (incf i))
+                     (t (write-char c out) (incf i)))))
+    (string-trim " " (cl-ppcre:regex-replace-all " {2,}" (get-output-stream-string out) " "))))
 
 (defun token-char-p (c)
   "True when C joins characters into one token, as in an address (90.233.1.40), a path or a name."
@@ -155,6 +218,21 @@ at once."
             (unless (>= reach f-end) (push f kept))
             (setf reach (max reach f-end))))))))
 
+(defun look-for-redactions (looked kind &optional directory)
+  "Look through LOOKED, the text of a file of KIND, :ORG or :LATEX, a rope or a
+string, for the texts it hides shown elsewhere in it, DIRECTORY the file's
+directory or NIL. Four values: the text as a string, the texts it hides
+\(HIDDEN-SPANS), where they show (REDACTION-FINDINGS), and, when they show
+anywhere, the text as a rope, for the places to be named in it
+\(SHOW-REDACTION-FINDINGS). In a job's thread, a stop asked of it is answered
+between the two looks. Complexity: O(length of LOOKED)."
+  (let* ((text (if (stringp looked) looked (tuatara.text:rope-string looked)))
+         (spans (hidden-spans text kind directory)))
+    (tuatara.runtime:job-check-stop)
+    (let ((findings (and spans (redaction-findings text kind directory spans))))
+      (values text spans findings
+              (and findings (if (stringp looked) (tuatara.text:string->rope looked) looked))))))
+
 (define-major-mode redactions-mode special-mode
   "*Redactions*: where a text the file hides shows plainly elsewhere in it,
 the places under each hidden text. \\<redactions-mode>\\[list-visit] on a place
@@ -164,11 +242,19 @@ shows it in another window, \\[list-visit-other] the list staying selected;
 \\`q' closes."
   :lighter "Redactions" :interactive nil)
 
-(defun show-redaction-findings (buffer text findings)
+(defun show-redaction-findings (buffer text findings &optional (rope (tuatara.buffer:buffer-text buffer)))
   "List FINDINGS (REDACTION-FINDINGS) of BUFFER, whose text is TEXT, in
-*Redactions*: under the hidden text each gives away, each place with its line."
-  (let ((rope (tuatara.buffer:buffer-text buffer))
-        (lines (coerce (uiop:split-string text :separator '(#\Newline)) 'vector)))
+*Redactions*: under the hidden text each gives away, each place with its line.
+ROPE is TEXT as a rope, BUFFER's text when TEXT was taken of it (its text as
+it is now unless given): the lines are numbered in it, and each place shows
+the same octet of BUFFER."
+  (flet ((line-text (position)
+           (subseq text (1+ (or (position #\Newline text :end position :from-end t) -1))
+                   (or (position #\Newline text :start position) (length text))))
+         (line-number (octet)
+           (if (eq rope (tuatara.buffer:buffer-text buffer))
+               (tuatara.buffer:buffer-line-number buffer octet)
+               (tuatara.text:byte->line rope octet))))
     (multiple-value-bind (pieces entries)
         (entry-lines
          (lambda (put)
@@ -185,12 +271,12 @@ shows it in another window, \\[list-visit-other] the list staying selected;
                         (destructuring-bind (position needle inside name) f
                           (declare (ignore inside name))
                           (let* ((octet (tuatara.text:char->byte rope position))
-                                 (line (1+ (tuatara.buffer:buffer-line-number buffer octet)))
+                                 (line (1+ (line-number octet)))
                                  ;; one entry, the place, on both its lines
                                  (entry (list :place buffer octet)))
                             (funcall put (format nil "  ~a:~d  ~a" (tuatara.buffer:buffer-name buffer) line needle)
                                      nil entry)
-                            (funcall put (format nil "    | ~a" (string-trim '(#\Space #\Tab) (aref lines (1- line))))
+                            (funcall put (format nil "    | ~a" (string-trim '(#\Space #\Tab) (line-text position)))
                                      nil entry))))))))
       (let ((list (set-search-filtering (buffer-in-mode "*Redactions*" 'redactions-mode)
                                         :nouns "places" :heading (lambda (entry) (eq (first entry) :hidden)))))
@@ -211,30 +297,75 @@ selected, or with OTHER the list kept selected."
           ((not (live-buffer-p buffer)) (message "The buffer the place is in is gone"))
           (t (keeping-list-selected other (lambda () (show-buffer-position buffer octet :other t)))))))
 
-(defun check-buffer-redactions (buffer &key quiet (text (tuatara.buffer:buffer-string buffer)))
-  "Look in BUFFER, whose text is TEXT, for its hidden texts shown elsewhere in
-it, list them in *Redactions* when there are any, and return how many places;
-say what was found, and with QUIET nothing when there is nothing to say."
-  (let* ((kind (export-kind buffer))
-         (directory (note-directory buffer))
-         (spans (and kind (hidden-spans text kind directory)))
-         (findings (and spans (redaction-findings text kind directory spans))))
-    (cond ((null kind)
-           (message "~a is neither an Org nor a LaTeX file: nothing hidden to look for"
-                    (tuatara.buffer:buffer-name buffer)))
+(define-record (redactions-look (:include tuatara.runtime:job)
+                                (:constructor make-redactions-look (buffer rope kind directory))
+                                (:copier nil))
+  "A look through BUFFER's text, ROPE, a file of KIND, :ORG or :LATEX, whose
+directory is DIRECTORY or NIL, for the texts it hides shown elsewhere in it, a
+job: once done, TEXT, the text looked through, SPANS, what it hides
+\(HIDDEN-SPANS), and FINDINGS, where it shows (REDACTION-FINDINGS)."
+  (rope nil :documentation "The text REDACTIONS-LOOK looks through, as a rope.")
+  (kind nil :documentation "What the file REDACTIONS-LOOK looks through is, :ORG or :LATEX.")
+  (directory nil :documentation "The directory of the file REDACTIONS-LOOK looks through, or NIL.")
+  (text nil :documentation "The text REDACTIONS-LOOK looked through, as a string, once done.")
+  (spans nil :documentation "The texts the file of REDACTIONS-LOOK hides (HIDDEN-SPANS), once done.")
+  (findings nil :documentation "Where the file of REDACTIONS-LOOK shows a text it hides, once done."))
+
+(tuatara.runtime:define-job-words redactions-look
+  :doing "Looking for hidden text"
+  :description "Looking for hidden text shown elsewhere"
+  :verb "look for hidden text"
+  :left-words "nothing listed")
+
+(defparameter *redactions-wait* 1/10
+  "How many seconds \\[export-check-redactions] waits for its look through the
+file before it goes on in the background, the places listed once found.")
+
+(defmethod tuatara.runtime:job-take-in ((job redactions-look))
+  "Say what the look through the file found, listing the places in
+*Redactions* when there are any (SHOW-REDACTION-FINDINGS); say why when it did
+not end well."
+  (let ((buffer (tuatara.runtime:job-buffer job))
+        (spans (redactions-look-spans job))
+        (findings (redactions-look-findings job)))
+    (cond ((not (eq (tuatara.runtime:job-status job) :done))
+           (message "~a" (tuatara.runtime:job-ending-words job)))
+          ((not (live-buffer-p buffer)))
           ((null spans)
-           (unless quiet
-             (message "Nothing in ~a is hidden (redact unless redact:nil, protect with protect:t)"
-                      (tuatara.buffer:buffer-name buffer))))
+           (message "Nothing in ~a is hidden (redact unless redact:nil, protect with protect:t)"
+                    (tuatara.buffer:buffer-name buffer)))
           ((null findings)
-           (unless quiet
-             (message "None of the ~d text~:p hidden in ~a shows anywhere else in it" (length spans)
-                      (tuatara.buffer:buffer-name buffer))))
+           (message "None of the ~d text~:p hidden in ~a shows anywhere else in it" (length spans)
+                    (tuatara.buffer:buffer-name buffer)))
           (t
-           (show-redaction-findings buffer text findings)
+           (show-redaction-findings buffer (redactions-look-text job) findings (redactions-look-rope job))
            (message "~d place~:p in ~a show~:[~;s~] text hidden elsewhere in it: see *Redactions*"
-                    (length findings) (tuatara.buffer:buffer-name buffer) (= 1 (length findings)))))
-    (length findings)))
+                    (length findings) (tuatara.buffer:buffer-name buffer) (= 1 (length findings)))))))
+
+(defun start-redactions-look (buffer)
+  "Look through BUFFER's text, as it is now, for the texts it hides shown
+elsewhere in it, in a job of BUFFER's (REDACTIONS-LOOK), the places listed in
+*Redactions* once found. The job, or NIL, said why, for a buffer neither in
+Org nor in LaTeX."
+  (let ((kind (export-kind buffer)))
+    (if (null kind)
+        (progn (message "~a is neither an Org nor a LaTeX file: nothing hidden to look for"
+                        (tuatara.buffer:buffer-name buffer))
+               nil)
+        (let ((job (make-redactions-look buffer (tuatara.buffer:buffer-text buffer) kind (note-directory buffer))))
+          (tuatara.runtime:start-job-thread
+           job (tuatara.runtime:carry-settings
+                (append *latex-carried-settings* '(*latex-redaction-commands*))
+                (lambda (job)
+                  (multiple-value-bind (text spans findings)
+                      (look-for-redactions (redactions-look-rope job) (redactions-look-kind job)
+                                           (redactions-look-directory job))
+                    (setf (redactions-look-text job) text
+                          (redactions-look-spans job) spans
+                          (redactions-look-findings job) findings))))
+           :name "tuatara redactions")
+          (take-in-soon job *redactions-wait* "Looking for hidden text in the background")
+          job))))
 
 (define-command export-check-redactions ()
   "Look for the texts this Org or LaTeX file hides shown plainly elsewhere in
@@ -245,8 +376,10 @@ protect:t; in a LaTeX file the arguments of *LATEX-REDACTION-COMMANDS*
 \(\\R{...}, \\D{...}). Each hidden text is looked for whole, and each of its
 words alone, as whole words in any case: John Otago hidden is given away by
 John Otago or by Otago written elsewhere. The enhanced export and
-\\[export-latex-compile-pdf] look first, and ask before making the PDF."
-  (check-buffer-redactions (current-buffer)))
+\\[latex-export-pdf] look first, and ask before making the PDF. The
+file is looked through in the background, as it is when asked."
+  (start-redactions-look (current-buffer))
+  (values))
 
 (defparameter *export-kept-directories*
   '(latex-templates-directory docx-templates-directory note-templates-directory logos-directories)
@@ -276,7 +409,7 @@ not encrypted. Never into an evidence directory
   (let* ((file (tuatara.io:native (tuatara.io:expand-path (tuatara.buffer:buffer-file buffer))))
          (named (and (eq (export-kind buffer) :org)
                      (ignoring-errors-reported ("naming the export of ~a" file)
-                                               (org-export-file-name (or text (tuatara.buffer:buffer-string buffer))
+                                               (org-export-file-name (or text (tuatara.buffer:buffer-text buffer))
                                                                      file))))
          (kept (export-kept-places))
          ;; links followed: a directory in the note's that is a link to elsewhere is elsewhere
@@ -326,23 +459,19 @@ point is on none."
         (values (+ line (tuatara.text:string-octet-length text :end from))
                 (+ line (tuatara.text:string-octet-length text :end to)))))))
 
-(defun org-macro-choices (buffer &key call)
+(defun org-macro-choices (buffer)
   "The macros text in BUFFER, an Org note, may be wrapped in, as candidates:
 R and P, which hide it in the enhanced export's PDF, then each its #+macro:
-lines declare, with what it stands for; with CALL, the name of the call the
-text is in, a last choice taking the call away (its value :NONE)."
+lines declare, with what it stands for."
   (let ((declared (remove-if #'org-hiding-kind
-                             (with-org-note-keywords ((tuatara.buffer:buffer-string buffer) (note-directory buffer))
+                             (with-org-note-keywords ((tuatara.buffer:buffer-text buffer) (note-directory buffer))
                                (org-macro-definitions))
                              :key #'car)))
     (append (list (make-candidate
                    "R" :annotation "hidden in the PDF, a black box (redact; #+options: redact:nil prints it)")
                   (make-candidate "P" :annotation "hidden in the PDF only with #+options: protect:t (protect)"))
             (loop for (name . body) in declared
-                  collect (make-candidate name :annotation (format nil "declared: ~a" body)))
-            (and call
-                 (list (make-candidate "none" :annotation (format nil "the text alone, the call of ~a taken away" call)
-                                       :value :none))))))
+                  collect (make-candidate name :annotation (format nil "declared: ~a" body))))))
 
 (defvar *org-last-macro* "R"
   "The macro \\[org-macro-wrap] wrapped text in last, offered first the next time.")
@@ -353,8 +482,9 @@ from a list: R, {{{R(John Otago)}}}, hidden in the enhanced export's PDF as a
 black box; P, hidden there only with #+options: protect:t; or one the note
 declares with a #+macro: line, what it stands for shown beside it. A word is
 a name, an address as 90.233.1.40, a mail address or a path. On text in a
-call already, change the call to another macro, or choose none to have the
-text alone again. While reading, a call shows as its text, in green.
+call already, change the call to another macro; \\[org-macro-unwrap] takes
+the call away. While reading, a call shows as its text, in the face
+:org-macro-text.
 \\[export-check-redactions] finds hidden text written plainly elsewhere."
   (let* ((buffer (current-buffer))
          (point (tuatara.buffer:buffer-point buffer))
@@ -367,16 +497,13 @@ text alone again. While reading, a call shows as its text, in green.
     (if call
         (destructuring-bind (start end name inside) call
           (let ((chosen (completing-read (format nil "Change {{{~a(...)}}} to: " name)
-                                         (org-macro-choices buffer :call name)
+                                         (org-macro-choices buffer)
                                          :require-match t :keep-order t)))
-            (tuatara.buffer:buffer-replace buffer start end
-                                           (if (eq chosen :none) inside (format nil "{{{~a(~a)}}}" chosen inside)))
+            (tuatara.buffer:buffer-replace buffer start end (format nil "{{{~a(~a)}}}" chosen inside))
             (drop-selection)
-            (setf (tuatara.buffer:buffer-point buffer) start)
-            (if (eq chosen :none)
-                (message "~a: the call taken away" inside)
-                (progn (setf *org-last-macro* chosen)
-                       (message "~a: in ~a now" inside chosen)))))
+            (setf (tuatara.buffer:buffer-point buffer) start
+                  *org-last-macro* chosen)
+            (message "~a: in ~a now" inside chosen)))
         (multiple-value-bind (start end)
             (if (region-active-p buffer) (selection-range) (token-at buffer point))
           (if (or (null start) (= start end))

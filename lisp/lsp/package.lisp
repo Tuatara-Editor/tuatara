@@ -6,12 +6,11 @@
 ;; symbol that file then defines
 (uiop:define-package #:tuatara.lsp
   (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
-  (:shadowing-import-from #:tuatara.defaults #:point)
   (:import-from #:tuatara.buffer #:buffer-read-only-p)
   (:import-from #:tuatara.runtime #:define-record #:reporting-errors #:handling-errors-reported
                 #:ignoring-errors-reported #:refusal #:refuse
                 #:run-hook-until-success #:define-setting)
-  (:import-from #:tuatara.defaults
+  (:import-from #:tuatara.defaults #:point
                 #:*after-save-functions* #:*before-save-functions*
                 #:*outside-work-functions* #:*places-in-force* #:*save-path* #:*save-then*
                 #:*selection-ranges-functions*

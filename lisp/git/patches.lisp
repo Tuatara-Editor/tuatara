@@ -66,16 +66,16 @@ for, its octets as git writes them."
   (with-git-repository (top)
     (let ((path (read-new-native-path "Save the changes as: " :kind :file :writing t)))
       (when path
-        (git-ask "Reading the changes" top
-                 (lambda (job top)
-                   (git-job-octets job top (list "diff" "--no-color" "--no-ext-diff" "--binary"
-                                                 (git-head-or-empty job top))))
-                 (lambda (octets)
-                   (if (zerop (length octets))
-                       (message "No changes to save")
-                       (progn
-                         (tuatara.io:write-new-file path octets :mode #o600)
-                         (message "Saved the changes as ~a" (abbreviated-path path))))))))))
+        (start-git-job "Saving the changes"
+                       (lambda (job)
+                         (let ((octets (git-job-octets job top (list "diff" "--no-color" "--no-ext-diff" "--binary"
+                                                                     (git-head-or-empty job top)))))
+                           (and (plusp (length octets))
+                                (progn (tuatara.io:write-new-file path octets :mode #o600) t))))
+                       (lambda (saved)
+                         (if saved
+                             (message "Saved the changes as ~a" (abbreviated-path path))
+                             (message "No changes to save"))))))))
 
 (define-command git-bundle-create ()
   "Write the whole repository, every branch and tag, as a single bundle file

@@ -36,7 +36,7 @@ echo "== verification"
 toolbox run --container "$name" bash -c '
   printf "sbcl: "; sbcl --version 2>/dev/null || echo MISSING
   # the tree-sitter grammars whose scanners are C++ (YAML, Vue...) need it
-  printf "c++: "; c++ --version 2>/dev/null | head -1 || echo MISSING
+  printf "c++: "; if command -v c++ >/dev/null; then c++ --version | head -1; else echo MISSING; fi
   for p in bwrap bsdtar magick pdftoppm weasyprint csvdt; do
     printf "%-10s %s\n" "$p" "$(command -v "$p" || echo MISSING)"
   done

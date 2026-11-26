@@ -22,7 +22,7 @@
 
 (in-package #:tuatara.defaults)
 
-(define-setting *sort-fold-case* nil
+(define-setting *sort-ignores-case* nil
   "Whether sorting ignores the case of ASCII letters.
 - t: ignore it; \"b\" sorts before \"C\".
 - nil: letters sort as they are written (the standard)."
@@ -1094,7 +1094,7 @@ unless the region changed meanwhile or the buffer may no longer take it
   "Sort BUFFER's lines from START below END by KEY (see LINE-KEYS), in reverse
 with REVERSE, in memory or on disk by size; DONE is the past tense for the
 message (\"Sorted\")."
-  (let ((crlf (buffer-crlf-p buffer)) (fold *sort-fold-case*)
+  (let ((crlf (buffer-crlf-p buffer)) (fold *sort-ignores-case*)
         (directory (tuatara.io:buffer-scratch-directory buffer)))
     (start-sort buffer start end words
                 (lambda (job rope start end)
@@ -1118,7 +1118,7 @@ message (\"Sorted\")."
 
 (define-command sort-lines ()
   "Sort the lines the selection touches by their text: by the codes of their
-characters, the case of ASCII letters ignored when *SORT-FOLD-CASE* is true.
+characters, the case of ASCII letters ignored when *SORT-IGNORES-CASE* is true.
 With a prefix argument, in descending order. Lines that compare equal keep
 their order (reversed with the rest in descending order). Without a selection,
 does nothing and says so; a large selection is sorted in the background."
@@ -1178,7 +1178,7 @@ record whole, though it holds line breaks (RECORD-ENDS). Worked in memory
          (fields (mode-record-fields (buffer-major-mode buffer) buffer))
          (field (and fields (read-record-field buffer fields "Sort by the column: ")))
          (each (and fields (record-fields-each fields)))
-         (reverse descending) (fold *sort-fold-case*)
+         (reverse descending) (fold *sort-ignores-case*)
          (newline (tuatara.text:string-octets (tuatara.buffer:buffer-newline buffer)))
          (memo (make-record-memo))
          (first (if (list-header-p buffer) (records-start rope 1 ends) 0))
@@ -1258,7 +1258,7 @@ is not done on so much yet."
   "Sort the paragraphs the selection touches by their text: paragraphs are
 separated by blank lines, which stay where they were. With a prefix argument, in
 descending order. Without a selection, does nothing and says so."
-  (let ((reverse (sort-descending-p)) (fold *sort-fold-case*))
+  (let ((reverse (sort-descending-p)) (fold *sort-ignores-case*))
     (with-selected-lines (b start end 'sort-paragraphs)
       (let ((newline (tuatara.text:string-octets (tuatara.buffer:buffer-newline b))) (crlf (buffer-crlf-p b)))
         (sort-in-memory-only b start end 'sort-paragraphs "Sorting"
@@ -1273,7 +1273,7 @@ descending order. Without a selection, does nothing and says so."
   "Sort the pages the selection touches by their text, pages ending with a form
 feed at the start of a line. With a prefix argument, in descending order.
 Without a selection, does nothing and says so."
-  (let ((reverse (sort-descending-p)) (fold *sort-fold-case*))
+  (let ((reverse (sort-descending-p)) (fold *sort-ignores-case*))
     (with-selected-lines (b start end 'sort-pages)
       (sort-in-memory-only b start end 'sort-pages "Sorting"
                            (lambda (octets)
@@ -1288,7 +1288,7 @@ to \\9 for a group of the record's pattern, or a pattern whose first match in
 the record is its key (an empty key when there is none). Keys compare as text;
 with a prefix argument, in descending order. The text between the records stays
 where it was. Without a selection, does nothing and says so."
-  (let ((b (current-buffer)) (reverse (sort-descending-p)) (fold *sort-fold-case*))
+  (let ((b (current-buffer)) (reverse (sort-descending-p)) (fold *sort-ignores-case*))
     (multiple-value-bind (start end)
         (selected-region-or-say b (sort-command-name 'sort-regexp-fields) :change t)
       (when start

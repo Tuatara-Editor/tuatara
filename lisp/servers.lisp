@@ -324,7 +324,10 @@ There \\<servers-mode>\\[server-trust] trusts another, \\[server-toggle-agent], 
 it (build.example, me@build.example, or an alias of ~/.ssh/config): it goes
 on the list of trusted servers (\\[server-manager]) with nothing given yet, each
 thing then turned on there by itself."
-  (let ((host (read-string "Trust the server (as tuatara --client= names it): " :trim t)))
+  (let ((host (read-string "Trust the server: "
+                           :trim t
+                           :details (format nil "The machine as tuatara --client= names it: build.example, ~
+                                                 me@build.example, or an alias of ~~/.ssh/config."))))
     (cond ((host-refusal host) (message "~a" (host-refusal host)))
           ((state-list-find *trusted-servers* host) (message "~a is trusted already" host))
           (t (state-list-put *trusted-servers*
@@ -453,8 +456,8 @@ shell on that machine."
 (defmethod delete-entries ((mode servers-mode) list keys mark)
   "Forget the servers, after asking: each is given nothing from then on."
   (declare (ignore mark))
-  (if (y-or-n-p* (concatenate 'string (list-question "Forget" "server" keys) "? ")
-                 :details "Each is given nothing from now on.")
+  (if (ask-list-question (y-or-n-p*)
+        (list-question "Forget" "server" keys :details "Each is given nothing from now on."))
       (progn (state-list-drop *trusted-servers* keys)
              (unmark-list list)
              (servers-show list :keep)

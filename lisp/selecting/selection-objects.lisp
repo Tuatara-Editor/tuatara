@@ -78,8 +78,6 @@ for the forward keys, :behind for the backward ones.")
   (let ((n (or (prefix-argument) 1)))
     (if (and (integerp n) (/= n 0)) n 1)))
 
-;;; Characters
-
 ;;; Words
 
 (defun reach-object (position on ahead behind)

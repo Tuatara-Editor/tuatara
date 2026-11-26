@@ -53,6 +53,61 @@ a minute."
 
 (pushnew 'bring-window-histories-up *tick-functions*)
 
+;;; The mode lines' alarm
+
+(defvar *mode-line-alarm-since* nil
+  "When the mode lines were set alight (MODE-LINE-ALARM-START), in internal
+time units, or NIL: they flash, then stay lit until a key is pressed.")
+
+(defvar *mode-line-alarm-flashes* 2
+  "How many times the mode lines flash, a quarter of a second lit and a quarter
+dark each, before they stay lit, unless MODE-LINE-ALARM-START is told
+another count.")
+
+(defvar *mode-line-alarm-flashing* 2
+  "How many times the mode lines flash, lit as they are now, before they stay
+lit (MODE-LINE-ALARM-START).")
+
+(defun mode-line-alarm-start (&key (flashes *mode-line-alarm-flashes*))
+  "Set every mode line alight in :mode-line-alarm: they flash FLASHES times, a
+quarter of a second lit and a quarter dark, then stay lit until the next key is
+pressed, so that what set them is seen on coming back to the screen. The
+editor is woken to show it, in every frame; from any thread."
+  (setf *mode-line-alarm-flashing* flashes
+        *mode-line-alarm-since* (get-internal-real-time))
+  (let ((running (running-editor)))
+    (when running (wake-editor running))))
+
+(defun mode-line-alarm-quarters ()
+  "The quarter seconds since the mode lines were set alight, or NIL when they
+are not alight: never set, or a key pressed since."
+  (let ((since *mode-line-alarm-since*))
+    (when (and since (> since *last-input-time*))
+      (floor (- (get-internal-real-time) since) (/ internal-time-units-per-second 4)))))
+
+(defun mode-line-alarm-lit-p ()
+  "True when the mode lines are drawn in :mode-line-alarm now (MODE-LINE-ALARM-START)."
+  (let ((quarters (mode-line-alarm-quarters)))
+    (and quarters (or (>= quarters (* 2 *mode-line-alarm-flashing*)) (evenp quarters)))))
+
+(defun mode-line-alarm-tick (editor)
+  "For *TICK-FUNCTIONS*: while the mode lines flash, the seconds until they
+turn lit or dark, so that the screen is drawn then; NIL otherwise."
+  (declare (ignore editor))
+  (let ((quarters (mode-line-alarm-quarters)))
+    (when (and quarters (< quarters (* 2 *mode-line-alarm-flashing*)))
+      (let ((next (* (1+ quarters) (/ internal-time-units-per-second 4))))
+        (max 1/100 (/ (- (+ *mode-line-alarm-since* next) (get-internal-real-time)) internal-time-units-per-second))))))
+
+(pushnew 'mode-line-alarm-tick *tick-functions*)
+
+(defun ring-bell (editor)
+  "Ring the bell of every screen EDITOR's frames show on (FRONTEND-BELL): a
+terminal's bell, which it may show as a flash, or the desktop's."
+  (dolist (frontend (editor-frontends editor))
+    (tuatara.runtime:ignoring-errors-reported ("ringing the bell")
+      (tuatara.frontend:frontend-bell frontend))))
+
 (defun frames-windows (&optional (editor *editor*))
   "Every window of every frame of EDITOR, each frame's from the top left, those
 of the frame worked in first, as a list (DO-FRAMES-WINDOWS goes through them
@@ -288,10 +343,11 @@ editor's last frame stays. A client whose last screen it was has ended
 
 (defun note-frame-painted (frame)
   "Keep in FRAME what it shows as it is painted now (FRAME-PAINTED): the
-display generation, the faces' generation and each window with its buffer and
-the buffer's version."
+display generation, the faces' generation, whether the mode lines' alarm is
+lit (MODE-LINE-ALARM-LIT-P) and each window with its buffer and the buffer's
+version."
   (setf (frame-painted frame)
-        (list* *display-generation* tuatara.display:*face-generation*
+        (list* *display-generation* tuatara.display:*face-generation* (mode-line-alarm-lit-p)
                (loop for window in (tuatara.display:area-windows (tuatara.display:area-root (frame-window frame)))
                      for buffer = (tuatara.display:window-buffer window)
                      collect (list* window buffer (tuatara.buffer:buffer-version buffer))))))
@@ -299,13 +355,14 @@ the buffer's version."
 (defun frame-shown-changed-p (frame)
   "True when what FRAME shows may have changed since it was painted
 \(NOTE-FRAME-PAINTED): it was never painted so, the display or the faces
-moved on, or one of its windows shows another buffer or a buffer changed.
-Nothing is made to find out."
+moved on, the mode lines' alarm turned lit or dark, or one of its windows
+shows another buffer or a buffer changed. Nothing is made to find out."
   (let ((painted (frame-painted frame)))
     (or (null painted)
         (not (eql (first painted) *display-generation*))
         (not (eql (second painted) tuatara.display:*face-generation*))
-        (loop for (window buffer . version) in (cddr painted)
+        (not (eq (third painted) (mode-line-alarm-lit-p)))
+        (loop for (window buffer . version) in (cdddr painted)
               thereis (or (not (eq (tuatara.display:window-buffer window) buffer))
                           (not (eq (tuatara.buffer:buffer-version buffer) version)))))))
 

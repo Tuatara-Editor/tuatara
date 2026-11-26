@@ -75,7 +75,7 @@ the same way over its prompt; the boxes are laid over the screen's rows.")
           '(2 5)
           (multiple-value-list (tuatara.defaults::text-word-bounds "#'car" 5 #'tuatara.defaults::lisp-name-part-p)))
       ;; operators after a bracket, the editor's own functions among them; variables elsewhere
-      (true (member "buffer-substring" (names "buffer" :operator) :test #'string=))
+      (true (member "buffer-forward-line" (names "buffer" :operator) :test #'string=))
       (true (member "mapcar" (names "map" :operator) :test #'string=))
       (false (member "*tab-width*" (names "tab" :operator) :test #'string=))
       (true (member "*tab-width*" (names "tab" :any) :test #'string=))
@@ -87,33 +87,33 @@ the same way over its prompt; the boxes are laid over the screen's rows.")
                     :test #'string=))
       (false (names "no-such-package:x" :any))
       ;; what each is, and what the box beside the list says
-      (is string= "function" (tuatara.defaults::lisp-name-kind 'tuatara-user:buffer-substring))
-      (is string= "macro" (tuatara.defaults::lisp-name-kind 'tuatara-user:save-excursion))
+      (is string= "function" (tuatara.defaults::lisp-name-kind 'tuatara:buffer-insert))
+      (is string= "macro" (tuatara.defaults::lisp-name-kind 'tuatara:with-point-kept))
       (is string= "variable" (tuatara.defaults::lisp-name-kind 'tuatara-user:*tab-width*))
       (is string= "keyword" (tuatara.defaults::lisp-name-kind :test))
-      (true (search "(buffer-substring start end)"
-                    (tuatara.defaults::lisp-name-documentation 'tuatara-user:buffer-substring)))
+      (true (search "(buffer-insert buffer byte text &key group)"
+                    (tuatara.defaults::lisp-name-documentation 'tuatara:buffer-insert)))
       (true (search "*tab-width* = 4" (tuatara.defaults::lisp-name-documentation 'tuatara-user:*tab-width*))))))
 
 (define-test (in-text-completion in-a-buffer)
   (flet ((typed (keys) (session-text (nth-value 1 (fresh-start keys :width 120))))
          (lisp (string) (key-string string)))
     ;; one completion alone goes in at once
-    (true (search "(buffer-substring" (typed (format nil "o ~a C-M-i" (lisp "(buffer-subs")))))
+    (true (search "(buffer-forward-line" (typed (format nil "o ~a C-M-i" (lisp "(buffer-forward-l")))))
     ;; as it does from a terminal, where C-M-i is M-TAB
-    (true (search "(buffer-substring" (typed (format nil "o ~a M-TAB" (lisp "(buffer-subs")))))
-    ;; several (buffer-size, buffer-string, buffer-substring): listed, the first chosen; C-n the next, RET puts it in
+    (true (search "(buffer-forward-line" (typed (format nil "o ~a M-TAB" (lisp "(buffer-forward-l")))))
+    ;; several (buffer-size, buffer-start, buffer-string): listed, the first chosen; C-n the next, RET puts it in
     (let ((text (typed (format nil "o ~a C-M-i C-n RET" (lisp "(buffer-s")))))
-      (true (search "(buffer-string" text))
+      (true (search "(buffer-start" text))
       ;; RET went to the list, not into the text
-      (false (search (format nil "(buffer-string~%") text)))
+      (false (search (format nil "(buffer-start~%") text)))
     ;; C-p from the first wraps to the last, C-n back to the first
     (let ((text (typed (format nil "o ~a C-M-i C-p C-n TAB" (lisp "(buffer-s")))))
       (true (search "(buffer-size" text)))
     ;; typing narrows the list
     (true (search "(buffer-string" (typed (format nil "o ~a C-M-i t r RET" (lisp "(buffer-s")))))
     ;; words in any order after M-SPC
-    (true (search "(get-buffer-create" (typed (format nil "o ~a C-M-i M-SPC c r e RET" (lisp "(buffer")))))
+    (true (search "(find-or-make-buffer" (typed (format nil "o ~a C-M-i M-SPC f i n d - o RET" (lisp "(buffer")))))
     ;; C-g closes it, the word as typed
     (multiple-value-bind (f editor) (fresh-start (format nil "o ~a C-M-i C-g" (lisp "(buffer-s")) :width 120)
       (declare (ignore f))
@@ -145,7 +145,8 @@ the same way over its prompt; the boxes are laid over the screen's rows.")
     (true (search ":test-not" (typed (format nil "o ~a C-M-i RET" (lisp "(f :test-no")))))
     ;; nothing to offer
     (true (showing (fresh-start (format nil "o ~a C-M-i" (lisp "(zzqqxx")) :width 120) "No match"))
-    (true (showing (fresh-start (format nil "o ~a C-M-i" (lisp "(buffer-substring")) :width 120) "Sole completion"))))
+    (true (showing (fresh-start (format nil "o ~a C-M-i" (lisp "(buffer-forward-line")) :width 120)
+                   "Sole completion"))))
 
 (define-test (in-text-completion list-shown)
   (let ((f (fresh-start (format nil "o ~a C-M-i" (key-string "(buffer-s")) :width 120)))
@@ -153,19 +154,21 @@ the same way over its prompt; the boxes are laid over the screen's rows.")
     (true (showing f " buffer-size " "function"))
     (true (showing f " buffer-string " "function"))
     ;; beside it, the chosen one's parameters and documentation
-    (true (showing f " buffer-size " "(buffer-size &optional buffer)"))
-    (true (showing f "Return how many characters"))))
+    (true (showing f " buffer-size " "(buffer-size buffer)"))
+    (true (showing f "Number of octets in BUFFER"))))
 
 (define-test (in-text-completion at-m-colon)
   ;; TAB completes the name at the cursor over the prompt, RET puts it in, the next RET evaluates
-  (let ((f (fresh-start (format nil "M-: ~a TAB RET ) RET" (key-string "(buffer-na")) :width 120)))
+  (let ((f (fresh-start (format nil "M-: ~a TAB RET ~a RET" (key-string "(buffer-na") (key-string " (current-buffer))"))
+                        :width 120)))
     (true (showing f "buffer-name" "function"))
     (true (showing f "=> \"*lisp-scratch*\"")))
   ;; a lone completion goes in at once, and C-M-i does as TAB
-  (true (showing (fresh-start (format nil "M-: ~a C-M-i ) RET" (key-string "(buffer-subs")) :width 120)
-                 "Eval: (buffer-substring)"))
+  (true (showing (fresh-start (format nil "M-: ~a C-M-i ) RET" (key-string "(buffer-forward-l")) :width 120)
+                 "Eval: (buffer-forward-line)"))
   ;; C-g closes the list and leaves the prompt, still reading
-  (true (showing (fresh-start (format nil "M-: ~a TAB C-g ~a RET" (key-string "(buffer-") (key-string "name)"))
+  (true (showing (fresh-start (format nil "M-: ~a TAB C-g ~a RET" (key-string "(buffer-")
+                                      (key-string "name (current-buffer))"))
                               :width 120)
                  "=> \"*lisp-scratch*\"")))
 

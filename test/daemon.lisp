@@ -416,7 +416,7 @@ ended have: the frames shown, the one with no screen left out."
                   "closed with its client")))))))
 
 (define-test (daemon stopped-from-a-client)
-  ;; M-x daemon-quit asks about the changes not saved, group by group; the other client exits 1, told why
+  ;; M-x daemon-quit asks once about the changes not saved, n leaving them; the other client exits 1, told why
   (with-test-directory (dir)
     (let ((file (namestring (put-file (merge-pathnames "unsaved.txt" dir) "unsaved"))))
       (with-test-daemon (name thread)
@@ -427,8 +427,8 @@ ended have: the frames shown, the one with no screen left out."
             (true (shows a "xunsaved"))
             (true (shows b "scratch"))
             (type-keys b "M-x d a e m o n - q u i t RET")
-            (true (shows b "changes not saved"))
-            (type-keys b "l")
+            (true (shows b "Save the changed buffer unsaved.txt?"))
+            (type-keys b "n RET")
             (is equal '(0 nil) (client-ends b-runner))
             (let ((other (client-ends a-runner)))
               (is eql 1 (first other))
@@ -462,6 +462,35 @@ ended have: the frames shown, the one with no screen left out."
                    (ignore-errors (delete-file copy))))))
         (setf tuatara-user:*auto-save* was)))))
 
+(define-modal-test (daemon stopped-from-a-terminal-asks-nothing)
+  ;; tuatara --stop from a terminal asks nothing: the changes not saved are written as auto-saved copies and
+  ;; the daemon ends, every client told
+  (with-test-directory (dir)
+    (let ((file (namestring (put-file (merge-pathnames "kept.txt" dir) "kept")))
+          (was tuatara-user:*auto-save*))
+      (unwind-protect
+           (with-test-daemon (name thread)
+             (setf tuatara-user:*auto-save* t)
+             (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file))
+               (true (shows local "kept"))
+               (type-keys local "i y")
+               (true (shows local "ykept"))
+               ;; a terminal the daemon takes as one, though no such device is there
+               (sb-int:encapsulate 'tuatara.defaults::checked-terminal 'any
+                                   (lambda (f device &rest keys) (declare (ignore f keys)) device))
+               (unwind-protect
+                    (multiple-value-bind (stopper stopping)
+                        (attach-test-client name :directory dir :stop t :terminal "/dev/pts/99")
+                      (declare (ignore stopper))
+                      (is eql 0 (first (client-ends stopping))))
+                 (sb-int:unencapsulate 'tuatara.defaults::checked-terminal 'any))
+               (is eql 1 (first (client-ends runner)))
+               (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
+               (let ((copy (tuatara.defaults::auto-save-path file)))
+                 (unwind-protect (is string= "ykept" (file-text copy))
+                   (ignore-errors (delete-file copy))))))
+        (setf tuatara-user:*auto-save* was)))))
+
 (define-test (daemon stop-closes-standard-input)
   ;; a client asking only to stop has its standard input closed, never read
   (with-test-directory (dir)
@@ -471,7 +500,8 @@ ended have: the frames shown, the one with no screen left out."
           (declare (ignore local))
           (let ((ended (client-ends runner)))
             (is eql 0 (first ended))
-            (true (search (format nil "The daemon ~a is stopped" name) (second ended)) "~s" ended))
+            (true (search (format nil "The daemon ~a (pid:~d) is stopped" name (sb-posix:getpid)) (second ended))
+                  "~s" ended))
           (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
           ;; the client closed its own once passed: the daemon's is the only one there was
           (true (pipe-ended-p in) "the daemon's copy of the descriptor is closed"))))))
@@ -559,7 +589,82 @@ ended have: the frames shown, the one with no screen left out."
     (let ((options (options "--client" "--gui" "a.txt")))
       (false (getf options :error))
       (true (getf options :gui)))
-    (true (search "-Q" (getf (options "--daemon" "-Q") :error)))))
+    (true (search "-Q" (getf (options "--daemon" "-Q") :error)))
+    ;; listing the daemons, here or on another machine
+    (is eq t (getf (options "--daemons") :daemons))
+    (is string= "build.example" (getf (options "--daemons=build.example") :daemons))
+    (is string= "build" (getf (options "--daemons=build:") :daemons))
+    (dolist (wrong '(("--daemons" "a.txt") ("--daemons" "--client") ("--daemons=-oProxy")))
+      (true (getf (apply #'options wrong) :error) "~s taken" wrong))))
+
+(define-test (daemon daemons-listed)
+  ;; tuatara --daemons: each daemon with its process, its clients and its buffers not saved, asked over a client's
+  ;; connection that changes nothing; a socket left behind said as gone, one that never answers as not answering
+  (with-test-directory (dir)
+    (let ((file (namestring (put-file (merge-pathnames "listed.txt" dir) "text"))))
+      (with-test-daemon (name)
+        (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file))
+          (true (shows local "listed.txt"))
+          (in-daemon (lambda () (tuatara.buffer:buffer-insert (tuatara.defaults::buffer-visiting file) 0 "x")))
+          (let* ((gone (tuatara.defaults::daemon-path "gone-listed" "socket"))
+                 (silent-path (tuatara.defaults::daemon-path "silent-listed" "socket"))
+                 (silent (tuatara.io:listen-at silent-path))
+                 (frames (live-client-frames)))
+            (sb-posix:close (tuatara.io:listen-at gone))
+            (unwind-protect
+                 (let* ((tuatara.terminal::*status-seconds* 1)
+                        (code nil)
+                        (said (with-output-to-string (*standard-output*)
+                                (setf code (tuatara.terminal::list-daemons))))
+                        (lines (uiop:split-string said :separator '(#\Newline))))
+                   (is = 0 code)
+                   (flet ((line (daemon) (find-if (lambda (line) (uiop:string-prefix-p (format nil "~a " daemon) line))
+                                                  lines)))
+                     (let ((own (line name)))
+                       (true own "~a" said)
+                       (true (search (format nil "pid ~d, started " (sb-posix:getpid)) own) "~a" own)
+                       (let ((unsaved (nth-value 1 (cl-ppcre:scan-to-strings
+                                                    "1 client, ([0-9]+) buffers? with changes not saved" own))))
+                         (true unsaved "~a" own)
+                         (true (and unsaved (plusp (parse-integer (aref unsaved 0)))) "~a" own)))
+                     (true (search "gone: it ended without taking its socket away" (line "gone-listed")) "~a" said)
+                     (true (search "not answering within 1 seconds" (line "silent-listed")) "~a" said))
+                   ;; asking made no frame and no client
+                   (is = frames (live-client-frames)))
+              (sb-posix:close silent)
+              (tuatara.io:remove-file gone)
+              (tuatara.io:remove-file silent-path)))
+          (in-daemon (lambda () (tuatara.buffer:buffer-mark-saved (tuatara.defaults::buffer-visiting file))))
+          (type-keys local "C-x C-c")
+          (is equal '(0 nil) (client-ends runner))))))
+  ;; none running
+  (let ((tuatara.defaults::*runtime-directory*
+          (namestring (ensure-directories-exist
+                       (merge-pathnames (format nil "no-daemons-~36r/" (random (expt 36 6)))
+                                        (tuatara.io:cache-directory))))))
+    (unwind-protect
+         (progn
+           (sb-posix:chmod tuatara.defaults::*runtime-directory* #o700)
+           (is string= (format nil "No daemon is running~%")
+               (with-output-to-string (*standard-output*) (tuatara.terminal::list-daemons))))
+      (uiop:delete-directory-tree (pathname tuatara.defaults::*runtime-directory*) :validate #'tests-own-path-p))))
+
+(define-test (daemon standing-when-asking-fails)
+  ;; a daemon whose connection fails while it is asked how it stands is said to be not answering, with why
+  (let* ((name (format nil "failing-~36r" (random (expt 36 6))))
+         (path (tuatara.defaults::daemon-path name "socket"))
+         (listening (tuatara.io:listen-at path)))
+    (sb-int:encapsulate 'tuatara.frontend:ask-editor-status 'failing
+                        (lambda (function fd seconds)
+                          (declare (ignore function fd seconds))
+                          (error "a stand-in failure")))
+    (unwind-protect
+         (let ((standing (tuatara.terminal::daemon-standing name)))
+           (is equal "not answering: a stand-in failure" standing)
+           (is equal "not answering: a stand-in failure" (tuatara.terminal::standing-words standing)))
+      (sb-int:unencapsulate 'tuatara.frontend:ask-editor-status 'failing)
+      (sb-posix:close listening)
+      (tuatara.io:remove-file path))))
 
 (defclass listed-host (tuatara.runtime:host)
   ((variables :initarg :variables :reader listed-host-variables
@@ -574,14 +679,14 @@ ended have: the frames shown, the one with no screen left out."
   (with-environment-variable ("TUATARA_TEST_OWN" "/editor/own")
     (let ((tuatara.runtime:*host* (make-instance 'listed-host :variables '("TUATARA_TEST_OWN=/client/own"))))
       (is string= "/client/own" (tuatara.io:program-variable "TUATARA_TEST_OWN"))
-      (is string= "/editor/own" (tuatara.io:own-variable "TUATARA_TEST_OWN"))
+      (is string= "/editor/own" (tuatara.runtime:own-variable "TUATARA_TEST_OWN"))
       (is string= "/editor/own/" (namestring (tuatara.io:own-directory "TUATARA_TEST_OWN")))))
   (with-environment-variable ("TUATARA_TEST_OWN" "relative/own")
     (false (tuatara.io:own-directory "TUATARA_TEST_OWN")))
   (with-environment-variable ("TUATARA_TEST_OWN" "")
     (false (tuatara.io:own-directory "TUATARA_TEST_OWN")))
   (with-environment-variable ("TUATARA_TEST_OWN" nil)
-    (false (tuatara.io:own-variable "TUATARA_TEST_OWN"))
+    (false (tuatara.runtime:own-variable "TUATARA_TEST_OWN"))
     (false (tuatara.io:own-directory "TUATARA_TEST_OWN"))))
 
 (define-test (daemon variables-kept-narrowly)
@@ -1251,7 +1356,7 @@ returns true when it would have been. The function is left out again after."
     (sb-int:unencapsulate 'tuatara.io::transformed-text 'slow)))
 
 (define-modal-test (daemon quit-waits-for-saves-begun)
-  ;; M-x daemon-quit answered s: the daemon ends only once the saves it began are written, never cut short
+  ;; M-x daemon-quit answered y: the daemon ends only once the saves it began are written, never cut short
   (with-test-directory (dir)
     (let ((file (namestring (put-file (merge-pathnames "slow.txt" dir) "slow"))))
       (call-with-slow-saves
@@ -1262,8 +1367,8 @@ returns true when it would have been. The function is left out again after."
                (type-keys local "i x")
                (true (shows local "xslow"))
                (type-keys local "M-x d a e m o n - q u i t RET")
-               (true (shows local "changes not saved"))
-               (type-keys local "s")
+               (true (shows local "Save the changed buffer slow.txt?"))
+               (type-keys local "y RET")
                (is eql 0 (first (client-ends runner 30)))
                (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
                (is string= "xslow" (file-text file) "written before the daemon ended"))))))))
@@ -1581,10 +1686,20 @@ structure; the group of A ended an hour after B's."
      (flet ((marked ()
               (in-daemon (lambda ()
                            (sort (mapcar #'tuatara.buffer:buffer-name (marked-for-deletion)) #'string<)))))
+       ;; the group open, so that its rows are on the screen
+       (in-daemon (lambda ()
+                    (tuatara.defaults::list-toggle-section (tuatara.buffer:find-buffer "*Buffers*") ended-a)))
        (goto-group-heading c ended-a)
        (type-keys c "d")
        (true (wait-until (lambda () (marked)) 10) "buffers are marked")
        (is equal '("*lisp-scratch*<2>" "alpha.txt" "beta.txt") (marked) "the group's buffers, no others")
+       (true (in-daemon (lambda ()
+                          (let ((row (find-if (lambda (line) (search "alpha.txt " line))
+                                              (uiop:split-string (tuatara.buffer:buffer-string
+                                                                  (tuatara.buffer:find-buffer "*Buffers*"))
+                                                                 :separator '(#\Newline)))))
+                            (and row (eql #\D (find-if-not (lambda (c) (char= c #\Space)) row))))))
+             "each buffer's row shows its D")
        (type-keys c "x")
        (true (wait-until (lambda () (not (in-daemon (lambda () (tuatara.buffer:find-buffer "alpha.txt"))))) 10)
              "the group's buffers are killed")
@@ -1741,7 +1856,7 @@ daemon's client NUMBER shows."
           (is equal '() (buffer-owners "*lisp-scratch*") "the first client is given a scratch buffer of its own")
           (type-keys one "C-x b")
           (type-keys one (typed-name "*org-scratch*"))
-          (true (shows one "scribbling in org-mode"))
+          (true (shows one "Notes in Org that are not kept"))
           (is equal '() (buffer-owners "*org-scratch*") "shown with C-x b, it stays every client's")
           (type-keys one "M-x o r g - s c r a t c h RET")
           (true (shows one "*org-scratch*<2>"))

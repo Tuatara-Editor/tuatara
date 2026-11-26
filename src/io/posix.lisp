@@ -122,7 +122,7 @@ when it differs (*HOME-NAMES*), found once for each HOME."
 so that a file reached by ~ has the name it has when reached any other way."
   (car (last (home-directory-names))))
 
-(define-setting *default-directory* "~/"
+(define-setting *no-file-directory* "~/"
   "The directory of a buffer with no file (*scratch*, the lists).
 A file name typed there is taken from it, and \\[search-in-files] searches
 it. A buffer with a file has its file's directory.
@@ -163,22 +163,22 @@ system nothing. Its . components are taken out (WITHOUT-DOT-COMPONENTS)."
 
 (defvar *default-directory-found* nil
   "The directory DEFAULT-DIRECTORY last found, as (SETTING TIME . PATHNAME):
-for SETTING, the value *DEFAULT-DIRECTORY* had, at the internal real TIME.")
+for SETTING, the value *NO-FILE-DIRECTORY* had, at the internal real TIME.")
 
 (defun default-directory ()
-  "The directory *DEFAULT-DIRECTORY* names, as an absolute pathname; the
+  "The directory *NO-FILE-DIRECTORY* names, as an absolute pathname; the
 directory Tuatara was started in when it is NIL or names no directory. One
 found is used again for a second, while the setting stays, so that drawing
 every frame asks the file system nothing."
   (let ((found *default-directory-found*) (now (get-internal-real-time)))
-    (if (and found (equal (first found) *default-directory*)
+    (if (and found (equal (first found) *no-file-directory*)
              (< (- now (second found)) internal-time-units-per-second))
         (cddr found)
-        (let ((named (and *default-directory*
-                          (tuatara.runtime:ignoring-errors-reported ("finding the directory ~a" *default-directory*)
-                            (directory-pathname (expand-path *default-directory* :directory (uiop:getcwd)))))))
+        (let ((named (and *no-file-directory*
+                          (tuatara.runtime:ignoring-errors-reported ("finding the directory ~a" *no-file-directory*)
+                            (directory-pathname (expand-path *no-file-directory* :directory (uiop:getcwd)))))))
           (if (and named (eq :directory (path-kind named)))
-              (progn (setf *default-directory-found* (list* *default-directory* now named))
+              (progn (setf *default-directory-found* (list* *no-file-directory* now named))
                      named)
               (uiop:getcwd))))))
 
@@ -391,6 +391,13 @@ old time is told apart."
   "Linux's O_PATH, which sb-posix does not name: a descriptor that only names a
 file, so that it can be examined, nothing in it opened; a device or a named
 pipe named so is not woken.")
+(defconstant +at-symlink-nofollow+ #x100
+  "The AT_SYMLINK_NOFOLLOW flag of statx, utimensat and fchmodat: a symbolic
+link is examined or changed itself, never what it leads to.")
+(defconstant +at-no-automount+ #x800
+  "statx's AT_NO_AUTOMOUNT: a directory where a file system would be mounted
+on reaching it (an automount point, as under /net) is examined as it stands,
+nothing mounted.")
 
 (defun statx-buffer-stamp (buffer)
   "The STAMP in BUFFER, the octets statx filled."
@@ -403,17 +410,23 @@ pipe named so is not woken.")
               (+ (* (octets-signed (octets-integer buffer 96 8) 64) 1000000000)
                  (octets-integer buffer 104 4))))
 
-(defun statx-fields (dirfd name flags &optional (mask #x7ff))
+(defun statx-flags (flags mount)
+  "The flags statx is called with for FLAGS: AT_NO_AUTOMOUNT added, so that
+nothing is mounted by examining a file, unless MOUNT is true."
+  (if mount flags (logior flags +at-no-automount+)))
+
+(defun statx-fields (dirfd name flags &key (mask #x7ff) mount)
   "The 256 octets statx fills for NAME (a string, or octets) relative to the
-directory open as DIRFD. FLAGS is #x100 for not following a symbolic link,
-#x1000 for DIRFD itself and an empty NAME. MASK is the fields asked for: those
-of a STAMP as standard, #xfff for the birth time too. Returns NIL and the
-errno when it cannot be examined."
+directory open as DIRFD. FLAGS is +AT-SYMLINK-NOFOLLOW+ for not following a
+symbolic link, #x1000 for DIRFD itself and an empty NAME. MASK is the fields
+asked for: those of a STAMP as standard, #xfff for the birth time too. An
+automount point is examined as it stands, never mounted, unless MOUNT is true.
+Returns NIL and the errno when it cannot be examined."
   (let ((held (terminated-octets (if (stringp name) (tuatara.text:string-octets name) name)))
         (buffer (make-array 256 :element-type '(unsigned-byte 8) :initial-element 0)))
     (with-octets-sap (path held)
       (with-octets-sap (sap buffer)
-        (if (zerop (%statx dirfd path flags mask sap))
+        (if (zerop (%statx dirfd path (statx-flags flags mount) mask sap))
             buffer
             (values nil (sb-alien:get-errno)))))))
 
@@ -428,7 +441,7 @@ contents, name, owner or permissions), accessed and born, as a plist of
 :MODIFIED :CHANGED :ACCESSED :BORN, each in nanoseconds since 1970, :BORN NIL
 where the file system keeps no birth time; NIL when it cannot be examined.
 Asking changes none of them."
-  (let ((buffer (statx-fields +at-fdcwd+ (native path) 0 #xfff)))
+  (let ((buffer (statx-fields +at-fdcwd+ (native path) 0 :mask #xfff)))
     (when buffer
       (list :modified (statx-time buffer 112) :changed (statx-time buffer 96) :accessed (statx-time buffer 64)
             :born (statx-birth-time buffer)))))
@@ -447,12 +460,12 @@ Asking changes none of them."
 (defun fd-birth-time (fd)
   "When the file open as file descriptor (FD) was made, in nanoseconds since
 1970; NIL where the file system keeps no birth time, or it cannot be examined."
-  (let ((buffer (statx-fields fd "" #x1000 #x800))) ; AT_EMPTY_PATH, STATX_BTIME
+  (let ((buffer (statx-fields fd "" #x1000 :mask #x800))) ; AT_EMPTY_PATH, STATX_BTIME
     (and buffer (statx-birth-time buffer))))
 
 (defun statx-octets (dirfd octets flags)
   "The STAMP statx reports for the entry whose name is OCTETS in the directory
-open as DIRFD, with FLAGS (#x100 not following a symbolic link), and as more
+open as DIRFD, with FLAGS (+AT-SYMLINK-NOFOLLOW+ not following a symbolic link), and as more
 values the octets it takes on the disk and the device numbers it stands for,
 (MAJOR . MINOR), which mean something for a device only; NIL when it cannot be
 examined."
@@ -540,7 +553,7 @@ there is no such file, a FILE-SYSTEM-ERROR for any other failure."
       (statx-stamp +at-fdcwd+
                    (let ((name (native path)))
                      (if (or follow (<= (length name) 1)) name (string-right-trim "/" name)))
-                   (if follow 0 #x100))
+                   (if follow 0 +at-symlink-nofollow+))
     (cond (stamp)
           ((member errno (list sb-posix:enoent sb-posix:enotdir)) nil)
           (t (fail "examine" path errno)))))
@@ -1163,7 +1176,7 @@ says (the Umask line of /proc/self/status), read once and kept, never set;
 to: a link is left as it is. True when done, NIL when not (a link, or no
 entry there)."
   (with-c-string (name (native path))
-    (zerop (%fchmodat +at-fdcwd+ name mode #x100))))  ; AT_SYMLINK_NOFOLLOW
+    (zerop (%fchmodat +at-fdcwd+ name mode +at-symlink-nofollow+))))
 
 (defun listen-at (path &key (backlog 16))
   "A local socket bound at PATH, listening, as a descriptor that ACCEPT-ON
@@ -1963,7 +1976,7 @@ read."
         (when fd
           (sb-posix:dup2 fd 2)
           (sb-posix:close fd)
-          (unless (tuatara.runtime:log-in-use-p standard)
+          (unless (tuatara.runtime:lock-held-p standard :shared t)
             (dolist (n '("" ".1" ".2" ".3"))
               (handler-case (sb-posix:unlink (concatenate 'string standard n)) (sb-posix:syscall-error () nil)))
             ;; the directory too, when nothing else is in it
@@ -2142,12 +2155,7 @@ FILE-SYSTEM-ERROR. Nothing is made, nor cut short."
 by another process or this one, alone, or with SHARED shared as well; NIL when
 it is free or there is no such file. Only a plain file counts: a link is not followed, and a named pipe or
 a device there is never waited on."
-  (let ((fd (handler-case (sb-posix:open (native path) (logior sb-posix:o-rdonly sb-posix:o-nonblock
-                                                               +o-nofollow+ +o-cloexec+))
-              (sb-posix:syscall-error () nil))))
-    (and fd (unwind-protect (and (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:fstat fd)))
-                                 (not (tuatara.runtime:lock-fd fd :shared (not shared))))
-              (sb-posix:close fd)))))
+  (tuatara.runtime:lock-held-p (native path) :shared shared))
 
 (defun call-with-state-lock (path function &key (wait 0.1))
   "Call FUNCTION, of no arguments, holding the lock of the file at PATH, a
@@ -2198,10 +2206,8 @@ RUN-PROGRAM-AGAIN runs, and what a copy of Tuatara started for a moment is
 started as.")
 
 (defvar *appimage* nil
-  "Which of Tuatara's AppImages this process runs from, as its launcher says:
-\"current\", the one whose window follows the desktop's light or dark style,
-\"legacy\", the one for older systems, whose launcher takes --dark and
---light; NIL when it runs from none.")
+  "True when this process runs from Tuatara's AppImage, as its launcher says
+\(the value it gives TUATARA_APPIMAGE); NIL when it runs from none.")
 
 (defun argument-vector (strings)
   "STRINGS as the system takes a program's arguments: foreign memory holding

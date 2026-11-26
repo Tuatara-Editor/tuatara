@@ -63,6 +63,10 @@ read. While the lines are still being counted, a rectangle of no more than
 kept by where it is and changed in the background, as one over more text than
 *REWRITE-THRESHOLD* is.")
 
+(defparameter *rectangle-chunk-octets* (* 32 1024 1024)
+  "The most octets of a rectangle's rows, with their repeats, read into memory at
+once while a rectangle is pasted in the background.")
+
 (defun large-rectangle-p (buffer)
   "True when BUFFER's rectangle spans more text than *REWRITE-THRESHOLD*, or
 more rows than *RECTANGLE-ROWS-IN-MEMORY*: it is then kept by where it is, and
@@ -221,6 +225,12 @@ its left edge a space before the row. SOURCE's text is read a block at a time."
   (if (rectangle-source-p *killed-rectangle*)
       (rectangle-source-rows *killed-rectangle*)
       (length *killed-rectangle*)))
+
+(defun refuse-row-mismatch (rows)
+  "Say that the rectangle store is not pasted over a selected rectangle of
+ROWS rows, its own count of rows being another."
+  (message "Rectangle row mismatch: selection has ~:d row~:p, copied rectangle has ~:d; paste refused"
+           rows (killed-rectangle-rows)))
 
 (define-command rectangle-mark-mode ()
   "Start a rectangle: the block of columns between point and the mark on each
@@ -473,10 +483,11 @@ point, one row a line, or over a selected rectangle of as many rows in its
 place. A selection that is not a rectangle is replaced. With a count, each row
 that many times across, a wider block, over a rectangle too; a count of 0 or
 less pastes nothing and leaves the selection as it is. A rectangle over more
-than 32 MB of text is pasted in the background. What would replace part of
-the text a fold hides, but not all of it, is not pasted: the fold is shown
-instead, and the key pressed again pastes; pasted in the background, a row
-where that would be is left as it is."
+text than *REWRITE-THRESHOLD* or more rows than *RECTANGLE-ROWS-IN-MEMORY* is
+pasted in the background. What would replace part of the text a fold hides,
+but not all of it, is not pasted: the fold is shown instead, and the key
+pressed again pastes; pasted in the background, a row where that would be is
+left as it is."
   (let ((b (current-buffer)) (n (prefix)))
     (cond ((< n 1) (message "A count of ~d pastes nothing" n))
           ((rectangle-source-p *killed-rectangle*)
@@ -487,8 +498,7 @@ where that would be is left as it is."
            ;; counted before a row is read
            (let ((count (rectangle-row-count b)))
              (if (/= count (length *killed-rectangle*))
-                 (message "Rectangle row mismatch: selection has ~:d row~:p, copied rectangle has ~:d; paste refused"
-                          count (length *killed-rectangle*))
+                 (refuse-row-mismatch count)
                  (multiple-value-bind (after top-left changed) (replace-rectangle-rows b (region-rectangle-rows b) "")
                    (declare (ignore after))
                    (setf (tuatara.buffer:buffer-mark-active-p b) nil)
@@ -552,8 +562,9 @@ point taken as its rectangle; the selection is let go afterwards."
   "Kill the rectangle between the mark and point: the block of columns from
 one to the other on each line between, a short line's part padded with spaces,
 goes to the rectangle store that \\[yank-rectangle] pastes from. Point stays
-on its line, at the block's left column. A rectangle over more than 32 MB of
-text is cut in the background."
+on its line, at the block's left column. A rectangle over more text than
+*REWRITE-THRESHOLD* or more rows than *RECTANGLE-ROWS-IN-MEMORY* is cut in the
+background."
   (call-on-region-rectangle (lambda (b) (declare (ignore b)) (delete-selected-rectangle))))
 
 (define-command copy-rectangle-as-kill ()
@@ -578,8 +589,9 @@ left column."
   "Replace the rectangle between the mark and point with a text read in the
 minibuffer, on each of its lines; with no width, the text goes in at its
 column on each line. Point goes after the text on the last line. The text
-given last time is offered. A rectangle over more than 32 MB of text is
-rewritten in the background."
+given last time is offered. A rectangle over more text than
+*REWRITE-THRESHOLD* or more rows than *RECTANGLE-ROWS-IN-MEMORY* is rewritten
+in the background."
   (require-mark (current-buffer))
   (let ((text (read-string "String rectangle: " :initial *last-rectangle-string* :select-initial t)))
     (setf *last-rectangle-string* text)
@@ -614,8 +626,9 @@ all of it."
 spaces on each line, so that what comes after stays where it was; a line that
 ends inside the block is cut at its left column instead, leaving no spaces at
 its end, and a line shorter than the block is left alone. Point goes to the
-block's left column on its line. A rectangle over more than 32 MB of text is
-cleared in the background."
+block's left column on its line. A rectangle over more text than
+*REWRITE-THRESHOLD* or more rows than *RECTANGLE-ROWS-IN-MEMORY* is cleared in
+the background."
   (call-on-region-rectangle
    (lambda (b)
      (check-writable b)
@@ -669,7 +682,8 @@ of the last, and the text of the block moves right to make room. Point stays
 by the text it was at. With \\[universal-argument], the number to count from
 and the format are asked for: %d stands for the number, %3d gives it three
 columns, %-3d puts it on their left, %03d pads it with zeros, %% is a percent
-sign. A rectangle over more than 32 MB of text is numbered in the background."
+sign. A rectangle over more text than *REWRITE-THRESHOLD* or more rows than
+*RECTANGLE-ROWS-IN-MEMORY* is numbered in the background."
   (number-rectangle nil))
 
 (define-command number-rectangle-lines-replace ()
@@ -680,7 +694,8 @@ a line shorter than the block padded out to it; with no width (the mark and
 point in the same column) they go in at that column. Point goes after the
 number on the last line. With \\[universal-argument], the number to count from
 and the format are asked for, as \\[number-rectangle-lines] asks. A rectangle
-over more than 32 MB of text is numbered in the background."
+over more text than *REWRITE-THRESHOLD* or more rows than
+*RECTANGLE-ROWS-IN-MEMORY* is numbered in the background."
   (number-rectangle t))
 
 (defun wrap-rectangle (char)
@@ -958,8 +973,10 @@ are read a chunk at a time, in order."
     (lambda (k)
       (declare (type fixnum k))
       (unless (and octets (<= from k) (< k to))
-        (setf from k
-              to (min (rectangle-source-rows source) (+ k 65536)))
+        (let* ((width (max 1 (- (rectangle-source-right source) (rectangle-source-left source))))
+               (rows (max 1 (floor *rectangle-chunk-octets* (* width (max 1 (rows-job-repeat spec)))))))
+          (setf from k
+                to (min (rectangle-source-rows source) (+ k rows))))
         (multiple-value-setq (octets starts) (source-rows-block source from to (rows-job-repeat spec))))
       (values octets (aref starts (- k from)) (aref starts (1+ (- k from)))))))
 
@@ -1340,8 +1357,7 @@ background."
       (multiple-value-bind (top bottom left right rows) (rectangle-lines buffer)
         (declare (ignore top bottom))
         (if (/= rows (rectangle-source-rows source))
-            (message "Rectangle row mismatch: selection has ~:d row~:p, copied rectangle has ~:d; paste refused"
-                     rows (rectangle-source-rows source))
+            (refuse-row-mismatch rows)
             (when (start-on-rectangle-rows buffer (job-words :paste :doing (rectangle-rows-words rows))
                                            (block-shade buffer left right)
                                            (lambda (top bottom left right)

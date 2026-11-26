@@ -457,14 +457,10 @@ the text given when first referred to (ORG-HTML-FOOTNOTES)."
           (push entry (org-html-footnotes *org-html*))
           (when label (setf (gethash label entries) entry))
           (setf (third entry)
-                (with-org-export-expanding (:footnote (or label node)) ("")
-                  (if (eq (org-property node :type) 'inline)
-                      (org-html-objects-text node)
-                      (let ((found (and label
-                                        (gethash label (org-export-footnotes *org-export*)))))
-                        (if found
-                            (with-output-to-string (s) (org-html-elements found s))
-                            ""))))
+                (or (org-export-footnote-text node #'org-html-objects-text
+                                              (lambda (found) (with-output-to-string (s) (org-html-elements found s)))
+                                              "")
+                    "")
                 known entry)))
       (format out "<sup><a href=\"#fn-~d\">~d</a></sup>" (first known) (first known)))))
 
@@ -482,33 +478,26 @@ the text given when first referred to (ORG-HTML-FOOTNOTES)."
   "Write the link NODE to OUT: a picture shown; a web, mail or news address, or
 a local file (a note's .org leading to its .html), as a link; a place in the
 document as a link to it, in its description or else its title; anything
-else as its description or its target, as words."
-  (let* ((type (org-property node :type))
-         (path (org-property node :path))
-         (description (and (org-node-contents-begin node) (org-html-objects-text node)))
-         (address (org-link-address type path)))
-    (cond ((org-html-image-link-p node)
-           (write-string (org-html-image node (org-export-attributes (org-node-parent node) "html")) out))
-          (address
-           (format out "<a href=\"~a\">~a</a>" (xml-escape address) (or description (xml-escape address))))
-          ((string= type "file")
-           (format out "<a href=\"~a\">~a</a>"
-                   (xml-escape (org-export-file-address (if (string-equal (tuatara.io:native-file-type path) "org")
-                                                            (replaced-type path "html")
-                                                            path)))
-                   (or description (xml-escape path))))
-          (t
-           (let ((target (org-export-link-target node)))
-             (cond ((and target (eq (org-node-type target) 'headline))
-                    (destructuring-bind (level number title id) (gethash target (org-html-records *org-html*))
-                      (declare (ignore level number))
-                      (format out "<a href=\"#~a\">~a</a>" (xml-escape id) (or description title))))
-                   (target
-                    (format out "<a href=\"#~a\">~a</a>" (xml-escape (org-html-id target))
-                            (or description (xml-escape path))))
-                   ((uiop:string-prefix-p "denote:" path)
-                    (write-string (or description (xml-escape (subseq path 7))) out))
-                   (t (write-string (or description (xml-escape path)) out))))))))
+else as its description or its target, as words (ORG-EXPORT-LINK-KIND)."
+  (let ((path (org-property node :path))
+        (description (and (org-node-contents-begin node) (org-html-objects-text node))))
+    (multiple-value-bind (kind value) (org-export-link-kind node #'org-html-image-link-p)
+      (ecase kind
+        (:picture (write-string (org-html-image node (org-export-attributes (org-node-parent node) "html")) out))
+        (:address (format out "<a href=\"~a\">~a</a>" (xml-escape value) (or description (xml-escape value))))
+        (:file
+         (format out "<a href=\"~a\">~a</a>"
+                 (xml-escape (org-export-file-address (if (string-equal (tuatara.io:native-file-type value) "org")
+                                                          (replaced-type value "html")
+                                                          value)))
+                 (or description (xml-escape value))))
+        (:heading
+         (destructuring-bind (level number title id) (gethash value (org-html-records *org-html*))
+           (declare (ignore level number))
+           (format out "<a href=\"#~a\">~a</a>" (xml-escape id) (or description title))))
+        (:target
+         (format out "<a href=\"#~a\">~a</a>" (xml-escape (org-html-id value)) (or description (xml-escape path))))
+        (:plain (write-string (or description (xml-escape value)) out))))))
 
 (defun org-html-object (node out)
   "Write the object NODE to OUT."
@@ -542,17 +531,10 @@ else as its description or its target, as words."
                    (format out "<span class=\"timestamp\">~a</span>" (xml-escape (org-property node :raw-value)))))
       (statistics-cookie (write-string (xml-escape (org-property node :value)) out))
       ((subscript superscript)
-       (let ((script (org-export-option "^")))
-         (if (or (null script) (and (equal script "{}") (not (org-property node :use-brackets-p))))
-             (write-string (org-html-as-written node) out)
-             (wrap (if (eq (org-node-type node) 'subscript) "sub" "sup")))))
-      (macro (let ((value (org-export-macro-value node)))
-               (write-string (if value
-                                 (with-org-export-expanding (:macro (org-property node :key))
-                                   ((org-html-as-written node))
-                                   (org-html-line value))
-                                 (org-html-as-written node))
-                             out)))
+       (if (org-export-script-p node)
+           (wrap (if (eq (org-node-type node) 'subscript) "sub" "sup"))
+           (write-string (org-html-as-written node) out)))
+      (macro (write-string (org-export-macro-expansion node (org-html-as-written node) #'org-html-line) out))
       (inline-babel-call nil)
       (t (write-string (org-html-as-written node) out)))))
 

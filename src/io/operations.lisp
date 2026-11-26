@@ -80,7 +80,7 @@ TO is on another file system."
           (when (zerop result) (return-from rename-without-replacing))
           (unless (member errno (list sb-posix:einval sb-posix:enosys))
             (fail "rename" path errno)))
-        (let ((stamp (or (values (statx-octets from-dirfd from #x100)) (fail "rename" path))))
+        (let ((stamp (or (values (statx-octets from-dirfd from +at-symlink-nofollow+)) (fail "rename" path))))
           (unless (eq (stamp-kind stamp) :directory)
             (if (zerop (%linkat from-dirfd old-sap to-dirfd new-sap 0))
                 (return-from rename-without-replacing
@@ -89,7 +89,7 @@ TO is on another file system."
                 (let ((errno (sb-alien:get-errno)))
                   (unless (member errno (list sb-posix:eperm sb-posix:eopnotsupp sb-posix:emlink))
                     (fail "rename" path errno)))))
-          (when (statx-octets to-dirfd to #x100)
+          (when (statx-octets to-dirfd to +at-symlink-nofollow+)
             (fail "rename" path sb-posix:eexist))
           (multiple-value-bind (result errno) (rename-entry from-dirfd old-sap to-dirfd new-sap 0)
             (unless (zerop result) (fail "rename" path errno))))))))
@@ -190,14 +190,14 @@ which may be there."
   (call-with-parent
    path
    (lambda (dirfd name)
-     (let ((stamp (and (writing-refused-anywhere-p) (values (statx-octets dirfd name #x100)))))
+     (let ((stamp (and (writing-refused-anywhere-p) (values (statx-octets dirfd name +at-symlink-nofollow+)))))
        (when (and stamp (eq (stamp-kind stamp) :regular) (> (stamp-nlink stamp) 1))
          (error 'writing-refused :operation "touch" :path (native path)
                                  :reason (format nil
                                                  "it has ~d names, and one may be in an evidence directory"
                                                  (stamp-nlink stamp)))))
      (with-octets-sap (sap (terminated-octets name))
-       (check-call (%utimensat dirfd sap (sb-sys:int-sap 0) #x100)  ; AT_SYMLINK_NOFOLLOW
+       (check-call (%utimensat dirfd sap (sb-sys:int-sap 0) +at-symlink-nofollow+)
                    "touch" path)))
    :writing "touch"))
 
@@ -319,7 +319,7 @@ by where the directory opened really is."
 (defun entry-stamp (dirfd name path)
   "The STAMP of the entry NAME (octets) of the directory open as DIRFD, a
 symbolic link not followed; a FILE-SYSTEM-ERROR when it is not there."
-  (or (values (statx-octets dirfd name #x100)) (fail "examine" path)))
+  (or (values (statx-octets dirfd name +at-symlink-nofollow+)) (fail "examine" path)))
 
 (defun make-directory-at (dirfd name path mode)
   "Make the directory NAME (octets) in the directory open as DIRFD, with MODE
@@ -710,7 +710,7 @@ followed."
                           (progn
                             (check-tree-depth depth path)
                             (dolist (entry (fd-entry-names fd path))
-                              (let ((stamp (statx-octets fd entry #x100)))
+                              (let ((stamp (statx-octets fd entry +at-symlink-nofollow+)))
                                 (when (and stamp (eq :directory (stamp-kind stamp)))
                                   (let ((why (walk fd entry (entry-path path entry) (1+ depth))))
                                     (when why (return why))))))))

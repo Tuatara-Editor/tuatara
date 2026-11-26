@@ -271,13 +271,16 @@ and the next piece searched on from where it ends, so that the lines are those
 one scan of the whole file finds (what is read grows for a longer line or
 match, up to *SEARCH-DISK-LONGEST-LINE* more). Nothing for a file that is no
 text (READ-TEXT-FILE). At most MOST; CANCEL, a cons, stops it when its car
-turns true."
-  (let ((found '()) (count 0))
-    (when (and (uiop:string-prefix-p inside relative)
-               (multiple-value-bind (octets why) (read-text-file path :most 0)
-                 (or octets (eq why :too-large))))
-      (let ((fd (ignoring-errors-reported ("opening ~a to search" path) (tuatara.io:open-for-reading path t))))
-        (when fd
+turns true. A second value is true when the file, within INSIDE, was not
+searched, being no text or not readable."
+  (let ((found '()) (count 0) (unread nil))
+    (when (uiop:string-prefix-p inside relative)
+      (let ((fd (and (multiple-value-bind (octets why) (read-text-file path :most 0)
+                       (or octets (eq why :too-large)))
+                     (ignoring-errors-reported ("opening ~a to search" path)
+                       (tuatara.io:open-for-reading path t :accept '(:regular) :follow nil)))))
+        (if (null fd)
+            (setf unread t)
           (unwind-protect
                (let* ((size (let ((stamp (ignoring-errors-reported ("examining ~a" path)
                                            (tuatara.io:fd-stamp fd path))))
@@ -329,7 +332,7 @@ turns true."
                                      (incf offset end)
                                      (setf carry (and reach (> reach end) (- reach end))))))))))))
             (ignoring-errors-reported ("closing ~a" path) (sb-posix:close fd))))))
-    (nreverse found)))
+    (values (nreverse found) unread)))
 
 (defun grown-octets (octets limit)
   "An empty vector of octets twice as long as OCTETS, but no longer than LIMIT."
@@ -339,8 +342,9 @@ turns true."
   "LINES-ON-DISK for each of FILES, each (RELATIVE PATH), INPUT and REGEX as
 it takes them, searched a file to a core at once, a batch after another: their
 candidates, in the order of FILES, at most MOST; CANCEL, a cons, stops it when
-its car turns true."
-  (let ((found '()) (count 0)
+its car turns true. A second value counts the files looked at that were not
+searched, being no text or not readable."
+  (let ((found '()) (count 0) (unread 0)
         (batch (* 2 (tuatara.runtime:cpu-count))))
     (loop for rest on files by (lambda (list) (nthcdr batch list))
           while (and (< count most) (not (car cancel)))
@@ -349,17 +353,20 @@ its car turns true."
                               (coerce (mapcar (lambda (file)
                                                 (destructuring-bind (relative path) file
                                                   (lambda ()
-                                                    (lines-on-disk path relative root input :regex regex :cancel cancel
-                                                                                            :most most :inside inside
-                                                                                            :parallel nil))))
+                                                    (multiple-value-call #'cons
+                                                      (lines-on-disk path relative root input :regex regex
+                                                                                              :cancel cancel :most most
+                                                                                              :inside inside
+                                                                                              :parallel nil)))))
                                               some)
                                       'simple-vector))))
-               (loop for candidates across results
-                     do (dolist (candidate candidates)
+               (loop for (candidates . skipped) across results
+                     do (when skipped (incf unread))
+                        (dolist (candidate candidates)
                           (when (< count most)
                             (push candidate found)
                             (incf count))))))
-    (nreverse found)))
+    (values (nreverse found) unread)))
 
 (defun line-candidates (corpus lines &optional (inside ""))
   "Completion candidates for LINES of CORPUS (CORPUS-LINES) as path:line: text,
@@ -441,7 +448,8 @@ large, NIL when it is not text."
 FILE-CORPUS given as it is read (GATHER-TEXT-FILE); the GATHERING. A text
 file too large for what is left of the limit, or past the most files read
 \(*INDEXED-FILES-MOST*), is given as (:LARGE RELATIVE PATH), to be searched
-from disk (LINES-ON-DISK)."
+from disk (LINES-ON-DISK); one that is no text, or cannot be read, as
+\(:UNREAD RELATIVE)."
   (let ((limit *search-files-limit*)
         (piece *search-files-piece*)
         (most *indexed-files-most*)
@@ -459,8 +467,8 @@ from disk (LINES-ON-DISK)."
                                                #'large)))
            (files-under root :gitignore t :cancel cancel :limit most
                              :each (lambda (path relative)
-                                     (unless (car cancel)
-                                       (gather-text-file gatherer relative path)))
+                                     (unless (or (car cancel) (gather-text-file gatherer relative path))
+                                       (funcall give (list :unread relative))))
                              :past (lambda (path relative) (large relative path)))
            (gather-piece gatherer)))))))
 
@@ -498,15 +506,17 @@ holds none. The files of a directory lie together, as they were read."
   "A cons whose car counts the searches over a directory kept read
 \(*INDEXED-DIRECTORIES*) under way now, for the mode line's sign of them.")
 
-(define-record (found-lines (:constructor make-found-lines (lines index words)) (:copier nil))
+(define-record (found-lines (:constructor make-found-lines (lines index words &optional more)) (:copier nil))
   "The lines a search of files found, as a list of places (STEP-PLACE): LINES,
 a vector of (PATH LINE OFFSET), in the order listed, INDEX, the one gone to
-last, and WORDS, what was searched for."
+last, WORDS, what was searched for, and MORE, true when the search may find
+more lines than these, having stopped at its most or not ended."
   (lines #() :type simple-vector :read-only t
          :documentation "The lines a search of files found, each (PATH LINE OFFSET).")
   (index 0 :type fixnum :documentation "The line of a FOUND-LINES gone to last.")
   (words "" :type string :read-only t
-         :documentation "What the search of files that found a FOUND-LINES' lines searched for."))
+         :documentation "What the search of files that found a FOUND-LINES' lines searched for.")
+  (more nil :read-only t :documentation "True when a FOUND-LINES' lines are not all its search may find."))
 
 (defmethod places-name ((places found-lines))
   "The search for what was searched for, shortened to a few words: the search for kiwi."
@@ -523,7 +533,7 @@ or before it (-1), at that line, as choosing it in the search does."
           (declare (ignore text))
           (setf (found-lines-index places) next)
           (show-file-line path line :offset offset)
-          (message "Line ~:d of ~:d found" (1+ next) (length lines)))
+          (message "Line ~:d of ~:[~;the first ~]~:d found" (1+ next) (found-lines-more places) (length lines)))
         (say-places-end places direction))))
 
 (defvar *list-found-lines* nil
@@ -546,15 +556,30 @@ back into their files."
 
 (define-keys *search-files-keymap* '(("C-c C-l" search-files-list)))
 
-(defun found-lines-cut (count most ended)
+(defun found-lines-cut (count most ended &optional (unread 0))
   "What to say of COUNT lines found by a search of files when they are listed
 without all it may find, or NIL when they are all: the search stopped at MOST
-\(*SEARCH-FILES-LINES-LIMIT* when it began), or had not ENDED."
-  (cond ((>= count most)
-         (format nil "The first ~:d lines found only: the search stops there, and more may be found ~
+\(*SEARCH-FILES-LINES-LIMIT* when it began), or had not ENDED; and that UNREAD
+files were not searched, being no text or not readable, when there were any."
+  (let ((lines (cond ((>= count most)
+                      (format nil "The first ~:d lines found only: the search stops there, and more may be found ~
 (*search-files-lines-limit* to see more)" count))
-        ((not ended)
-         (format nil "Only the ~:d line~:p found so far: the search had not ended" count))))
+                     ((not ended)
+                      (format nil "Only the ~:d line~:p found so far: the search had not ended" count))))
+        (files (and (plusp unread)
+                    (format nil "~:d file~:p not searched: no text (binary, UTF-16, a picture, an archive, ~
+encrypted) or not readable" unread))))
+    (cond ((and lines files) (format nil "~a. ~a" lines files))
+          (t (or lines files)))))
+
+(defun found-lines-note (count most unread)
+  "What the question of a search of files says in brackets of the COUNT lines
+found so far: that they are the first MOST only, when the search stops
+there, and how many files, UNREAD, were not searched; NIL when neither."
+  (cond ((and (>= count most) (plusp unread))
+         (format nil "first ~:d lines only; ~:d file~:p not searched" most unread))
+        ((>= count most) (format nil "first ~:d lines only" most))
+        ((plusp unread) (format nil "~:d file~:p not searched" unread))))
 
 (defun search-files-as-read (root prompt &key preview)
   "Ask with PROMPT for words to find in the files under ROOT, read in the
@@ -571,10 +596,17 @@ are searched from disk once the rest is (LINES-ON-DISK-MANY). Choosing, or
 leaving the question, stops the reading and the search. With PREVIEW, the
 file of the line selected is shown meanwhile, at that line, opened safely
 \(CALL-WITH-WINDOW-PREVIEW)."
-  (declare (notinline directory-index-corpora directory-index-large directory-index-root))
+  (declare (notinline directory-index-corpora directory-index-large directory-index-root directory-index-unread))
   (multiple-value-bind (index inside) (index-for root)
     (let* ((reading (and (null index) (gather-file-texts root)))
            (inside (or inside ""))
+           ;; the files not searched, being no text or not readable: those of the reading or the index,
+           ;; and those of the files searched from disk by the search of the input typed last
+           (unread (if index
+                       (count-if (lambda (relative) (uiop:string-prefix-p inside relative))
+                                 (directory-index-unread index))
+                       0))
+           (unread-on-disk 0)
            ;; the pieces of text read so far, kept read (*INDEXED-DIRECTORIES*): all there at once;
            ;; the searching thread takes them under the lock as they come
            (lock (sb-thread:make-mutex :name "search pieces"))
@@ -618,7 +650,7 @@ file of the line selected is shown meanwhile, at that line, opened safely
                    (and (< i (length corpora)) (not (car cancel)) (nth i corpora))))
                (start-search (input)
                  (when searching (stop-gathering searching))
-                 (setf searched-input (list input regex) fresh t searched-all nil
+                 (setf searched-input (list input regex) fresh t searched-all nil unread-on-disk 0
                        searching
                        (start-gathering
                         "tuatara searching files"
@@ -645,11 +677,14 @@ file of the line selected is shown meanwhile, at that line, opened safely
                                                     (funcall give candidate))))))
                                    ;; then the files too large to keep, from disk, once all is read
                                    (when (< count most)
-                                     (dolist (candidate (lines-on-disk-many
-                                                         (sb-thread:with-mutex (lock) (copy-list large))
-                                                         root-name input :regex regex :cancel cancel
-                                                         :most (- most count) :inside inside))
-                                       (funcall give candidate))))))
+                                     (multiple-value-bind (candidates skipped)
+                                         (lines-on-disk-many (sb-thread:with-mutex (lock) (copy-list large))
+                                                             root-name input :regex regex :cancel cancel
+                                                             :most (- most count) :inside inside)
+                                       (dolist (candidate candidates)
+                                         (funcall give candidate))
+                                       (when (plusp skipped)
+                                         (funcall give (list :unread skipped))))))))
                             (when index
                               (sb-ext:atomic-decf (car *index-searches*))
                               (note-sign-work :searching editor)))))))
@@ -659,16 +694,22 @@ file of the line selected is shown meanwhile, at that line, opened safely
                      (multiple-value-bind (new done) (take-gathered reading)
                        (sb-thread:with-mutex (lock)
                          (dolist (thing new)
-                           (if (and (consp thing) (eq (first thing) :large))
-                               (let ((end (list (rest thing))))
-                                 (if large-end (setf (cdr large-end) end) (setf large end))
-                                 (setf large-end end))
-                               (setf corpora (append corpora (list thing)))))
+                           (case (and (consp thing) (first thing))
+                             (:large (let ((end (list (rest thing))))
+                                       (if large-end (setf (cdr large-end) end) (setf large end))
+                                       (setf large-end end)))
+                             (:unread (incf unread) (setf changed t))
+                             (t (setf corpora (append corpora (list thing))))))
                          (when done (setf read-all t))
                          (when (or new done) (sb-thread:condition-broadcast more-read)))
                        (unless done (setf working t))))
                    (when searching
                      (multiple-value-bind (new done) (take-gathered searching)
+                       ;; how many files searched from disk were not, given after the lines
+                       (let ((note (find-if #'consp new)))
+                         (when note
+                           (setf unread-on-disk (second note) changed t
+                                 new (remove-if #'consp new))))
                        (cond (new
                               (setf found (if fresh new (append found new)) fresh nil changed t))
                              ;; the search ended with nothing: the lines before go too
@@ -703,20 +744,24 @@ file of the line selected is shown meanwhile, at that line, opened safely
                               (lambda (show)
                                 (completing-read (lambda ()
                                                    (pattern-prompt regex prompt
-                                                                   (problem (editor-minibuffer-text *editor*))))
+                                                                   (or (problem (editor-minibuffer-text *editor*))
+                                                                       (found-lines-note (length found) most
+                                                                                         (+ unread unread-on-disk)))))
                                                  #'lines
                                                  :separator (code-char 0) :filter nil :require-match t
                                                  :source #'take :keymap *search-files-keymap*
                                                  :preview (and preview show)))))))
                (when listing
                  (show-search-results found (or (first searched-input) "")
-                                      :cut (found-lines-cut (length found) most searched-all)))
+                                      :cut (found-lines-cut (length found) most searched-all (+ unread unread-on-disk))
+                                      :more (or (>= (length found) most) (not searched-all))))
                (when (consp chosen)
                  ;; the lines found, for M-g n and M-g p to go on from the one chosen
                  (let ((lines (map 'vector #'candidate-value found)))
                    (use-places (make-found-lines lines
                                                  (or (position chosen lines :test #'eq) 0)
-                                                 (or (first searched-input) ""))))
+                                                 (or (first searched-input) "")
+                                                 (or (>= (length lines) most) (not searched-all)))))
                  (destructuring-bind (path line offset &optional text) chosen
                    (declare (ignore text))
                    (show-file-line path line :offset offset))))
@@ -741,12 +786,12 @@ there is none."
 (define-command search-in-files ()
   "Find text in the files of the project the current buffer's file is in (see
 *PROJECT-ROOT-MARKERS*), or under its directory when it is in none, or under
-the directory it lists (\\[rimu]), or *DEFAULT-DIRECTORY* for another buffer
+the directory it lists (\\[rimu]), or *NO-FILE-DIRECTORY* for another buffer
 with no file; with a prefix argument, in a directory asked for. As you type,
 every line with all the words typed (each a regular expression, in any order,
-ignoring case unless it has a capital) is listed as path:line: text, after
-three characters. The files are read in the background as you type and searched
-as they are read. \\<pattern>\\[search-toggle-regex] switches to literal text,
+ignoring case unless it has a capital) is listed as path:line: text, once
+*SEARCH-FILES-MIN-INPUT* characters are typed. The files are read in the
+background as you type and searched as they are read. \\<pattern>\\[search-toggle-regex] switches to literal text,
 what is typed found as it stands, spaces and all, and back.
 \\<minibuffer>\\[minibuffer-finish] visits the file at that line (the first,
 once all are read, unless you moved to one), and then \\[next-place] and
@@ -754,8 +799,12 @@ once all are read, unless you moved to one), and then \\[next-place] and
 *preview-file-search*, the file of the line selected is shown meanwhile, at
 that line, opened safely. \\<search-files>\\[search-files-list] lists the lines
 found in a buffer instead, to change them and write them back into their files.
-Hidden files and directories, backups, binary files and what .gitignore files
-exclude are left out; the access times of those read are not changed."
+Hidden files and directories, backups, symbolic links, binary files and what
+.gitignore files exclude are left out; the access times of those read are not
+changed. The question says in brackets how many files were not searched,
+being no text (binary, UTF-16, a picture, an archive, encrypted) or not
+readable, and when the lines listed are only the first
+*SEARCH-FILES-LINES-LIMIT*, where the search stops."
   (let* ((here (buffer-directory (current-buffer)))
          (root (if (prefix-argument)
                    (read-directory-path "Search files in: " :initial (abbreviated-path here))

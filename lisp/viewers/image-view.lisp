@@ -213,15 +213,16 @@ nothing to draw it with, which is said)."
 
 (defun image-view-make (native kind words)
   "A new buffer showing the image file at NATIVE, of KIND (WORDS), its picture
-being drawn; the pictures inside a file visited safely, as one from outside
-is, are left until asked for."
+being drawn; the pictures inside a file Tuatara may not read itself
+\(READ-HERE-P, asked of the buffer the visit is made from: from outside,
+evidence, or from a list opened safely) are left until asked for."
   (let ((buffer (make-file-view-buffer native 'image-view-mode
                                        (substitute-command-keys
                                         (format nil "~a: ~a~%~%Pictures are not shown here: \\[hex-mode] shows its octets.~%"
                                                 (tuatara.io:native-file-name native) words))
                                        "its picture"))
         (view (make-image-view native kind words)))
-    (when *visiting-safely*
+    (unless (read-here-p native (current-buffer))
       (setf (image-view-pictures view) :unasked))
     (setf (tuatara.display:buffer-header-line buffer)
           (static-header-line (format nil " ~a" words))

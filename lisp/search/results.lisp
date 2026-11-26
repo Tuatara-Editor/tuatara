@@ -97,10 +97,11 @@ says so, in the text, so that it goes wherever the text goes."
     (setf (buffer-read-only-p buffer) t)
     (results-header-line buffer)))
 
-(defun show-search-results (found words &key cut)
+(defun show-search-results (found words &key cut more)
   "List the lines FOUND, candidates of a search of files for WORDS, in a buffer of their own and show
-it; the lines are also the places \\[next-place] goes through. CUT, words saying the lines are not all
-the search may find, or NIL, heads the list and its header and is said in the echo area."
+it; the lines are also the places \\[next-place] goes through, MORE true when they are not all the search
+may find. CUT, words saying so, or that files were not searched, or NIL, heads the list and its header
+and is said in the echo area."
   (let* ((entries (coerce (loop for candidate in found
                                 for (path line nil text) = (candidate-value candidate)
                                 for string = (candidate-string candidate)
@@ -120,7 +121,7 @@ the search may find, or NIL, heads the list and its header and is said in the ec
     (setf (tuatara.buffer:buffer-local buffer 'results-all) entries
           (tuatara.buffer:buffer-local buffer 'results-cut) cut)
     (draw-results buffer)
-    (use-places (make-found-lines (map 'vector #'candidate-value found) 0 words))
+    (use-places (make-found-lines (map 'vector #'candidate-value found) 0 words more))
     (show-buffer buffer)
     (when cut (message "~a" cut))))
 

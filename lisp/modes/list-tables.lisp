@@ -90,6 +90,7 @@ with no width continues, where a long row wraps (\\[soft-wrap-mode]), under
 its own start (SET-HANGING). With MARGIN, the titles and the lines of AFTER
 are set in that many columns, as ROWS are by their maker (SET-IN-PIECES)."
   (keep-list-table list (map 'simple-vector (lambda (column) (string-trim " " (first column))) columns) texts first)
+  (setf (tuatara.buffer:buffer-local list 'table-rows) nil)
   (set-hanging list (and (rest columns) (not (getf (rest (car (last columns))) :width))
                          (+ 1 margin (table-columns-width (butlast columns) 0))))
   (apply #'render-pieces list
@@ -106,7 +107,9 @@ are set in that many columns, as ROWS are by their maker (SET-IN-PIECES)."
                           &allow-other-keys)
   "Fill LIST with a table (TABLE-HEADING-PIECES): the titles of COLUMNS over a
 row for each of ITEMS, its cells what CELLS, a function of the item, its mark
-\(ENTRY-MARK) and its section, gives (TABLE-ROW-PIECES). With SECTIONS, ITEMS
+\(ENTRY-MARK) and its section, gives (TABLE-ROW-PIECES); CELLS must give the
+same row for the same item and mark whenever it is called, for a row is made
+again alone when its mark changes. With SECTIONS, ITEMS
 are sections, each (SECTION . MEMBERS), under headings that fold
 \(SECTIONED-PIECES, a section holding sections in place of members as it says;
 SECTION-TITLE naming each, SECTION-FACE giving the face of its heading,
@@ -147,7 +150,121 @@ text, so that \\[search-filter-show-records] can try a pattern on one column."
                              (lambda (entry) (funcall marked-by entry nil)))
                (loop for (name value) on options by #'cddr
                      unless (member name '(:marked-by :sections :section-title :section-face :section-note :keep-marks))
-                       append (list name value)))))))
+                       append (list name value)))
+        ;; how a row is made again by REDRAW-TABLE-ROWS
+        (setf (tuatara.buffer:buffer-local list 'table-rows) (list columns cells marked-by sections))))))
+
+(defun redraw-table-rows (list items)
+  "Draw the rows of ITEMS again in LIST, a table made by RENDER-TABLE-LIST,
+each from what its CELLS give now, in place of its line: after a change to a
+few items (a mark, a label) the rest of the list is left as it is. An item
+in a folded section, or not listed, is passed over. The whole list is drawn
+again (REDRAW-LIST) while search filters narrow it, since they may now leave
+other entries, or when it was not made by RENDER-TABLE-LIST. O(entries + face
+spans) to find the rows and move what follows them, without making the other
+rows again."
+  (let ((rows (tuatara.buffer:buffer-local list 'table-rows))
+        (table (tuatara.buffer:buffer-local list 'list-table))
+        (entries (tuatara.buffer:buffer-local list 'list-entries)))
+    (if (or (null rows) (null table) (not (simple-vector-p entries)) (list-filters-on-p list))
+        (redraw-list list)
+        (destructuring-bind (columns cells marked-by sections) rows
+          (let ((wanted (make-hash-table :test 'eq)) (first-line (tuatara.buffer:buffer-local list 'list-first-line 0)))
+            (dolist (item items) (setf (gethash item wanted) t))
+            (call-keeping-places
+             list
+             (lambda ()
+               (loop for entry across entries
+                     for line from first-line
+                     for item = (if sections (entry-member entry) entry)
+                     when (and item (gethash item wanted)
+                               (not (redraw-table-row list line item (and sections (third entry))
+                                                      columns cells marked-by table)))
+                       ;; a line not as its row was drawn: the whole list made again
+                       do (return (redraw-list list))))))))))
+
+(defun call-keeping-places (buffer change)
+  "Call CHANGE, a function of no arguments that makes lines of BUFFER again
+without adding or taking away any, and keep point and the point and first
+line of each window showing it on the line and column they were on, as far as
+the line now goes."
+  (let* ((windows (and *editor* (buffer-windows buffer)))
+         (own (remove-if-not #'tuatara.display:window-point-anchor windows)))
+    (flet ((place (position)
+             (let ((start (tuatara.buffer:buffer-line-start buffer position)))
+               (cons (tuatara.buffer:buffer-line-number buffer position) (- position start))))
+           (back (place)
+             (let ((start (tuatara.buffer:buffer-goto-line buffer (car place))))
+               (min (+ start (cdr place)) (tuatara.buffer:buffer-line-end buffer start)))))
+      (let ((point (place (tuatara.buffer:buffer-point buffer)))
+            (points (mapcar (lambda (window) (place (tuatara.display:window-point window))) own))
+            (starts (mapcar (lambda (window) (place (tuatara.display:window-start window))) windows)))
+        (funcall change)
+        (setf (tuatara.buffer:buffer-point buffer) (back point))
+        (loop for window in own for place in points
+              do (setf (tuatara.display:window-point window) (back place)))
+        (loop for window in windows for place in starts
+              do (setf (tuatara.display:window-start window) (back place)))))))
+
+(defun redraw-table-row (list line item section columns cells marked-by table)
+  "Put the row of ITEM, in SECTION, made again from CELLS under COLUMNS, in
+place of LINE of LIST, its indentation kept, its cells' texts kept in TABLE
+\(KEEP-LIST-TABLE), and move the face spans and buttons after it by as far as
+its length changed: the work of REDRAW-TABLE-ROWS for one row. NIL, with
+nothing changed, when the line does not hold the row as it was drawn."
+  (let* ((texts (second table)) (old (gethash item texts)))
+    (when old
+      (let* ((old-text (pieces-text (table-row-pieces columns (coerce old 'list))))
+             (start (tuatara.buffer:buffer-goto-line list line))
+             (end (tuatara.buffer:buffer-line-end list start))
+             ;; the spaces a row in a section is set in, one octet each, ahead of its cells
+             (from (- end (1- (tuatara.text:string-octet-length old-text)))))
+        (when (and (<= start from end)
+                   (string= (tuatara.buffer:buffer-string list :start from :end end) old-text
+                            :end2 (1- (length old-text)))
+                   (notany (lambda (button) (and (< (first button) end) (> (second button) from)))
+                           (tuatara.buffer:buffer-local list :buttons)))
+          (multiple-value-bind (text spans)
+              (pieces-text (kept-row-pieces columns
+                                            (funcall cells item (entry-mark list (funcall marked-by item section))
+                                                     section)
+                                            item texts))
+            (let* ((new (subseq text 0 (1- (length text))))
+                   (change (- (tuatara.text:string-octet-length new) (- end from))))
+              (when (eq old (third table))
+                (setf (third table) (gethash item texts)))
+              (tuatara.buffer:with-read-only-lifted (list)
+                (tuatara.buffer:buffer-replace list from end new))
+              (tuatara.buffer:forget-history list)
+              (tuatara.buffer:buffer-mark-saved list)
+              (unless (zerop change)
+                (setf (tuatara.buffer:buffer-local list :buttons)
+                      (loop for button in (tuatara.buffer:buffer-local list :buttons)
+                            collect (if (>= (first button) end)
+                                        (list* (+ (first button) change) (+ (second button) change) (cddr button))
+                                        button))))
+              (move-made-spans list from end change
+                               (loop for (span-start span-end face) in spans
+                                     collect (list (+ from span-start) (+ from span-end) face)))
+              t)))))))
+
+(defun move-made-spans (buffer from to change new)
+  "Put NEW, face spans each (START END FACE), in place of those of BUFFER's
+made text (SET-MADE-TEXT) that start from FROM below TO, and move those after
+them by CHANGE octets: what a part of that text made again in place needs.
+O(spans)."
+  (let* ((made (tuatara.buffer:buffer-local buffer 'made-spans))
+         (spans (if made (car made) #()))
+         (out (make-array (+ (length spans) (length new)) :fill-pointer 0)))
+    (loop for span across spans
+          for (start end face) = span
+          do (cond ((< start from) (vector-push span out))
+                   ((< start to))
+                   ((zerop change) (vector-push span out))
+                   (t (vector-push (list (+ start change) (+ end change) face) out)))
+          finally (let ((at (or (position-if (lambda (span) (>= (first span) from)) out) (length out))))
+                    (setf out (concatenate 'simple-vector (subseq out 0 at) new (subseq out at)))))
+    (setf (tuatara.buffer:buffer-local buffer 'made-spans) (and (plusp (length out)) (cons out (span-ends out))))))
 
 (defun keep-list-table (list titles texts first)
   "Keep the columns of LIST, as it was drawn, for a filter to try a pattern on
@@ -160,8 +277,7 @@ the first row's, shown as an example. TITLES NIL: the list has no columns."
   "The text of COLUMN (from 0) of ENTRY's row in LIST, a table made by
 RENDER-TABLE-LIST, as it was last drawn; NIL when it has none."
   (let* ((table (tuatara.buffer:buffer-local list 'list-table))
-         (cells (and table (gethash (if (and (consp entry) (eq (first entry) :member)) (second entry) entry)
-                                    (second table)))))
+         (cells (and table (gethash (entry-member-or-self entry) (second table)))))
     (and cells (< column (length cells)) (svref cells column))))
 
 (defun list-table-columns (list)

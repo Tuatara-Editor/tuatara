@@ -125,6 +125,23 @@ when its work went wrong), else NIL and NIL, THREAD still running."
           (t (let ((late (sb-thread:join-thread thread :timeout 0 :default running)))
                (values (if (eq late running) nil late) t))))))
 
+(sb-ext:defglobal **pending-work** (list 0)
+  "A cons whose car counts the pieces of work running in the background that
+are no job but whose results the editor shows once they are in
+\(COUNTING-PENDING-WORK), counted atomically.")
+
+(defmacro counting-pending-work (&body body)
+  "Run BODY, work in the background whose result the editor shows once it is
+in (a parse of text in another language for its colours), counted while it
+runs (PENDING-WORK-P), and return what it returns."
+  `(progn (sb-ext:atomic-incf (car **pending-work**))
+          (unwind-protect (progn ,@body)
+            (sb-ext:atomic-decf (car **pending-work**)))))
+
+(defun pending-work-p ()
+  "True while work counted by COUNTING-PENDING-WORK runs."
+  (plusp (car **pending-work**)))
+
 (defun join-within (thread &optional (seconds *stop-wait*))
   "Wait at most SECONDS for THREAD to end; true when it has ended, or when
 THREAD is NIL, work that never had one."

@@ -79,10 +79,10 @@ goes on. More."))
             "The command ~(~a~) is documented by a sentence cut short: ~s" mode doc))))
 
 (define-test (modes made-by-their-commands)
-  ;; the modes of the buffers a command makes (help, the lists, the tutor, IELM)
+  ;; the modes of the buffers a command makes (help, the lists, the tutor, the Lisp REPL)
   ;; are no commands, so no other buffer is switched to one; a file's are
   (dolist (name '("special-mode" "help-mode" "buffers-mode" "jobs-mode" "font-list-mode" "about-mode"
-                  "xref-mode" "backtrace-mode" "ielm-mode" "tuatara-tutor-mode"))
+                  "xref-mode" "backtrace-mode" "lisp-repl-mode" "tuatara-tutor-mode"))
     (false (tuatara.command:command-symbol name) "~a is a command" name))
   (dolist (name '("fundamental-mode" "text-mode" "prog-mode" "csv-mode" "org-mode" "lisp-interaction-mode"))
     (true (tuatara.command:command-symbol name) "~a is no command" name))

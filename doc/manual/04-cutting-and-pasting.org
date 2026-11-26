@@ -34,7 +34,7 @@ ring after three cuts.
    newest on top
 #+end_example
 
-The ring keeps =*kill-ring-max*= cuts. When it is full, the oldest is
+The ring keeps =*kill-ring-length*= cuts. When it is full, the oldest is
 forgotten. Tuatara has no command that steps back through the older cuts, so
 a paste always gives you the newest. To keep a piece of text while you go on
 cutting and copying other things, put it in a register, described below.
@@ -130,6 +130,14 @@ cut or copy in Tuatara goes there as well, so you can paste it in another
 program. When another program has copied something since, ~C-y~ and ~p~ paste
 that instead and put it first on the kill ring.
 
+In a terminal, Tuatara reaches the clipboard through =wl-copy= and =wl-paste=
+under Wayland, or =xclip= or =xsel= under X. A copy hands the text to them in
+the background and never waits; copies made faster than they take it keep only
+the newest. Quitting waits up to a second for a copy still being written. A
+paste that has to wait for a program owning the clipboard says
+=Waiting for the clipboard...= after a moment, and ~C-g~ gives up on it. The
+window frontend waits the same way.
+
 The primary selection is a second place that many Linux programs have. It
 holds whatever text was selected last, with no copy command. In Tuatara, a
 selection you make by dragging with the mouse becomes the primary selection
@@ -157,8 +165,8 @@ not sent, and neither is any text from an encrypted file, and with
 |---------------------------+---------------+----------------------------------|
 | =*use-system-clipboard*=  | =t=           | Whether cuts and copies go on the system clipboard, and whether a paste takes in what another program copied. =nil= keeps them in Tuatara. |
 | =*clipboard-size-limit*=  | =8388608=     | The most characters a cut may have and still go on the clipboard and the primary selection. That is 8 MB. A larger cut stays in the buffer's own text. |
-| =*kill-ring-max*=         | =120=         | How many cuts the kill ring keeps. The oldest go first. |
-| =*kill-ring-max-size*=    | =67108864=    | The most characters the cuts on the kill ring may hold together, 64 MB. Past it the oldest go first; the latest is always kept, however large. =nil= sets no such limit. |
+| =*kill-ring-length*=      | =120=         | How many cuts the kill ring keeps. The oldest go first. |
+| =*kill-ring-octets*=      | =67108864=    | The most characters the cuts on the kill ring may hold together, 64 MB. Past it the oldest go first; the latest is always kept, however large. =nil= sets no such limit. |
 
 ** Registers
 

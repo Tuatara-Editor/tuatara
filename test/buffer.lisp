@@ -410,10 +410,10 @@
   (let* ((large (tuatara.text:string->rope (make-string (* 1024 1024) :initial-element #\a)))
          (one (tuatara.text:splice-rope large 500000 500001 (tuatara.text:string->rope "b")))
          (other (tuatara.text:splice-rope large 500000 500001 (tuatara.text:string->rope "b"))))
-    (true (tuatara.buffer::ropes-same-octets-p one other))
-    (false (tuatara.buffer::ropes-same-octets-p
+    (true (tuatara.text:ropes-same-octets-p one other))
+    (false (tuatara.text:ropes-same-octets-p
             one (tuatara.text:splice-rope other 900000 900001 (tuatara.text:string->rope "c"))))
-    (false (tuatara.buffer::ropes-same-octets-p one large))))
+    (false (tuatara.text:ropes-same-octets-p one large))))
 
 (define-test (buffer take-in-job-result-on-top)
   ;; a job's result goes on top, one step, when its history was undone past where it began

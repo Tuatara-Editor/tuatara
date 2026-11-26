@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test pdf-sync
-  :description "A PDF made by export-latex-compile-pdf-buffer has a SyncTeX file among its working files.
+  :description "A PDF made by latex-export-pdf-buffer has a SyncTeX file among its working files.
 In the LaTeX file C-c C-v (show-line-in-pdf) shows the line at point in the PDF's view beside, its page
 turned and the place marked; in the view C-c C-v (pdf-view-show-source) shows the line of the part
 shown, and a double click on the page the line of that point. Both work from an Org file exported in
@@ -181,7 +181,7 @@ Third page words at last.
           (pdf-forget)
           ;; C-c C-v on line 6: the view beside, turned to page 2, the place marked on its picture
           (multiple-value-bind (f editor)
-              (export-session tex (list (export-command "export-latex-compile-pdf-buffer")
+              (export-session tex (list (export-command "latex-export-pdf-buffer")
                                         (goto-file-line "doc.tex" 6)
                                         "C-c C-v"
                                         (lambda ()
@@ -203,7 +203,7 @@ Third page words at last.
           ;; in the view, C-c C-v: the line of the place marked, doc.tex in the other window
           (pdf-forget)
           (multiple-value-bind (f editor)
-              (export-session tex (list (export-command "export-latex-compile-pdf-buffer")
+              (export-session tex (list (export-command "latex-export-pdf-buffer")
                                         (goto-file-line "doc.tex" 8)
                                         "C-c C-v" "C-x o" (goto-file-line "doc.tex" 1) "C-c C-v")
                               :width 200 :cell-pixels '(10 20))
@@ -214,7 +214,7 @@ Third page words at last.
           (pdf-forget)
           (let ((cell nil))
             (multiple-value-bind (f editor)
-                (export-session tex (list (export-command "export-latex-compile-pdf-buffer")
+                (export-session tex (list (export-command "latex-export-pdf-buffer")
                                           (goto-file-line "doc.tex" 4)
                                           "C-c C-v"
                                           (lambda ()
@@ -250,7 +250,7 @@ Third page words at last.
           ;; where pictures are not shown: the PDF's text, turned to the page
           (pdf-forget)
           (let ((page nil))
-            (let ((f (export-session tex (list (export-command "export-latex-compile-pdf-buffer")
+            (let ((f (export-session tex (list (export-command "latex-export-pdf-buffer")
                                                (goto-file-line "doc.tex" 8)
                                                "C-c C-v"
                                                (lambda ()
@@ -710,3 +710,37 @@ opened again after."
     (is = tuatara.export::*pdf-sync-kept* (length tuatara.export::*org-pdf-exports*))
     (true (tuatara.export::org-pdf-source-enhanced (tuatara.export::org-pdf-export "/notes/n5.pdf")))
     (false (tuatara.export::org-pdf-export "/notes/n0.pdf"))))
+
+(define-test (pdf-sync note-read-in-place)
+  ;; whether a note is as its PDF was made, its macros and where its export goes are read where the note is kept,
+  ;; never a copy of all of it
+  (let* ((text (format nil "#+macro: who first~%#+export_file_name: out~%* A~%b~%"))
+         (buffer (tuatara.buffer:make-buffer "note-in-place.org" :text text))
+         (kept (tuatara.export::make-org-pdf-source "/tmp/notes.org" "notes.tex" "notes.pdf" text #() nil nil
+                                                    (tuatara.buffer:buffer-text buffer)))
+         (copies 0))
+    (sb-int:encapsulate 'tuatara.text:rope-string 'counted
+                        (lambda (function rope &rest arguments)
+                          (when (and (null arguments) (eq rope (tuatara.buffer:buffer-text buffer))) (incf copies))
+                          (apply function rope arguments)))
+    (sb-int:encapsulate 'tuatara.buffer:buffer-string 'counted
+                        (lambda (function b &rest arguments)
+                          (when (and (eq b buffer) (null arguments)) (incf copies))
+                          (apply function b arguments)))
+    (unwind-protect
+         (progn
+           (true (tuatara.export::org-export-current-p kept buffer))
+           (true (find "who" (tuatara.export::org-macro-choices buffer)
+                       :key #'tuatara.command:candidate-string :test #'string=))
+           (is string= "out.tex" (tuatara.io:native-file-name
+                                  (tuatara.defaults::org-export-file-name (tuatara.buffer:buffer-text buffer)
+                                                                          "/tmp/notes.org")))
+           ;; changed and changed back: the same text still, compared where it is kept
+           (tuatara.buffer:buffer-insert buffer 0 "x")
+           (false (tuatara.export::org-export-current-p kept buffer))
+           (tuatara.buffer:buffer-delete buffer 0 1)
+           (true (tuatara.export::org-export-current-p kept buffer))
+           (is = 0 copies))
+      (sb-int:unencapsulate 'tuatara.text:rope-string 'counted)
+      (sb-int:unencapsulate 'tuatara.buffer:buffer-string 'counted)
+      (tuatara.buffer:kill-buffer buffer))))

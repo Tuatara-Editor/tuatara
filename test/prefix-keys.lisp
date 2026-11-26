@@ -218,11 +218,17 @@ the selection, and the last row of the screen."
                              when (eq command 'tuatara.defaults::repeat) collect keys)))
 
 (define-test (prefix-keys control-keys-as-the-letters)
-  ;; where h j k l do more than move, C-b C-n C-p C-f do the same
+  ;; where h j k l do more than move, C-b C-n C-p C-f do the same; a list of a directory opens and goes up by l and
+  ;; h (and RET) alone
   (run-keys "")
   (let ((pairs '(("h" . "C-b") ("j" . "C-n") ("k" . "C-p") ("l" . "C-f"))))
     (flet ((bound (keymap keys) (tuatara.command:lookup-key keymap (tuatara.frontend:parse-key-sequence keys))))
-      (dolist (keymap (list tuatara.defaults::*bookmarks-keymap* tuatara.defaults::*rimu-keymap*
+      (loop for (letter . control) in pairs
+            for command = (bound tuatara.defaults::*rimu-keymap* letter)
+            do (if (member letter '("h" "l") :test #'string=)
+                   (isnt eq command (bound tuatara.defaults::*rimu-keymap* control) "~a and ~a" letter control)
+                   (is eq command (bound tuatara.defaults::*rimu-keymap* control) "~a and ~a" letter control)))
+      (dolist (keymap (list tuatara.defaults::*bookmarks-keymap*
                             tuatara.defaults::*rimu-trash-keymap* tuatara.defaults::*buffers-keymap*
                             tuatara.defaults::*pdf-view-keymap* tuatara.git::*git-status-keymap*
                             tuatara.git::*git-log-keymap*

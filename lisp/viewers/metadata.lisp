@@ -51,8 +51,9 @@ named, its size given, and not read.")
 
 (defvar *file-metadata-functions* '()
   "Functions of a file's PATH and its kind (TUATARA.IO:OCTETS-KIND's keyword),
-given besides the keys :FD, the open file descriptor (FD), and :SIZE, its
-size, each returning a section of an Org note of what the file says of
+given besides the keys :FD, the open file descriptor (FD), :SIZE, its size,
+and :SAFE, true when the file is not to be read in the editor (READ-HERE-P),
+each returning a section of an Org note of what the file says of
 itself, or NIL: the readers M-x show-file-metadata asks, each taking the keys
 it uses.")
 
@@ -145,7 +146,7 @@ true when they are cut so)."
 
 (defun exif-read (octets start &key pages)
   "The tags of the TIFF structure (EXIF) in OCTETS from START, as a list of
-\(PART TAG-NAME VALUE) in order, PART one of :IMAGE, :EXIF, :GPS and
+\(PART TAG VALUE) in order, TAG its number, PART one of :IMAGE, :EXIF, :GPS and
 :THUMBNAIL; with PAGES, for a TIFF file whose directories after the first
 are its further pages, those are left out, not read as a thumbnail's; each
 offset checked, each part read once, at most
@@ -193,6 +194,47 @@ to their first 4 KB."
       (walk (int 4 4) :image))
     (nreverse fields)))
 
+(defun exif-tags (octets &key (start 0) (end (length octets)))
+  "The tags of the EXIF whose TIFF structure lies in OCTETS from START to END
+\(in a JPEG, its APP1 segment after \"Exif\" and two zero octets; a TIFF file
+from 0), as a list of (PART TAG VALUE) in order. PART is :IMAGE, :EXIF, :GPS or
+:THUMBNAIL, TAG the tag's number (#x010F the maker of the device). VALUE is a
+string for text, a vector of octets for octets, else a list of the numbers
+the tag holds, each fraction a pair (NUMERATOR . DENOMINATOR). Every offset is
+checked against END, each part read once, and at most
+*METADATA-MOST-FIELDS* tags kept; text and octets to their first 4 KB.
+Nothing outside START to END is read. NIL when there is no TIFF structure."
+  (cond ((not (<= 0 start end (length octets))) '())
+        ((= end (length octets)) (exif-read octets start))
+        (t (exif-read (subseq octets start end) 0))))
+
+(defun exif-tag (tags part tag)
+  "The value of TAG, its number, of PART in TAGS, as EXIF-TAGS gives them;
+NIL when there is none."
+  (third (find-if (lambda (f) (and (eq (first f) part) (eql (second f) tag))) tags)))
+
+(defun exif-thumbnail-place (tags)
+  "Where the thumbnail TAGS, as EXIF-TAGS gives them, name lies, as three
+values: its offset from the start of the TIFF structure, its length in octets,
+and its compression (6 a JPEG, 1 none); NIL when they name none."
+  (let ((offset (first (exif-tag tags :thumbnail #x0201)))
+        (length (first (exif-tag tags :thumbnail #x0202)))
+        (compression (first (exif-tag tags :thumbnail #x0103))))
+    (when (and (integerp offset) (integerp length))
+      (values offset length (and (integerp compression) compression)))))
+
+(defun exif-resolution (tags)
+  "The resolution TAGS, as EXIF-TAGS gives them, give the picture, as
+\(ACROSS DOWN) in pixels to the inch; NIL when they give none, or in no unit."
+  (flet ((number (tag)
+           (let ((r (first (exif-tag tags :image tag))))
+             (and (consp r) (integerp (car r)) (integerp (cdr r)) (plusp (car r)) (plusp (cdr r))
+                  (/ (car r) (cdr r))))))
+    (let ((across (number #x011a)) (down (number #x011b))
+          (unit (or (first (exif-tag tags :image #x0128)) 2)))
+      (when (and across down (member unit '(2 3)))
+        (if (= unit 2) (list across down) (list (* across 254/100) (* down 254/100)))))))
+
 (defun exif-rational-words (r)
   "R, a fraction (NUMERATOR . DENOMINATOR) as EXIF keeps it, in words: 1/125 below 1, else a decimal."
   (destructuring-bind (n . d) r
@@ -239,7 +281,7 @@ when it has none. PAGES as EXIF-READ takes it."
   (let ((fields (exif-read octets start :pages pages)))
     (if (null fields)
         ""
-        (flet ((tag (part number) (third (find-if (lambda (f) (and (eq (first f) part) (= (second f) number))) fields))))
+        (flet ((tag (part number) (exif-tag fields part number)))
           (let* ((latitude (exif-degrees (tag :gps 2) (tag :gps 1)))
                  (longitude (exif-degrees (tag :gps 4) (tag :gps 3)))
                  (altitude (let ((a (first (tag :gps 6)))) (and (consp a) a (cdr a) (plusp (cdr a)) (/ (car a) (cdr a)))))
@@ -801,14 +843,14 @@ kind's reader. DIRECTORY is not written in."
         (office (find kind *office-formats* :key (lambda (f) (getf f :kind)))))
     (office-about (funcall (getf office :read) path :octets (tuatara.io:file-octets path :limit *docx-largest-file*)))))
 
-(defun office-metadata (path kind &key fd size &allow-other-keys)
+(defun office-metadata (path kind &key fd size safe &allow-other-keys)
   "The section of the note giving what the Office or OpenDocument file at PATH,
 of KIND, open as file descriptor (FD), of SIZE octets, says of itself: the
 first section of the note its reader makes (OFFICE-ABOUT). The reader runs
 shut in by the sandbox on that very file (OFFICE-ABOUT-SHUT-IN), whatever is
 at PATH by then. With no sandbox here it runs in the editor, on the octets
-read through FD, for a file not from outside, and not at all for one from
-outside (UNTRUSTED-PATH-P), the section saying why."
+read through FD, for a file it may read there (READ-HERE-P), and not at all
+with SAFE or for any other, the section saying why."
   (let* ((office (office-preview-format kind (tuatara.io:native-file-name path)))
          (read (getf office :read)))
     (when read
@@ -821,7 +863,7 @@ outside (UNTRUSTED-PATH-P), the section saying why."
                                                    :arguments (list (getf office :kind))
                                                    :label (format nil "The reader of the ~a" (getf office :words)))
                   (cond ((eq outcome :done) (if (stringp about) about ""))
-                        ((and (eq outcome :unavailable) (not (untrusted-path-p path)))
+                        ((and (eq outcome :unavailable) (not safe) (read-here-p path))
                          (handling-errors-reported ("reading what ~a says of itself" path)
                              (or (office-about (funcall read path :octets (fd-octets fd path size *docx-largest-file*)))
                                  "")
@@ -1143,7 +1185,7 @@ of its own and the rest still given."
           (when (and (not (eq kind :mp3)) (tuatara.text:octets-at-p octets "ID3")) (metadata-part (id3-metadata octets)))
           (metadata-part (xmp-sections octets))))
 
-(defun built-in-metadata (path kind &key fd size)
+(defun built-in-metadata (path kind &key fd size &allow-other-keys)
   "The sections of the note giving what the file at PATH, of KIND, open as
 file descriptor (FD), of SIZE octets, says of itself (OCTETS-METADATA). A
 file larger than *METADATA-LARGEST-READ* is read at its start and end, and
@@ -1165,12 +1207,13 @@ can be anywhere in it."
                                                                      (octets-words size)))))))))))
 
 (defun file-metadata-note
-    (path &key (cancel (list nil)) (done (list 0)) (look-up-keys (eq *metadata-look-up-key-owners* t)))
+    (path &key (cancel (list nil)) (done (list 0)) (look-up-keys (eq *metadata-look-up-key-owners* t)) safe)
   "The Org note of what the file at PATH is and says of itself, as
 \\[show-file-metadata] shows it, every part of it read from one opening of the
 file; its SHA-256 summed with CANCEL and DONE as FD-SHA256 takes them; with LOOK-UP-KEYS, the owners of the keys an
-encrypted file is for looked up in your keyring. Signals an error when it
-cannot be read."
+encrypted file is for looked up in your keyring; with SAFE, nothing of it read
+by a reader that would run in the editor (*FILE-METADATA-FUNCTIONS*' SAFE).
+Signals an error when it cannot be read."
   (let ((*metadata-looking-up-keys* look-up-keys))
     (tuatara.io:call-with-file
      path
@@ -1179,7 +1222,7 @@ cannot be read."
               (head (tuatara.io:read-fd-start fd native size 4096)))
          (multiple-value-bind (words kind) (tuatara.io:octets-kind head)
            (let ((sections (loop for function in *file-metadata-functions*
-                                 append (metadata-part (funcall function native kind :fd fd :size size)))))
+                                 append (metadata-part (funcall function native kind :fd fd :size size :safe safe)))))
              (concatenate 'string
                           (format nil "#+title: Metadata of ~a~%~%" (org-safe-line (tuatara.io:native-file-name native)))
                           (file-facts-section native stamp kind words (fd-sha256 fd native :cancel cancel :done done))
@@ -1250,6 +1293,7 @@ gpg, when it looks up keys, is given your keyring alone, not the file."
           ((not (eq (tuatara.io:stamp-kind stamp) :regular)) (message "~a is not a regular file: no metadata read"
                                                                       (abbreviated-path path)))
           (t (let ((look-up-keys (look-up-key-owners-p path))
+                   (safe (not (read-here-p path (current-buffer))))
                    (buffer (buffer-in-mode (format nil "*Metadata: ~a*" (tuatara.io:native-file-name path)) 'org-mode)))
                (setf (buffer-read-only-p buffer) t
                      (buffer-given-directory buffer) (tuatara.io:parent-path path))
@@ -1262,7 +1306,7 @@ gpg, when it looks up keys, is given your keyring alone, not the file."
                                           (file-metadata-note (metadata-job-path job)
                                                               :cancel (tuatara.runtime:job-cancel job)
                                                               :done (metadata-job-done job)
-                                                              :look-up-keys look-up-keys)))
+                                                              :look-up-keys look-up-keys :safe safe)))
                   :name "tuatara metadata")))))))
 
 ;; the keys of the lists of directories, defined in a file loaded after this one

@@ -116,14 +116,20 @@ Its details are DETAILS, lines or NIL, then CAVEAT, what wiping cannot
 promise (WIPE-CAVEAT)."
   (yes-or-no-p* question :details (format nil "~@[~a~]Wiping cannot promise all is gone: ~a." details caveat)))
 
-(defun confirm-wipe (paths &optional what)
-  "True when, asked, you say to wipe PATHS for good, their names and what it
-cannot promise in the question's details; WHAT, words naming them (\"3 files
-in 2 directories\"), or the name of one or how many."
-  (wipe-question (format nil "Wipe ~a for good?"
-                         (or what (list-question nil "file" paths :the nil :name-of #'tuatara.io:native-file-name)))
-                 (wipe-caveat paths)
-                 (and (rest paths) (format nil "~{~a~%~}~%" (mapcar #'abbreviated-path paths)))))
+(defun confirm-wipe (paths &optional what what-details)
+  "True when, asked, you say to wipe PATHS for good, the names of the first 20
+\(NAMES-SHOWN) and what it cannot promise in the question's details; WHAT,
+words naming them (\"3 files\"), or the name of one or how many, and
+WHAT-DETAILS, lines more about them, such as where they are (the two values of
+LIST-QUESTION)."
+  (multiple-value-bind (words details)
+      (if what
+          (values what what-details)
+          (list-question nil "file" paths :the nil :name-of #'tuatara.io:native-file-name))
+    (wipe-question (format nil "Wipe ~a for good?" words)
+                   (wipe-caveat paths)
+                   (format nil "~@[~a~%~%~]~@[~a~%~%~]"
+                           details (and (rest paths) (names-shown paths :name-of #'abbreviated-path))))))
 
 (define-command wipe-file ()
   "Wipe the file shown (in a list of a directory, the one on the line; with
@@ -182,12 +188,3 @@ wiped once gpg has it."
                                          (gpg-read-passphrase (format nil
                                                                       "The passphrase again, to check it opens ~a: "
                                                                       (tuatara.io:native-file-name target))))))))
-
-(defun offer-wipe-original (path target encryption)
-  "Ask, as the editor's next command, whether to wipe the file at PATH now
-encrypted as TARGET (WIPE-ORIGINAL)."
-  (defer-action (lambda ()
-                  (when (and (tuatara.io:path-stamp path)
-                             (wipe-original-question (format nil "the original ~a" (tuatara.io:native-file-name path))
-                                                     encryption (wipe-caveat (list path))))
-                    (wipe-original path target encryption)))))

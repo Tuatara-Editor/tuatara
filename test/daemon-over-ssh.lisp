@@ -345,6 +345,28 @@ processes."
           (let ((lines (uiop:split-string (uiop:read-file-string log) :separator '(#\Newline))))
             (is = (1- (count "ControlMaster=yes" lines :test #'string=)) (count "exit" lines :test #'string=))))))))
 
+(define-test (daemon daemons-listed-on-another-machine)
+  ;; tuatara --daemons=HOST asks tuatara --daemons there over ssh and shows what it says, control characters written
+  ;; out, the connection ended
+  (when (tuatara.io:find-program "python3")
+    (with-stand-in-ssh (dir log bin)
+      (put-server-tuatara bin :report (format nil "work  pid 7, started 2026-11-26 09:14, 1 client~c[2J~%" #\Esc))
+      (let* ((code nil)
+             (said (with-output-to-string (*standard-output*)
+                     (setf code (tuatara.terminal::list-daemons-there "build.example")))))
+        (is = 0 code)
+        (true (search "work  pid 7, started 2026-11-26 09:14, 1 client" said) "~a" said)
+        (false (find #\Esc said))
+        (is equal '("--daemons") (uiop:read-file-lines (merge-pathnames "asked" bin))))
+      (let ((lines (uiop:split-string (uiop:read-file-string log) :separator '(#\Newline))))
+        (is = (count "ControlMaster=yes" lines :test #'string=) (count "exit" lines :test #'string=)))
+      ;; no Tuatara there
+      (tuatara.io:remove-file (namestring (merge-pathnames "tuatara" bin)))
+      (multiple-value-bind (code said)
+          (said-on-error-output (lambda () (tuatara.terminal::list-daemons-there "build.example")))
+        (is = 1 code)
+        (true (search "has no tuatara on the PATH" said) "~a" said)))))
+
 (define-test (daemon another-machine-old-version-said)
   ;; an old tuatara there: which program it found and its version, not only that it is old
   (when (tuatara.io:find-program "python3")
@@ -510,6 +532,28 @@ processes."
                            "a passphrase is asked in the editor only for a client on this machine"))))
         (type-keys local "C-x C-c")
         (client-ends runner)))))
+
+(define-test (daemon far-client-agent-given-once)
+  ;; the programs of a far client's frame see one SSH_AUTH_SOCK, the agent its connection brought, not the editor's
+  (let ((agent (sb-posix:getenv "SSH_AUTH_SOCK")))
+    (sb-posix:setenv "SSH_AUTH_SOCK" "/editor/agent" 1)
+    (unwind-protect
+         (with-test-daemon (name)
+           (multiple-value-bind (local runner) (attach-test-client name :environment '(("TERM" . "xterm")) :far t)
+             (true (shows local "scratch"))
+             (let ((environment
+                     (in-daemon (lambda ()
+                                  (let* ((editor (daemon-editor))
+                                         (client (tuatara.command:current-client editor)))
+                                    (push '("SSH_AUTH_SOCK" . "/client/agent")
+                                          (tuatara.command:client-environment client))
+                                    (tuatara.command:call-in-frame editor (first (tuatara.command:editor-frames editor))
+                                                                   #'tuatara.io:program-environment))))))
+               (is equal '("SSH_AUTH_SOCK=/client/agent")
+                   (remove-if-not (lambda (setting) (uiop:string-prefix-p "SSH_AUTH_SOCK=" setting)) environment)))
+             (type-keys local "C-x C-c")
+             (client-ends runner)))
+      (if agent (sb-posix:setenv "SSH_AUTH_SOCK" agent 1) (sb-posix:unsetenv "SSH_AUTH_SOCK")))))
 
 (define-test (daemon another-machine-takes-nothing-of-the-desk)
   ;; the ssh configuration's forwards never join the connection's; the command there reads nothing typed here;
