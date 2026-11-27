@@ -12,7 +12,7 @@ background, colouring and moving by syntax.")
   (:export #:url-pattern #:search-forward #:search-backward #:case-fold-p #:*serial-window* #:*parallel-piece*
            #:by-pattern-p #:named-pattern-p #:own-named-pattern-p #:forget-own-named-pattern
            #:compile-regex #:compile-pattern #:*regex-thorough* #:regex-search-forward #:regex-search-backward
-           #:regex-search-all
+           #:regex-search-all #:regex-within-line-p #:regex-line-alone-p #:fold-class
            #:literal-pattern-p #:regex-case-fold-p #:map-regex-matches #:matched-text #:map-slice-matches #:make-decoder
            #:with-decoder #:*regex-longest-match*
            #:map-literal-matches #:collect-matches #:join-pieces #:bracket-end #:pattern-refused #:pattern-refused-words

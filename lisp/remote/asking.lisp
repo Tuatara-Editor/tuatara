@@ -28,6 +28,7 @@
 (defparameter *ssh-asking-script*
   (format nil "#!/bin/sh~@
                [ \"$SSH_ASKPASS_PROMPT\" = none ] && exit 0~@
+               export LC_ALL=C~@
                cd \"${0%/*}\" || exit 1~@
                exec 3<answer || exit 1~@
                printf '%.4000s\\0' \"$1\" >question || exit 1~@
@@ -36,9 +37,10 @@
                exec head -n 1 <&3~%")
   "What ssh runs for each question (SSH_ASKPASS), in the connection's
 directory: it does nothing for a mere notice of ssh's, else passes the question
-on and reads a first line, y when an answer follows; the answer goes from the
-pipe to ssh by a program reading one line of it, through no argument and no
-variable of the shell. Any other first line ends it with a failure.")
+on, its first 4000 octets at most, counted as octets whatever the language set,
+and reads a first line, y when an answer follows; the answer goes from the pipe
+to ssh by a program reading one line of it, through no argument and no variable
+of the shell. Any other first line ends it with a failure.")
 
 (defparameter *ssh-question-seconds* 2
   "How long the rest of a question of ssh's is waited for once the first of
@@ -317,19 +319,25 @@ asked, as two values: its warnings to you and the rest (SSH-SAID-PARTS)."
 
 (defun read-ssh-question (fd)
   "The question waiting on FD, a pipe of questions of ssh's, as octets, up to
-the zero octet the script ends it with or +SSH-MOST-QUESTION+ octets: read as
-it comes, in as many pieces as the script writes it, for
-*SSH-QUESTION-SECONDS* at most once it has begun. As a second value, true
-when it came whole. NIL when nothing is waiting."
-  (let ((octets (tuatara.text:make-octets +ssh-most-question+)) (end 0) (deadline nil))
+the zero octet the script ends it with: read as it comes, in as many pieces
+as the script writes it, for *SSH-QUESTION-SECONDS* at most once it has
+begun. As a second value, true when it came whole. One longer than
++SSH-MOST-QUESTION+ octets is read to its end all the same, so that its rest
+is never taken for another question, and is not whole: its first octets
+are given. NIL when nothing is waiting."
+  (let ((octets (tuatara.text:make-octets +ssh-most-question+)) (end 0) (over nil) (deadline nil))
     (loop
-      (let ((got (tuatara.io:with-octets-sap (sap octets)
-                   (sb-unix:unix-read fd (sb-sys:sap+ sap end) (- +ssh-most-question+ end)))))
+      ;; past the bound, the rest is read into OVER and let go of
+      (let* ((at (if over 0 end))
+             (got (tuatara.io:with-octets-sap (sap (or over octets))
+                    (sb-unix:unix-read fd (sb-sys:sap+ sap at) (- +ssh-most-question+ at)))))
         (when (and got (plusp got))
-          (let ((zero (position 0 octets :start end :end (+ end got))))
-            (incf end got)
-            (when zero (return (values (subseq octets 0 zero) t)))
-            (when (= end +ssh-most-question+) (return (values octets t))))))
+          (let ((zero (position 0 (or over octets) :start at :end (+ at got))))
+            (cond (over (when zero (return (values octets nil))))
+                  (t (incf end got)
+                     (when zero (return (values (subseq octets 0 zero) t)))
+                     (when (= end +ssh-most-question+)
+                       (setf over (tuatara.text:make-octets +ssh-most-question+))))))))
       (cond ((zerop end) (return nil))
             ((null deadline) (setf deadline (tuatara.runtime:deadline-in *ssh-question-seconds*)))
             ((tuatara.runtime:deadline-passed-p deadline) (return (values (subseq octets 0 end) nil))))

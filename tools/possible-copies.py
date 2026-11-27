@@ -14,7 +14,9 @@
 #                    is read with its local variables numbered by first use
 #                    and each literal as its kind, so a copy with other
 #                    names and other strings still matches. The score is
-#                    the share of 4-token runs the two bodies have in common.
+#                    the share of 4-token runs the two bodies have in common;
+#                    short bodies (under 40 tokens) by 3-token runs, and
+#                    only with each other.
 #   --pass-through   the functions whose whole body calls one other function
 #                    with the arguments it was given, in the order given;
 #                    those the reuse index lists (exported) are named apart.
@@ -242,9 +244,12 @@ def report_where(descriptions):
 # The tree's definitions, read for the reports that cover all of it.
 TREE_DEFINERS = ("defun", "defmacro", "defmethod")
 DIRECTORIES = ("lisp", "src", "frontends")
-# A body of fewer tokens than this is too short to say anything of its likeness.
+# A body of fewer tokens than this is short: it is compared by runs of SHORT_RUN tokens, and only with short ones.
 SHORTEST_BODY = 40
 RUN = 4
+# A body of fewer tokens than this is too short to say anything of its likeness.
+SHORT_BODY = 12
+SHORT_RUN = 3
 # A run that more definitions than this share is boilerplate and starts no pair.
 COMMON_RUN = 30
 BINDERS = {"let", "let*", "dolist", "dotimes", "do-symbols", "do-external-symbols", "multiple-value-bind",
@@ -375,20 +380,23 @@ def normalised(parameters, body):
     return out
 
 
-def runs_of(tokens):
+def runs_of(tokens, run=RUN):
     """The set of the runs of RUN successive tokens."""
-    return {tuple(tokens[i:i + RUN]) for i in range(len(tokens) - RUN + 1)}
+    return {tuple(tokens[i:i + run]) for i in range(len(tokens) - run + 1)}
 
 
 def alike_bodies(packages, threshold):
     """A list of (score, definition, definition) for the pairs of definitions, each (file, name), whose bodies share
     at least THRESHOLD percent of their runs of tokens, best first. A definition and one of the same name in the same
-    file (the methods of a generic function) are not a pair."""
+    file (the methods of a generic function) are not a pair. Short bodies (under SHORTEST_BODY tokens) are compared
+    by shorter runs and only with each other, so that a short function is not lost beside a long one."""
     definitions = []
     for path, name, parameters, body in tree_definitions(packages):
         tokens = normalised(parameters, body)
         if len(tokens) >= SHORTEST_BODY:
             definitions.append((path, name, runs_of(tokens)))
+        elif len(tokens) >= SHORT_BODY:
+            definitions.append((path, name, {("short",) + run for run in runs_of(tokens, SHORT_RUN)}))
     holders = {}
     for n, (_, _, runs) in enumerate(definitions):
         for run in runs:

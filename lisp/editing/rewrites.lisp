@@ -884,8 +884,12 @@ edited meanwhile as they are now, unless the buffer may no longer take it
 
 (defmethod tuatara.runtime:job-take-in ((job rewrite))
   "Take in a replacement or count that has ended, on the editor's thread: its
-result, its count, or why it stopped."
+result, its count, or why it stopped. One asked to stop before it is taken in
+is taken in as stopped, though its work had ended by then: its result is left
+out."
   (let ((buffer (rewrite-buffer job)))
+    (when (and (eq (rewrite-status job) :done) (car (rewrite-cancel job)))
+      (setf (rewrite-status job) :stopped))
     (when (rewrite-tracker-function job)
       (setf (tuatara.buffer:buffer-change-functions buffer)
             (remove (rewrite-tracker-function job) (tuatara.buffer:buffer-change-functions buffer))))

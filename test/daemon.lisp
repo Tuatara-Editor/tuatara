@@ -1856,7 +1856,7 @@ daemon's client NUMBER shows."
           (is equal '() (buffer-owners "*lisp-scratch*") "the first client is given a scratch buffer of its own")
           (type-keys one "C-x b")
           (type-keys one (typed-name "*org-scratch*"))
-          (true (shows one "Notes in Org that are not kept"))
+          (true (shows one "Org-mode notes for quick jottings"))
           (is equal '() (buffer-owners "*org-scratch*") "shown with C-x b, it stays every client's")
           (type-keys one "M-x o r g - s c r a t c h RET")
           (true (shows one "*org-scratch*<2>"))

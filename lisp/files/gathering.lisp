@@ -4,7 +4,8 @@
 ;;;; START-GATHERING runs work on a thread of its own and hands what it finds
 ;;;; to the editor's thread as it comes: the files a question offers, the
 ;;;; text of files to search, the entries of a directory. The editor is woken
-;;;; as things are found, and the work stops when it is no longer wanted.
+;;;; as things are found, and the work stops when it is no longer wanted, in
+;;;; the middle of a pattern slow on its text too.
 
 (in-package #:tuatara.defaults)
 
@@ -24,12 +25,15 @@ semaphore signalled once it has finished (WAIT-FOR-GATHERING)."
   (finished (sb-thread:make-semaphore :name "gathering finished")
             :documentation "The semaphore signalled once a GATHERING's thread has finished."))
 
-(defun start-gathering (name work)
+(defun start-gathering (name work &key slow)
   "Run WORK on a thread named NAME, called with a function that takes each
 thing found and the cancel cons (car true: stop). Returns the GATHERING, from
 which TAKE-GATHERED takes what was found, on the editor's thread; the editor
 is woken as things are found, every twentieth of a second at most, and when
-the work ends."
+the work ends. WORK runs as stoppable work (TUATARA.RUNTIME:STOPPABLE-WORK):
+STOP-GATHERING ends it at once inside a stoppable call, a pattern slow on a
+text, and between such calls it looks at the cancel cons itself. With SLOW,
+seconds, a stoppable call taking longer ends the work too (GATHERING-SLOW-P)."
   (let ((gathering (make-gathering))
         (editor *editor*))
     (flet ((wake ()
@@ -38,15 +42,16 @@ the work ends."
       (tuatara.runtime:make-guarded-thread
        (lambda ()
          (unwind-protect
-              (funcall work
-                       (lambda (thing)
-                         (sb-thread:with-mutex ((gathering-lock gathering))
-                           (push thing (gathering-found gathering))
-                           (incf (gathering-count gathering)))
-                         (when (> (- (get-internal-real-time) (gathering-woken gathering))
-                                  (floor internal-time-units-per-second 20))
-                           (wake)))
-                       (gathering-cancel gathering))
+              (tuatara.runtime:stoppable-work ((gathering-cancel gathering) :slow slow)
+                (funcall work
+                         (lambda (thing)
+                           (sb-thread:with-mutex ((gathering-lock gathering))
+                             (push thing (gathering-found gathering))
+                             (incf (gathering-count gathering)))
+                           (when (> (- (get-internal-real-time) (gathering-woken gathering))
+                                    (floor internal-time-units-per-second 20))
+                             (wake)))
+                         (gathering-cancel gathering)))
            (setf (gathering-done gathering) t)
            (sb-thread:signal-semaphore (gathering-finished gathering))
            (wake)))
@@ -68,8 +73,15 @@ was found, and as a second value true once it has finished, all taken."
             done)))
 
 (defun stop-gathering (gathering)
-  "Stop GATHERING's thread at its next step: what it found is no longer wanted."
-  (setf (car (gathering-cancel gathering)) t))
+  "Stop GATHERING's thread: what it found is no longer wanted. It ends at its
+next step, or at once when it is inside a stoppable call, a pattern slow on a
+text (TUATARA.RUNTIME:STOP-WORK)."
+  (tuatara.runtime:stop-work (gathering-cancel gathering)))
+
+(defun gathering-slow-p (gathering)
+  "True when GATHERING's work was ended because one stoppable call of it took
+longer than the seconds START-GATHERING was given as SLOW."
+  (eq (car (gathering-cancel gathering)) :slow))
 
 (defun gathering-source (gathering absorb)
   "A SOURCE for COMPLETING-READ (see there) taking in what GATHERING finds

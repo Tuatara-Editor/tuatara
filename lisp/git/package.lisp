@@ -29,13 +29,13 @@
                 #:private-directory #:project-look-only-reason #:project-trusted-p #:quit-window #:read-native-path
                 #:read-new-native-path #:read-whole-number #:real-directory #:rename-path-following
                 #:render-made-table-list #:render-pieces #:rimu-archive-list #:rimu-buffer-name #:rimu-column-allowed-p
-                #:rimu-column-in-background #:rimu-diff #:rimu-directory #:rimu-directory-p #:*rimu-disk-commands*
-                #:rimu-duplicates #:rimu-enter #:rimu-find #:rimu-find-text #:rimu-git #:rimu-goto-file #:rimu-home
-                #:*rimu-keymap* #:rimu-last-directory #:rimu-list-p #:rimu-make-list #:rimu-path #:rimu-quick-edit
-                #:rimu-reading-layout #:rimu-rewound #:rimu-set-column #:rimu-show-directory #:rimu-show-layout
-                #:rimu-show-nearest #:rimu-source #:rimu-source-buffer-name #:rimu-source-call-with-entry
-                #:rimu-source-listing #:rimu-source-open #:rimu-source-refusal-words #:rimu-source-shown
-                #:rimu-source-taken #:rimu-source-top #:rimu-toggle #:rimu-toggle-picture
+                #:rimu-column-in-background #:rimu-diff #:rimu-directory-p #:*rimu-disk-commands* #:rimu-duplicates
+                #:rimu-enter #:rimu-find #:rimu-find-text #:rimu-git #:rimu-goto-file #:rimu-home #:*rimu-keymap*
+                #:rimu-last-directory #:rimu-list-directory #:rimu-list-p #:rimu-make-list #:rimu-path
+                #:rimu-quick-edit #:rimu-reading-layout #:rimu-rewound #:rimu-set-column #:rimu-show-directory
+                #:rimu-show-layout #:rimu-show-nearest #:rimu-source #:rimu-source-buffer-name
+                #:rimu-source-call-with-entry #:rimu-source-listing #:rimu-source-open #:rimu-source-refusal-words
+                #:rimu-source-shown #:rimu-source-taken #:rimu-source-top #:rimu-toggle #:rimu-toggle-picture
                 #:rimu-update #:save-buffer-with-care #:save-buffers-kill-editor
                 #:plain-path-p #:say-in-background #:sectioned-pieces #:set-made-text #:show-file-metadata
                 #:show-list-text #:shown-file #:special-mode #:ssh-askpass-window-p #:ssh-refusal-words

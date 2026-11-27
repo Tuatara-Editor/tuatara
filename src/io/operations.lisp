@@ -673,10 +673,12 @@ gone through, NIL when CANCEL or LIMIT ended it."
   "The octets the files in DIRECTORY (a native name ending in /) and under it
 take, hidden ones too: each file once however many names it has (SEEN, a
 table of those counted), links not followed, and directories of another file
-system (a drive mounted below it, /proc) left out. WANTED, a function of no
-arguments, is asked every 64 directories whether the sum is still wanted: NIL is
-given when it says no."
-  (let ((total 0) (dirs 0))
+system (a drive mounted below it, /proc) left out. A directory that cannot be
+read, or examined to tell its file system, adds nothing. The second value is
+true when there was none such: every directory below was read, and the sum
+leaves nothing out. WANTED, a function of no arguments, is asked every 64
+directories whether the sum is still wanted: NIL is given when it says no."
+  (let ((total 0) (dirs 0) (whole t))
     (walk-directory directory
                     (lambda (dir relative entry)
                       (declare (ignore dir relative))
@@ -685,6 +687,9 @@ given when it says no."
                             (return-from tree-size nil))
                           (destructuring-bind (name kind size own &optional stamp) entry
                             (declare (ignore name))
+                            ;; a directory not examined is not entered
+                            (when (and (eq kind :directory) (eq own kind) (null stamp))
+                              (setf whole nil))
                             (when (and (eq kind :regular) (eq own kind))
                               ;; only a file with several names can be met twice
                               (let ((key (and stamp (> (stamp-nlink stamp) 1)
@@ -693,8 +698,15 @@ given when it says no."
                                   (when key (setf (gethash key seen) t))
                                   (incf total (or size 0)))))
                             t)))
+                    :list (lambda (dir)
+                            ;; why it could not be read comes as the second value, either way
+                            (multiple-value-bind (entries why)
+                                (tuatara.runtime:ignoring-errors-reported ("listing ~a" dir)
+                                  (directory-entries dir :stamps t))
+                              (when why (setf whole nil))
+                              entries))
                     :same-device t)
-    total))
+    (values total whole)))
 
 (defun refused-place-within (directory)
   "Why nothing may be written in some directory within DIRECTORY (a native

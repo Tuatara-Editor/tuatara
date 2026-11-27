@@ -98,7 +98,8 @@ names of read-only buffers in the buffer list (\\[buffer-manager])." :fg :blue)
 buffers and the headings of clients that ended in the buffer list (\\[buffer-manager]),
 packages not loaded, bookmarks whose file is gone, files ignored in rimu and in
 a git status, a value missing in the health report (\\[check-health]), a line
-saying more are not shown." :fg :bright-black)
+saying more are not shown, a directory's size in rimu kept from before and not
+counted again yet (\\<rimu-mode>\\[rimu-toggle-sizes])." :fg :bright-black)
 (define-face :list-directory "The names of directories in a list: in rimu (\\[rimu])
 and where a link to a directory leads, in the trash (\\[trash-manager]) and among
 bookmarks (\\[bookmark-manager])." :fg :blue)

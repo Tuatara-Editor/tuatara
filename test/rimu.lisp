@@ -67,10 +67,13 @@ RIMU-FILL-TREE filled."
   (format nil "~{~a~^ ~}" (map 'list (lambda (c) (if (char= c #\Space) "SPC" (string c))) text)))
 
 (defun rimu-forget ()
-  "Kill the rimu lists and previews earlier sessions left."
+  "Kill the rimu lists and previews earlier sessions left, and forget the
+sizes of directories kept for them."
   (dolist (b (copy-list tuatara.buffer:*buffers*))
     (when (or (tuatara.defaults::rimu-list-p b) (search "(preview" (tuatara.buffer:buffer-name b)))
-      (tuatara.buffer:kill-buffer b))))
+      (tuatara.buffer:kill-buffer b)))
+  (sb-thread:with-mutex (tuatara.defaults::*rimu-sizes-lock*)
+    (clrhash tuatara.defaults::*rimu-sizes*)))
 
 (defun rimu-session (directory keys &key (width 100) (height 20) preview (file nil) cell-pixels details)
   "Run an editor session that lists DIRECTORY with C-x d, then takes KEYS (a
@@ -1685,39 +1688,499 @@ and the editor."
         (true lines)
         (true (every (lambda (l) (search "(none here)" l)) lines))))))
 
-(define-test (rimu sizes-walk-ended-by-a-newer)
-  ;; the sizes of a directory worked out again, as after a change on disk, end the walk begun before
+(define-test (rimu sizes-walk-ends-with-its-listing)
+  ;; a walk of sizes goes on while a list showing them holds its entries, lays them out, or is reading their
+  ;; directory; no longer once the list holds or lays out others, as after its directory is read again, nor once it
+  ;; hides the column
   (with-test-directory (dir)
     (ensure-directories-exist (merge-pathnames "docs/" dir))
     (rimu-forget)
     (let* ((directory (namestring dir))
            (list (tuatara.defaults::rimu-make-list directory))
-           (entries (tuatara.defaults::rimu-listing-entries (tuatara.defaults::rimu-read directory)))
-           (wanted '())
-           (done (sb-thread:make-semaphore)))
-      (setf (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-sizes) t)
-      (sb-int:encapsulate 'tuatara.defaults::rimu-column-ready 'note-done
-                          (lambda (function &rest arguments)
-                            (declare (ignore function arguments))
-                            (sb-thread:signal-semaphore done)))
-      (sb-int:encapsulate 'tuatara.io:tree-size 'keep-wanted
-                          (lambda (function directory &rest arguments)
-                            (declare (ignore function directory))
-                            (push (getf arguments :wanted) wanted)
-                            0))
+           (entries (tuatara.defaults::rimu-listing-entries (tuatara.defaults::rimu-read directory))))
       (unwind-protect
-           (progn
-             (tuatara.defaults::rimu-size-cells directory entries)
-             (true (sb-thread:wait-on-semaphore done :timeout 10))
-             (true (and wanted (funcall (first wanted))) "the only walk wanted")
-             (tuatara.defaults::rimu-size-cells directory entries)
-             (true (sb-thread:wait-on-semaphore done :timeout 10))
-             (is = 2 (length wanted))
-             (true (funcall (first wanted)) "the newer walk wanted")
-             (false (funcall (second wanted)) "the older walk still wanted"))
-        (sb-int:unencapsulate 'tuatara.io:tree-size 'keep-wanted)
-        (sb-int:unencapsulate 'tuatara.defaults::rimu-column-ready 'note-done)
+           (flet ((hold (listing job)
+                    (setf (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-listing) listing
+                          (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-job) job)))
+             (setf (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-sizes) t)
+             (hold nil nil)
+             (false (tuatara.defaults::rimu-size-wanted-p directory entries) "wanted by no list")
+             (hold nil (tuatara.defaults::make-rimu-job 1 nil nil))
+             (true (tuatara.defaults::rimu-size-wanted-p directory entries) "wanted by the list reading it")
+             (flet ((laying-out (listing)
+                      (let ((job (tuatara.defaults::make-rimu-job 2 nil nil)))
+                        (setf (tuatara.defaults::rimu-job-listing job) listing)
+                        job)))
+               (hold nil (laying-out (tuatara.defaults::make-rimu-listing directory entries nil nil)))
+               (true (tuatara.defaults::rimu-size-wanted-p directory entries) "wanted by the list laying them out")
+               (hold nil (laying-out (tuatara.defaults::rimu-read directory)))
+               (false (tuatara.defaults::rimu-size-wanted-p directory entries)
+                      "wanted by a list laying out other entries"))
+             (hold (tuatara.defaults::make-rimu-listing directory entries nil nil) nil)
+             (true (tuatara.defaults::rimu-size-wanted-p directory entries) "wanted by the list holding them")
+             (hold (tuatara.defaults::rimu-read directory) nil)
+             (false (tuatara.defaults::rimu-size-wanted-p directory entries) "wanted once read again")
+             (hold (tuatara.defaults::make-rimu-listing directory entries nil nil) nil)
+             (setf (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-sizes) nil)
+             (false (tuatara.defaults::rimu-size-wanted-p directory entries) "wanted with the column hidden"))
+        (setf (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-job) nil)
         (rimu-forget)))))
+
+(defun rimu-shown-on-line (directory name text)
+  "A function true once a rimu list of DIRECTORY, a native name, shows what was
+read, TEXT on the line of the entry NAME."
+  (lambda ()
+    (let ((list (find-if (lambda (buffer)
+                           (and (tuatara.defaults::rimu-list-p buffer)
+                                (equal directory (tuatara.defaults::rimu-list-directory buffer))
+                                (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-listing)))
+                         tuatara.buffer:*buffers*)))
+      (and list (some (lambda (line) (and (search name line) (search text line)))
+                      (uiop:split-string (tuatara.buffer:buffer-string list) :separator '(#\Newline)))))))
+
+(defun rimu-size-shown (directory name octets)
+  "A function true once a rimu list of DIRECTORY, a native name, shows what was
+read, the size OCTETS on the line of the entry NAME as its sizes column says it."
+  (rimu-shown-on-line directory name (tuatara.defaults::rimu-size-words octets)))
+
+(defun rimu-sizes-walking-p ()
+  "True while a walk of rimu's sizes column runs."
+  (find "tuatara rimu sizes column" (sb-thread:list-all-threads) :key #'sb-thread:thread-name :test #'equal))
+
+(defun call-with-size-walk-held (nth function)
+  "Call FUNCTION with two functions of no arguments: the first true once the
+NTH walk of a directory's size (TUATARA.IO:TREE-SIZE) from then on has begun,
+which waits until the second is called. Every walk goes on once FUNCTION
+returns."
+  (let ((gate (sb-thread:make-semaphore))
+        (lock (sb-thread:make-mutex))
+        (count 0)
+        (begun nil))
+    (sb-int:encapsulate 'tuatara.io:tree-size 'hold-one
+                        (lambda (tree-size &rest arguments)
+                          (when (= nth (sb-thread:with-mutex (lock) (incf count)))
+                            (setf begun t)
+                            (sb-thread:wait-on-semaphore gate :timeout 60))
+                          (apply tree-size arguments)))
+    (unwind-protect
+         (funcall function (lambda () begun) (lambda () (sb-thread:signal-semaphore gate) t))
+      (sb-thread:signal-semaphore gate)
+      (sb-int:unencapsulate 'tuatara.io:tree-size 'hold-one))))
+
+(defun rimu-sizes-session (directory &rest steps)
+  "Run an editor session listing DIRECTORY, a native name, with C-x d, then
+STEPS as AUTO-SAVE-SESSION takes them, the preview off, no modal keys and the
+lists not read again by themselves; the rimu lists killed before and after."
+  (rimu-forget)
+  (let ((tuatara-user:*rimu-preview* nil)
+        (tuatara-user:*modal-editing* nil)
+        (tuatara-user:*rimu-follow-changes* nil))
+    (unwind-protect
+         (auto-save-session (cons (format nil "C-x d C-a C-k ~a C-j" (rimu-typed directory)) steps))
+      (rimu-forget))))
+
+(define-test (rimu sizes-filled-as-found)
+  ;; S: a file's size at once, a faint … before a directory still walked, each directory's size as its walk ends
+  (with-test-directory (dir)
+    (put-file (ensure-directories-exist (merge-pathnames "one/a.txt" dir)) (make-string 100 :initial-element #\a))
+    (put-file (ensure-directories-exist (merge-pathnames "two/b.txt" dir)) (make-string 200 :initial-element #\b))
+    (put-file (merge-pathnames "f.txt" dir) "seven..")
+    (let ((top (namestring dir)))
+      (flet ((size (name octets) (funcall (rimu-size-shown top name octets)))
+             (unknown (name) (funcall (rimu-shown-on-line top name "…"))))
+        (call-with-size-walk-held
+         2 (lambda (begun release)
+             (rimu-sizes-session top "S" (list :until begun 20)
+                                 (list :until (rimu-size-shown top "f.txt" 7) 20)
+                                 (list :until (lambda () (or (and (size "one" 100) (unknown "two"))
+                                                             (and (size "two" 200) (unknown "one"))))
+                                       20)
+                                 (list :until release)
+                                 (list :until (lambda () (and (size "one" 100) (size "two" 200))) 20))))))))
+
+(define-test (rimu sizes-old-walk-ends-under-a-layout)
+  ;; a list read again holds new entries; the walk of the old ones ends at its next directory though the list is
+  ;; being laid out just then: the old entries' second directory is never walked for them
+  (with-test-directory (dir)
+    (dolist (name '("a" "b"))
+      (put-file (ensure-directories-exist (merge-pathnames (format nil "~a/f.txt" name) dir)) "x"))
+    (let* ((top (namestring dir))
+           (walks 0)
+           (gate (sb-thread:make-semaphore))
+           (hold nil)
+           (held nil))
+      (flet ((list-buffer () (find-if #'tuatara.defaults::rimu-list-p tuatara.buffer:*buffers*))
+             (size-of (name) (car (rimu-sizes-cell name))))
+        (sb-int:encapsulate 'tuatara.io:tree-size 'count
+                            (lambda (tree-size &rest arguments)
+                              (incf walks)
+                              (apply tree-size arguments)))
+        (sb-int:encapsulate 'tuatara.defaults::rimu-lay-out 'hold
+                            (lambda (lay-out &rest arguments)
+                              (when hold
+                                (setf held t)
+                                (sb-thread:wait-on-semaphore gate :timeout 30))
+                              (apply lay-out arguments)))
+        (unwind-protect
+             (call-with-size-walk-held
+              1 (lambda (begun release)
+                  (rimu-sizes-session
+                   top "S" (list :until begun 20)
+                   (list :until (lambda ()
+                                  (put-file (merge-pathnames "new.txt" dir) "x")
+                                  (rimu-sizes-read-again)))
+                   (list :until (lambda ()
+                                  (and (rimu-sizes-cell "new.txt")
+                                       (equal (size-of "a") (tuatara.defaults::rimu-size-words 1))
+                                       (equal (size-of "b") (tuatara.defaults::rimu-size-words 1))
+                                       (null (tuatara.defaults::rimu-list-job (list-buffer)))))
+                         20)
+                   (list :until (lambda ()
+                                  (setf hold t)
+                                  (tuatara.defaults::rimu-update (list-buffer) :wait nil)
+                                  t))
+                   (list :until (lambda () held) 20)
+                   (list :until release)
+                   (list :until (lambda () (or (> walks 3) (not (rimu-sizes-walking-p)))) 15)
+                   (list :until (lambda ()
+                                  (setf hold nil)
+                                  (sb-thread:signal-semaphore gate 10)
+                                  t))
+                   (list :until (lambda () (not (rimu-sizes-walking-p))) 20))))
+          (setf hold nil)
+          (sb-thread:signal-semaphore gate 10)
+          (sb-int:unencapsulate 'tuatara.io:tree-size 'count)
+          (sb-int:unencapsulate 'tuatara.defaults::rimu-lay-out 'hold)))
+      (is = 3 walks "one directory walked for the old entries, two for the new"))))
+
+(define-test (rimu sizes-given-only-when-found)
+  ;; a long walk that asks again and again whether it is wanted gives the lists nothing until it has a size: the
+  ;; list is not laid out for texts it shows already
+  (with-test-directory (dir)
+    (put-file (ensure-directories-exist (merge-pathnames "one/a.txt" dir)) "x")
+    (let ((top (namestring dir))
+          (gives 0))
+      (sb-int:encapsulate 'tuatara.io:tree-size 'ask
+                          (lambda (tree-size directory &rest arguments &key wanted &allow-other-keys)
+                            (dotimes (i 12)
+                              (sleep 0.1)
+                              (when wanted (funcall wanted)))
+                            (apply tree-size directory arguments)))
+      (sb-int:encapsulate 'tuatara.defaults::rimu-column-ready 'count
+                          (lambda (ready name entries cells)
+                            (when (and (eq name :sizes) cells) (incf gives))
+                            (funcall ready name entries cells)))
+      (unwind-protect
+           (rimu-sizes-session top "S" (list :until (rimu-size-shown top "one" 1) 20)
+                               (list :until (lambda () (not (rimu-sizes-walking-p))) 10))
+        (sb-int:unencapsulate 'tuatara.io:tree-size 'ask)
+        (sb-int:unencapsulate 'tuatara.defaults::rimu-column-ready 'count))
+      (true (<= 1 gives 2) (format nil "~d gives for one size found" gives)))))
+
+(define-test (rimu sizes-list-rests-between-layouts)
+  ;; sizes found every 0.3 s for a list that takes 0.3 s to lay out: the list rests four times that after each
+  ;; laying out, so it is laid out a few times over the walk, not once for each size, and shows them all at the end
+  (with-test-directory (dir)
+    (dotimes (i 8)
+      (put-file (ensure-directories-exist (merge-pathnames (format nil "d~d/f.txt" i) dir)) "x"))
+    (let ((top (namestring dir))
+          (slow nil)
+          (layouts 0))
+      (sb-int:encapsulate 'tuatara.io:tree-size 'slow
+                          (lambda (tree-size &rest arguments)
+                            (sleep 0.3)
+                            (apply tree-size arguments)))
+      (sb-int:encapsulate 'tuatara.defaults::rimu-lay-out 'slow
+                          (lambda (lay-out &rest arguments)
+                            (when slow
+                              (incf layouts)
+                              (sleep 0.3))
+                            (apply lay-out arguments)))
+      (unwind-protect
+           (rimu-sizes-session top (list :until (lambda () (setf slow t)))
+                               "S" (list :until (lambda ()
+                                                  (and (not (rimu-sizes-walking-p))
+                                                       (every (lambda (name) (funcall (rimu-size-shown top name 1)))
+                                                              '("d0" "d3" "d7"))))
+                                         30))
+        (setf slow nil)
+        (sb-int:unencapsulate 'tuatara.io:tree-size 'slow)
+        (sb-int:unencapsulate 'tuatara.defaults::rimu-lay-out 'slow))
+      (true (<= 2 layouts 6) (format nil "~d layouts over a walk of 2.4 s" layouts)))))
+
+(define-test (rimu ready-texts-latest-only)
+  ;; texts given for a column wait one batch for each column and entries, the latest; under a question about the
+  ;; list, those it holds wait on and those no list will take are dropped
+  (with-test-directory (dir)
+    (ensure-directories-exist (merge-pathnames "docs/" dir))
+    (rimu-forget)
+    (let* ((directory (namestring dir))
+           (list (tuatara.defaults::rimu-make-list directory))
+           (held (tuatara.defaults::rimu-read directory))
+           (entries (tuatara.defaults::rimu-listing-entries held))
+           (others (tuatara.defaults::rimu-listing-entries (tuatara.defaults::rimu-read directory)))
+           (tuatara.defaults::*rimu-ready* '())
+           (tuatara.defaults::*rimu-editor* nil))
+      (flet ((give (entries text)
+               (tuatara.defaults::rimu-column-ready :sizes entries
+                                                    (make-array (length entries) :initial-element text)))
+             (waiting (entries)
+               (let ((item (find entries tuatara.defaults::*rimu-ready* :key #'second)))
+                 (and item (aref (third item) 0)))))
+        (unwind-protect
+             (progn
+               (setf (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-listing) held)
+               (dotimes (i 20)
+                 (give entries (format nil "~d" i)))
+               (give others "other")
+               (is = 2 (length tuatara.defaults::*rimu-ready*) "one batch waiting for each column and entries")
+               (is equal "19" (waiting entries) "the texts given last")
+               (let ((tuatara.command::*buffers-held-by-questions* (list (cons list nil))))
+                 (tuatara.defaults::rimu-show-ready))
+               (is equal "19" (waiting entries) "texts kept for a list a question is about")
+               (is = 1 (length tuatara.defaults::*rimu-ready*) "texts no list will take dropped"))
+          (rimu-forget))))))
+
+(define-test (rimu sizes-hidden-while-walked)
+  ;; S, S again while the sizes are walked, and S once more: every size shows, those found before kept
+  (with-test-directory (dir)
+    (dolist (name '("one" "two" "three"))
+      (put-file (ensure-directories-exist (merge-pathnames (format nil "~a/a.txt" name) dir))
+                (make-string (length name) :initial-element #\a)))
+    (let ((top (namestring dir)))
+      (call-with-size-walk-held
+       1 (lambda (begun release)
+           (rimu-sizes-session top "S" (list :until begun 20) "S" (list :until release)
+                               (list :until (lambda () (not (rimu-sizes-walking-p))) 20)
+                               "S" (list :until (lambda ()
+                                                  (every (lambda (name)
+                                                           (funcall (rimu-size-shown top name (length name))))
+                                                         '("one" "two" "three")))
+                                         20)))))))
+
+(define-test (rimu sizes-given-while-read-again)
+  ;; sizes found while the list is read again are shown once it is read, not in its place: the list shows the file
+  ;; made meanwhile
+  (with-test-directory (dir)
+    (put-file (ensure-directories-exist (merge-pathnames "one/a.txt" dir)) (make-string 100 :initial-element #\a))
+    (let ((top (namestring dir))
+          (gate (sb-thread:make-semaphore))
+          (hold nil))
+      (sb-int:encapsulate 'tuatara.defaults::rimu-read 'hold
+                          (lambda (rimu-read directory)
+                            (when hold (sb-thread:wait-on-semaphore gate :timeout 60))
+                            (funcall rimu-read directory)))
+      (unwind-protect
+           (call-with-size-walk-held
+            1 (lambda (begun release)
+                (rimu-sizes-session
+                 top "S" (list :until begun 20)
+                 (list :until (lambda ()
+                                (put-file (merge-pathnames "new.txt" dir) "x")
+                                (setf hold t)
+                                (tuatara.defaults::rimu-update (find-if #'tuatara.defaults::rimu-list-p
+                                                                        tuatara.buffer:*buffers*)
+                                                               :reread t :wait nil)
+                                t))
+                 (list :until release)
+                 (list :until (lambda () (and (not (rimu-sizes-walking-p)) (null tuatara.defaults::*rimu-ready*))) 20)
+                 (list :until (lambda () (setf hold nil) (sb-thread:signal-semaphore gate) t))
+                 (list :until (rimu-shown-on-line top "new.txt" "new.txt") 20)
+                 (list :until (rimu-size-shown top "one" 100) 20))))
+        (sb-thread:signal-semaphore gate)
+        (sb-int:unencapsulate 'tuatara.defaults::rimu-read 'hold)))))
+
+(define-test (rimu sizes-kept-going-in-and-out)
+  ;; S, then into a directory and back out: each list shows its sizes, those found before at once and walked again
+  (with-test-directory (dir)
+    (put-file (ensure-directories-exist (merge-pathnames "Documents/big/b.txt" dir))
+              (make-string 300 :initial-element #\b))
+    (put-file (merge-pathnames "Documents/c.txt" dir) "seven..")
+    (let ((top (namestring dir))
+          (documents (namestring (merge-pathnames "Documents/" dir)))
+          (walks 0))
+      (sb-int:encapsulate 'tuatara.io:tree-size 'count
+                          (lambda (tree-size directory &rest arguments)
+                            (when (equal directory documents) (incf walks))
+                            (apply tree-size directory arguments)))
+      (unwind-protect
+           (rimu-sizes-session top "S" (list :until (rimu-size-shown top "Documents" 307) 20)
+                               "RET" (list :until (rimu-size-shown documents "big" 300) 20)
+                               "h" (list :until (rimu-size-shown top "Documents" 307) 20))
+        (sb-int:unencapsulate 'tuatara.io:tree-size 'count))
+      (is = 2 walks "Documents walked for each list of its directory"))))
+
+(defun rimu-sizes-cell (name)
+  "The sizes column's text for the entry NAME as the listing of the rimu list
+holds it, a (STRING . FACE), or NIL."
+  (let* ((list (find-if #'tuatara.defaults::rimu-list-p tuatara.buffer:*buffers*))
+         (listing (and list (tuatara.defaults::rimu-list-listing list)))
+         (cells (and listing (gethash :sizes (tuatara.defaults::rimu-listing-cells listing))))
+         (at (and listing (position name (tuatara.defaults::rimu-listing-entries listing)
+                                    :key #'tuatara.io:listed-name :test #'string=))))
+    (and (vectorp cells) at (aref cells at))))
+
+(defun rimu-sizes-read-again ()
+  "Read the rimu list's directory again, as a followed change does; true."
+  (tuatara.defaults::rimu-update (find-if #'tuatara.defaults::rimu-list-p tuatara.buffer:*buffers*)
+                                 :reread t :wait nil)
+  t)
+
+(define-test (rimu sizes-kept-shown-faint-until-walked-again)
+  ;; a file grows two levels below D, whose own stamp stays: the list read again shows the size kept faint, walks D
+  ;; again, and shows what it takes now in the face of sizes; so does the column hidden and shown
+  (with-test-directory (dir)
+    (put-file (ensure-directories-exist (merge-pathnames "D/sub/f.txt" dir)) (make-string 100 :initial-element #\a))
+    (let ((top (namestring dir))
+          (meanwhile nil))
+      (flet ((cell (octets face) (cons (tuatara.defaults::rimu-size-words octets) face)))
+        (call-with-size-walk-held
+         2 (lambda (begun release)
+             (rimu-sizes-session
+              top "S" (list :until (lambda () (equal (rimu-sizes-cell "D") (cell 100 :list-size))) 20)
+              (list :until (lambda ()
+                             (put-file (merge-pathnames "D/sub/g.txt" dir) (make-string 5000 :initial-element #\b))
+                             (put-file (merge-pathnames "new.txt" dir) "x")
+                             (rimu-sizes-read-again)))
+              (list :until (lambda () (and (funcall begun) (rimu-sizes-cell "new.txt"))) 10)
+              (list :until (lambda () (setf meanwhile (rimu-sizes-cell "D")) t))
+              (list :until release)
+              (list :until (lambda () (equal (rimu-sizes-cell "D") (cell 5100 :list-size))) 10)
+              (list :until (lambda ()
+                             (put-file (merge-pathnames "D/sub/h.txt" dir) (make-string 1000 :initial-element #\c))
+                             t))
+              "S" "S" (list :until (lambda () (equal (rimu-sizes-cell "D") (cell 6100 :list-size))) 10))))
+        (is equal (cell 100 :list-dim) meanwhile "the size kept, faint while D is walked again")))))
+
+(define-test (rimu sizes-forgotten-on-save)
+  ;; saving a file forgets the sizes kept of the directories above it
+  (with-test-directory (dir)
+    (put-file (ensure-directories-exist (merge-pathnames "Projects/x/a.txt" dir))
+              (make-string 100 :initial-element #\a))
+    (let* ((top (namestring dir))
+           (projects (concatenate 'string top "Projects/"))
+           (file (namestring (merge-pathnames "Projects/x/a.txt" dir)))
+           (kept nil))
+      (flet ((kept-p () (nth-value 1 (gethash projects tuatara.defaults::*rimu-sizes*))))
+        (rimu-sizes-session
+         top "S" (list :until (lambda () (and (not (rimu-sizes-walking-p)) (kept-p))) 20)
+         (list :until (lambda () (setf kept (kept-p)) t))
+         (format nil "C-x C-f C-a C-k ~a C-j" (rimu-typed file))
+         (list :until (lambda () (find "a.txt" tuatara.buffer:*buffers* :key #'tuatara.buffer:buffer-name
+                                                                        :test #'string=))
+               10)
+         "z z z z z z z z z z" "C-x C-s"
+         (list :until (lambda () (eql 110 (tuatara.io:stamp-size (tuatara.io:path-stamp file)))) 10)
+         (list :until (lambda () (not (kept-p))) 10))
+        (true kept "the size of Projects kept before the save")
+        (false (kept-p) "the size of Projects kept after a file under it was saved")))))
+
+(define-test (rimu sizes-kept-and-forgotten)
+  ;; the sizes kept: by directory while its stamp is the same; forgotten for a directory changed and those above it,
+  ;; with g for those under it too; the one kept longest dropped past the bound
+  (with-test-directory (dir)
+    (let ((tuatara.defaults::*rimu-sizes* (make-hash-table :test 'equal))
+          (tuatara.defaults::*rimu-sizes-order* (vector))
+          (tuatara.defaults::*rimu-sizes-next* 0)
+          (tuatara.defaults::*rimu-sizes-kept* 4)
+          (stamp (tuatara.io:path-stamp (namestring dir) :follow nil))
+          (other (tuatara.io:path-stamp (namestring (ensure-directories-exist (merge-pathnames "o/" dir)))
+                                        :follow nil)))
+      (flet ((keep (directory octets)
+               (tuatara.defaults::rimu-keep-size directory stamp octets))
+             (known (directory) (tuatara.defaults::rimu-known-size directory stamp)))
+        (keep "/a/" 1)
+        (keep "/a/b/" 2)
+        (keep "/a/b/c/" 3)
+        (keep "/ssh:box:/a/b/" 4)
+        (is = 2 (known "/a/b/"))
+        (false (tuatara.defaults::rimu-known-size "/a/b/" other) "kept for a stamp changed since")
+        (tuatara.defaults::rimu-forget-sizes (list "/a/b/x.txt"))
+        (false (known "/a/b/"))
+        (false (known "/a/"))
+        (is = 3 (known "/a/b/c/") "a directory below kept")
+        (is = 4 (known "/ssh:box:/a/b/"))
+        (tuatara.defaults::rimu-forget-sizes (list "/ssh:box:/a/b/x.txt"))
+        (false (known "/ssh:box:/a/b/"))
+        (keep "/a/" 1)
+        (tuatara.defaults::rimu-forget-sizes (list "/a/") :below t)
+        (false (known "/a/b/c/") "kept below a directory read again")
+        (false (known "/a/"))
+        (dolist (name '("/1/" "/2/" "/3/" "/4/" "/5/"))
+          (keep name 5))
+        (false (known "/1/") "the one kept longest kept past the bound")
+        (is = 5 (known "/5/"))
+        (is = 4 (hash-table-count tuatara.defaults::*rimu-sizes*))))))
+
+(define-test (rimu sizes-smaller-faults)
+  ;; forgetting a path on another machine leaves the sizes kept of / here; a bound that is no whole number from 0
+  ;; keeps none and signals nothing; the sizes kept do not outlive a test's lists
+  (with-test-directory (dir)
+    (let ((stamp (tuatara.io:path-stamp (namestring dir) :follow nil)))
+      (flet ((known (directory) (tuatara.defaults::rimu-known-size directory stamp)))
+        (let ((tuatara.defaults::*rimu-sizes* (make-hash-table :test 'equal))
+              (tuatara.defaults::*rimu-sizes-order* (vector))
+              (tuatara.defaults::*rimu-sizes-next* 0))
+          (dolist (directory '("/" "/ssh:box:/" "/ssh:box:/p/" "/ssh:box:/p/q/" "/ssh:box:/other/"))
+            (tuatara.defaults::rimu-keep-size directory stamp 7))
+          (tuatara.defaults::rimu-forget-sizes (list "/ssh:box:/p/q/r.txt"))
+          (is eql 7 (known "/") "the size of / here kept across a change on another machine")
+          (is eql 7 (known "/ssh:box:/other/"))
+          (false (known "/ssh:box:/p/q/"))
+          (false (known "/ssh:box:/p/"))
+          (false (known "/ssh:box:/"))
+          (tuatara.defaults::rimu-forget-sizes (list "/etc/hosts"))
+          (false (known "/") "the size of / kept across a change under it")
+          (dolist (bound '(-1 2.5 :many nil))
+            (let ((tuatara.defaults::*rimu-sizes-kept* bound))
+              (tuatara.defaults::rimu-keep-size "/b/" stamp 7)
+              (false (known "/b/") "a size kept with the bound ~s" bound))))
+        (tuatara.defaults::rimu-keep-size "/kept/by/a/test/" stamp 7)
+        (rimu-forget)
+        (false (known "/kept/by/a/test/") "a size kept after the lists are forgotten")))))
+
+(define-test (rimu list-not-left-reading-when-no-thread-starts)
+  ;; a list whose reading cannot be started is not left with a job no thread will end
+  (with-test-directory (dir)
+    (rimu-forget)
+    (let ((list (tuatara.defaults::rimu-make-list (namestring dir))))
+      (sb-int:encapsulate 'tuatara.runtime:make-guarded-thread 'refuse
+                          (lambda (make-guarded-thread &rest arguments)
+                            (declare (ignore make-guarded-thread arguments))
+                            (error "no thread to be had")))
+      (unwind-protect
+           (fail (tuatara.defaults::rimu-update list :wait nil))
+        (sb-int:unencapsulate 'tuatara.runtime:make-guarded-thread 'refuse))
+      (false (tuatara.defaults::rimu-list-job list) "the job of a reading never started")
+      (rimu-forget))))
+
+(define-test (rimu sizes-walk-kept-unless-forgotten-near-it)
+  ;; the size a walk finds is kept across a forgetting somewhere else, and not across one at its directory, under
+  ;; it or above it
+  (with-test-directory (dir)
+    (let ((tuatara.defaults::*rimu-sizes* (make-hash-table :test 'equal))
+          (tuatara.defaults::*rimu-sizes-order* (vector))
+          (tuatara.defaults::*rimu-sizes-next* 0)
+          (tuatara.defaults::*rimu-sizes-walked* '())
+          (stamp (tuatara.io:path-stamp (namestring dir) :follow nil)))
+      (flet ((kept-after (forgotten &rest arguments)
+               (tuatara.defaults::rimu-forget-sizes (list "/a/b/") :below t)
+               (is = 5 (tuatara.defaults::rimu-walked-size
+                        "/a/b/" stamp
+                        (lambda ()
+                          (when forgotten
+                            (apply #'tuatara.defaults::rimu-forget-sizes (list forgotten) arguments))
+                          (values 5 t))))
+               (tuatara.defaults::rimu-known-size "/a/b/" stamp)))
+        (is eql 5 (kept-after nil))
+        (is eql 5 (kept-after "/nowhere/near/it.txt") "a walk kept across a forgetting elsewhere")
+        (is eql 5 (kept-after "/a/c/x.txt") "a walk kept across a forgetting beside it")
+        (false (kept-after "/a/b/c/x.txt") "a walk kept across a forgetting under it")
+        (false (kept-after "/a/b/") "a walk kept across a forgetting of its directory")
+        (false (kept-after "/a/" :below t) "a walk kept across a forgetting above it")
+        (is eq :none (tuatara.defaults::rimu-walked-size "/a/b/" stamp (lambda () :none)) "a walk that failed")
+        (false (tuatara.defaults::rimu-known-size "/a/b/" stamp))
+        (false tuatara.defaults::*rimu-sizes-walked* "a walk over still noted as under way")))))
 
 (define-test (rimu sizes-column)
   (with-test-directory (dir)
@@ -1969,24 +2432,18 @@ and the editor."
 
 (define-test (rimu columns-kept-when-read-again)
   ;; a list read again keeps its git column, git not run, while the same names are listed and
-  ;; the repository has the same commit and staging; the sizes show their old values while
-  ;; they are worked out again
+  ;; the repository has the same commit and staging
   (with-test-directory (dir)
     (scratch-repository dir)
     ;; the columns as a session has them
     (tuatara.git::install-rimu-git)
-    (tuatara.defaults::install-rimu-sizes)
     (let* ((directory (namestring dir))
-           (columns (mapcar (lambda (name)
-                              (find name tuatara.defaults::*rimu-columns* :key #'tuatara.defaults::rimu-column-name))
-                            '(:git :sizes)))
+           (columns (list (find :git tuatara.defaults::*rimu-columns* :key #'tuatara.defaults::rimu-column-name)))
            (view (tuatara.defaults::make-rimu-view nil nil :name nil nil columns nil nil nil))
            (old (tuatara.defaults::rimu-carry-cells nil (tuatara.defaults::rimu-read directory) view))
            (runs 0))
       (setf (gethash :git (tuatara.defaults::rimu-listing-cells old))
-            (map 'vector (lambda (entry) (tuatara.io:listed-name entry)) (tuatara.defaults::rimu-listing-entries old))
-            (gethash :sizes (tuatara.defaults::rimu-listing-cells old))
-            (map 'vector (lambda (entry) (declare (ignore entry)) "old") (tuatara.defaults::rimu-listing-entries old)))
+            (map 'vector (lambda (entry) (tuatara.io:listed-name entry)) (tuatara.defaults::rimu-listing-entries old)))
       (sb-int:encapsulate 'tuatara.git:run-git-program 'count-runs
                           (lambda (function &rest arguments) (incf runs) (apply function arguments)))
       (unwind-protect
@@ -1995,7 +2452,6 @@ and the editor."
                  (gethash :git (tuatara.defaults::rimu-listing-cells old))
                  (gethash :git (tuatara.defaults::rimu-listing-cells again)))
              (is = 0 runs)
-             (true (find "old" (gethash :sizes (tuatara.defaults::rimu-listing-cells again)) :test #'equal))
              ;; a commit made: the git column read again
              (put-file (merge-pathnames "b.txt" dir) "b")
              (git-output dir "add" "b.txt")
@@ -2134,3 +2590,24 @@ and the editor."
       (is string= "a" (file-text (merge-pathnames "b.txt" dir)))
       (is string= "in the way"
           (file-text (merge-pathnames (format nil ".tuatara-rename-~d-0" (sb-posix:getpid)) dir))))))
+
+(define-test (rimu sizes-kept-only-of-a-walk-that-read-everything)
+  ;; a directory holding one that cannot be read shows what could be counted, and that size is not kept as what it
+  ;; takes; one read whole has its size kept
+  (with-test-directory (dir)
+    (put-file (ensure-directories-exist (merge-pathnames "Part/closed/c.txt" dir)) "seven..")
+    (put-file (merge-pathnames "Part/a.txt" dir) (make-string 100 :initial-element #\a))
+    (put-file (ensure-directories-exist (merge-pathnames "Whole/sub/b.txt" dir)) (make-string 50 :initial-element #\b))
+    (let* ((top (namestring dir))
+           (closed (namestring (merge-pathnames "Part/closed/" dir)))
+           (kept nil))
+      (flet ((kept-p (name) (nth-value 1 (gethash (concatenate 'string top name "/") tuatara.defaults::*rimu-sizes*)))
+             (settled ()
+               (and (not (rimu-sizes-walking-p))
+                    (funcall (rimu-size-shown top "Part" 100)) (funcall (rimu-size-shown top "Whole" 50)))))
+        (sb-posix:chmod closed 0)
+        (unwind-protect
+             (rimu-sizes-session top "S" (list :until #'settled 20)
+                                 (list :until (lambda () (setf kept (list (kept-p "Part") (kept-p "Whole"))) t)))
+          (sb-posix:chmod closed #o755)))
+      (is equal '(nil t) kept "the sizes kept of the directory read in part and of the one read whole"))))

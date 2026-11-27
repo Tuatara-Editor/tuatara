@@ -1,0 +1,6 @@
+# tuatara scratch 1
+# The text of the scratch buffers, kept while *scratch-text-kept* is on. A tab
+# ends each field: the buffer's name and its text (\\, \n, \r and \t stand
+# for \, a newline, a return and a tab).
+*lisp-scratch*	;; tried\n(+ 1 2)\na\\b\tc
+*org-scratch*	

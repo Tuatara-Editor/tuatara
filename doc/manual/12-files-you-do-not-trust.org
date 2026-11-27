@@ -160,7 +160,11 @@ Files you opened safely are remembered. In the list of recent files (chapter 7)
 they carry a mark, and ~C-x C-r~ opens them safely again.
 
 Safe does not mean fixed. ~C-x C-q~ makes a safe buffer editable, for the case
-where you really do want to write in it. It is still never auto-saved.
+where you want to try changes in it. It is still never auto-saved, and ~C-x
+C-s~ never writes it to its file, here or on another machine: the echo area
+says so. ~C-x C-w~ saves it as another file, never as the file itself under
+another name: a link to it, a second name of it, or a path that leads to it
+another way is refused, and the echo area says the file was not written over.
 ~M-x end-safe-visit~ opens the file as usual: it gets its mode, its colours and
 version control, and it is editable if you may write the file. Your cursor
 position, your unsaved changes and your undo history stay as they are. A file
@@ -392,9 +396,9 @@ with =chmod -R a-w evidence/=. Tuatara's guard does not replace it.
 3. Open =~/cases/2026-0001/evidence/report.txt= with ~C-x C-f~, not the safe
    way. The mode line shows =Evidence= and =Safe=.
 4. Press ~M-x describe-evidence~ and ~RET~. It says yes, and names the entry.
-5. Press ~C-x C-q~, ~i~, type a letter, ~C-g~, then ~C-x C-s~. Tuatara asks
-   whether to save a write-protected file. Press ~y~ and ~RET~. The save is
-   refused and the message ends with =and nothing is written in it=.
+5. Press ~C-x C-q~, ~i~, type a letter, ~C-g~, then ~C-x C-s~. The save is
+   refused: the echo area says the file is opened safely and stays so, being
+   evidence.
 6. Press ~C-x C-w~ and type =~/cases/2026-0001/work/report.txt= and ~RET~. The
    copy is written. The buffer is now the copy: =Evidence= is gone.
 7. Open the original again, and press ~M-x copy-from-evidence~. Give

@@ -285,6 +285,35 @@ whether the buffer has changes not saved; the frontend fourth."
               :text (format nil "o~%o~%o~%~a~%o o o~%" (make-string 400000 :initial-element #\x)) :width 100 :height 10)
     (is = 0 (length looks))))
 
+(define-modal-test (split change-past-limit-catches-up)
+  ;; past its limit, the matches come into sight while changing them are emptied as those
+  ;; held were, then written as they are, and the others in the background as the typing ends
+  (let ((tuatara-user:*split-limit* 5)
+        (tuatara.defaults::*split-sight-octets* 16)
+        (text (format nil "~{foo~%~{x~*~%~}~}" (loop repeat 20 collect (make-list 40))))
+        (before nil)
+        (after nil))
+    (let ((editor (nth-value 1 (run-keys (list "% f f o o RET c"
+                                               (lambda ()
+                                                 (let* ((split tuatara.defaults::*split*)
+                                                        (b (tuatara.defaults::split-buffer split)))
+                                                   (setf before (length (tuatara.defaults::split-places split)))
+                                                   (let ((tuatara.defaults::*split-sight-octets* 100000))
+                                                     (tuatara.defaults::virtual-fill split))
+                                                   (setf after (map 'list (lambda (place)
+                                                                            (tuatara.defaults::place-text b place))
+                                                                    (tuatara.defaults::split-places split)))))
+                                               "Z C-g"
+                                               (lambda ()
+                                                 (loop while (find-if #'tuatara.runtime:job-running-p
+                                                                      tuatara.runtime:*jobs*)
+                                                       do (sleep 0.01)))
+                                               :tick)
+                                         :text text :width 80 :height 10))))
+      (is = 2 before)
+      (is equal '("" "" "" "" "") after)
+      (is = 20 (count "Z" (uiop:split-string (session-text editor) :separator '(#\Newline)) :test #'string=)))))
+
 (define-test (split spans-met)
   ;; a stretch meets a span it touches at either end, whether a point or longer
   (let ((spans (vector '(2 . 4) '(8 . 10))))
@@ -345,7 +374,10 @@ BACKGROUND, the search too goes to the background."
           (let ((tuatara-user:*split-limit* 3000)
                 (tuatara.defaults::*rewrite-threshold* 0)
                 (tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
-            (nth-value 1 (run-keys-in-turns '("% f o RET" "c X C-g u" "") :text text))))
+            ;; the undo would stop the writing: it is kept going here, for the walk over what was undone
+            (sb-int:encapsulate 'tuatara.defaults::stop-split-writer 'kept-going (constantly nil))
+            (unwind-protect (nth-value 1 (run-keys-in-turns '("% f o RET" "c X C-g u" "") :text text))
+              (sb-int:unencapsulate 'tuatara.defaults::stop-split-writer 'kept-going))))
       (let ((result (session-text editor)))
         ;; those held as they were, the others written
         (true (< (position #\o result :from-end t) (position #\X result)))
@@ -397,8 +429,9 @@ BACKGROUND, the search too goes to the background."
 (define-modal-test (split seams-in-the-background)
   ;; in pieces of 8 octets, a pattern whose matches run over line ends and past a piece's end
   ;; holds the same places, and writes at every other match the same, as one scan finds them
+  ;; (none of these has matches that touch, which a split refuses)
   (let ((text (format nil "a1  b~%~%~%2c d   ~%  e~%~%f3~%")))
-    (dolist (pattern '("\\s+" "\\n\\n+" "[^a]+" "\\D" "b[\\s\\S]*?e"))
+    (dolist (pattern '("\\s+" "\\n\\n+" "[^a]+" "\\D(?!\\D)" "b[\\s\\S]*?e"))
       (let ((turns (list (format nil "% f ~a RET" (key-string pattern)) "i X C-g")))
         (is string= (session-text (nth-value 1 (run-keys-in-turns turns :text text :width 100 :height 10)))
             (session-text (nth-value 1 (background-split turns text)))
@@ -812,6 +845,19 @@ end its lines with a carriage return and a newline."
            (true (typep condition 'tuatara.runtime:refusal) "~a" condition))
       (tuatara.buffer:kill-buffer b))))
 
+(define-test (split cursor-commands-refuse-a-split-of-matches)
+  ;; a cursors command run by name while a split of matches stands says there are no cursors
+  (let* ((b (tuatara.buffer:make-buffer "matches-not-cursors" :text "aa aa"))
+         (split (tuatara.defaults::make-split b)))
+    (setf (tuatara.defaults::split-places split)
+          (vector (tuatara.defaults::make-place b 0 2) (tuatara.defaults::make-place b 3 5)))
+    (unwind-protect
+         (let ((tuatara.defaults::*split* split))
+           (tuatara.command:with-buffer-current (b)
+             (let ((condition (handler-case (tuatara.defaults::live-cursors) (error (e) e))))
+               (true (typep condition 'tuatara.runtime:refusal) "~a" condition))))
+      (tuatara.buffer:kill-buffer b))))
+
 (define-test (split keymaps-made-again-only-after-a-binding)
   ;; starting cursors or a split makes their keys again only once a key was bound since
   (tuatara.defaults::build-cursor-keymaps)
@@ -937,3 +983,245 @@ end its lines with a carriage return and a newline."
                      (format nil "~a~%" (make-string 8000 :initial-element #\a)))
       (sb-int:unencapsulate 'tuatara.defaults::start-split-search 'seen))
     (true started)))
+
+(defun session-lines (editor)
+  "The lines of the text of EDITOR's session."
+  (uiop:split-string (session-text editor) :separator '(#\Newline)))
+
+(define-modal-test (split pending-places-judged-each-alone)
+  ;; as the typing ends, each place out of sight is judged alone: one without the text deleted
+  ;; beside the others is left as it was and counted, the others written
+  (let ((tuatara.defaults::*split-sight-octets* 16)
+        (text (format nil "~{afoo ~d~%~}bfoo~%~{afoo ~d~%~}"
+                      (loop for i below 300 collect i) (loop for i from 300 below 600 collect i))))
+    (multiple-value-bind (f editor)
+        (run-keys-in-turns '("% f f o o RET" "i DEL X C-g") :text text :width 100 :height 10)
+      (let ((lines (session-lines editor)))
+        (is string= "Xfoo 0" (first lines))
+        (is string= "Xfoo 299" (nth 299 lines))
+        (is string= "bfoo" (nth 300 lines))
+        (is string= "Xfoo 599" (nth 600 lines)))
+      (true (tuatara.frontend.fake:fake-frame-showing
+             f "Split: typed before 600 places; 1 left as they were, the text beside them not the same"))))
+  ;; cursors too: the one on the first line has no line end before it to delete
+  (let ((tuatara.defaults::*split-sight-octets* 16)
+        (tuatara-user:*cursors-limit* 1000)
+        (text (format nil "~{foo ~d~%~}" (loop for i below 300 collect i))))
+    ;; every line joined to the one before it, the last line's end left
+    (is = 1 (count #\Newline (session-text (nth-value 1 (run-keys "V g e t i DEL C-g"
+                                                                     :text text :width 100 :height 10)))))))
+
+(define-modal-test (split touching-matches-refused-past-the-limit)
+  ;; matches that touch are refused past the limit as they are when every place is held: those in
+  ;; sight as the split is made, nothing held and the text left alone
+  (let ((tuatara-user:*split-limit* 3) (text "a  b  c  d  e"))
+    (true (search "Matches touch on line 1" (split-echo "% f SPC RET" text)))
+    ;; a match touching a place held is refused then too, not passed over once the verb is done
+    (true (search "Matches touch on line 1 (aa)" (split-echo "% f a RET" "aa aa aa aa")))
+    ;; the selection stands, as when every place is held: d deletes it, not every match
+    (is string= "" (split-text "% f SPC RET d" text)))
+  ;; and those out of sight by the writing in the background, which stops with nothing written
+  (let ((tuatara.defaults::*split-sight-octets* 16)
+        (tuatara-user:*split-limit* 2)
+        (text (format nil "~{foo ~d~%~}foofoo~%" (loop for i below 300 collect i))))
+    (multiple-value-bind (f editor) (run-keys-in-turns '("% f f o o RET" "i X C-g" "") :text text :width 150 :height 10)
+      (let ((lines (session-lines editor)))
+        (is string= "Xfoo 0" (first lines))
+        (is string= "foo 299" (nth 299 lines))
+        (is string= "foofoo" (nth 300 lines)))
+      (true (tuatara.frontend.fake:fake-frame-showing
+             f "Matches touch on line 301 (foofoo), and a split needs a character between places")))))
+
+(define-test (split touching-across-pieces)
+  ;; a match that starts a piece is known to touch the one ending just before it, found on the
+  ;; line before, and stops the writing
+  (let ((b (tuatara.buffer:make-buffer "touching-pieces" :text (format nil "x~%~%y~%"))))
+    (unwind-protect
+         (let* ((rope (tuatara.buffer:buffer-text b))
+                (scope (list (cons 0 (tuatara.buffer:buffer-size b))))
+                (spec (tuatara.defaults::make-matches-job
+                       :rope rope :scope scope :groups (tuatara.defaults::scope-groups rope scope)
+                       :high (tuatara.buffer:buffer-size b) :kind :delete :cancel (list nil)
+                       :matcher (tuatara.defaults::split-matcher "\\n" nil))))
+           (is equal '(1 . 2) (tuatara.defaults::match-ending-at spec 2))
+           (false (tuatara.defaults::match-ending-at spec 1))
+           (tuatara.defaults::every-match-edits spec (lambda (&rest match) (declare (ignore match)) nil)
+                                                2 (tuatara.buffer:buffer-size b) (lambda () nil))
+           (true (car (tuatara.defaults::matches-job-cancel spec)))
+           (is equal '((1 . 2) (2 . 3)) (car (tuatara.defaults::matches-job-touching spec))))
+      (tuatara.buffer:kill-buffer b))))
+
+(define-modal-test (split edge-deletion-reaching-the-place-before)
+  ;; a deletion before the place typed at that reaches the place before it ends the split, as one
+  ;; at another place does: the later place is not typed at as if the two were still apart
+  (let ((text (format nil "z~%ab~%ab~%ab")))
+    (is string= (format nil "z~%ab~%abXab") (split-text "j j j T m w i DEL X C-g" text))
+    (true (search "Split ended: an edit beside a place could not be made at every place"
+                  (split-echo "j j j T m w i DEL" text)))
+    ;; the place typed at the earlier one, as before
+    (true (search "Split ended: an edit beside a place could not be made at every place"
+                  (split-echo "j j t m w i DEL" text)))))
+
+(define-modal-test (split cursors-kept-to-the-part-shown)
+  ;; in a narrowed buffer t and T find no line outside the part shown
+  (let ((text (format nil "a~%b~%c~%d")))
+    (true (search "No line below" (split-echo "V j C-x x n j t" text)))
+    (is string= (format nil "a~%bX~%c~%d") (split-text "V j C-x x n j t i X C-g" text))
+    (true (search "No line above" (split-echo "j j V j C-x x n g g T" text)))
+    (true (search "Only 1 line below" (split-echo "V j C-x x n g g C-u 2 t" text)))
+    ;; the lines inside it take cursors as ever
+    (is string= (format nil "Xa~%Xb~%c~%d") (split-text "V j C-x x n g g t i X C-g" text))
+    ;; a count past the limit counts the lines of the part shown only
+    (let ((tuatara-user:*cursors-limit* 1))
+      (true (search "Only 1 line below" (split-echo "V j C-x x n g g C-u 3 t" text))))
+    ;; a buffer narrowed while cursors stand: no verb acts at a cursor outside
+    (dolist (keys '("i" "A" "c" "o" "d"))
+      (multiple-value-bind (f editor)
+          (run-keys (list "t t"
+                          (lambda () (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 0 3))
+                          keys)
+                    :text text :width 100 :height 10)
+        (true (tuatara.frontend.fake:fake-frame-showing f "Some cursors are outside the part of *scratch* shown")
+              "~a refused" keys)
+        (is string= text (session-text editor) "~a changed nothing" keys)))))
+
+(define-modal-test (split search-ending-leaves-what-was-made-meanwhile)
+  ;; a selection, a rectangle or cursors made while f searches in the background stay as the
+  ;; search ends: its matches are not held over them
+  (let ((text (format nil "foo bar~%foo baz~%foo~%"))
+        (tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
+    (dolist (keys '("v l" "m v j" "t"))
+      (multiple-value-bind (f editor) (background-split (list (format nil "% f f o o RET ~a" keys) "") text)
+        (true (tuatara.frontend.fake:fake-frame-showing f "Not held: *scratch* was busy when f finished searching it")
+              "~a kept" keys)
+        (false (tuatara.frontend.fake:fake-frame-showing f "Split: 3 places in the selection") "~a kept" keys)
+        (is string= text (session-text editor))))
+    ;; the selection is still there to act on
+    (is string= (format nil "oo bar~%foo baz~%foo~%")
+        (session-text (nth-value 1 (background-split '("% f f o o RET v l" "d") text))))))
+
+(define-modal-test (split keys-go-with-the-cursors-past-the-limit)
+  ;; ending cursors past their limit takes their keys down with them: the keys after are NORMAL
+  ;; state's again, not refused as the cursors' own
+  (let ((text (format nil "abc~%abc~%a~%abc~%")))
+    (is = 1 (count #\X (every-line-text '("l v j j j t C-g i X C-g") text)))
+    (multiple-value-bind (f editor)
+        (let ((tuatara-user:*cursors-limit* 2)) (run-keys "l v j j j t C-g h" :text text :width 150 :height 10))
+      (false (tuatara.frontend.fake:fake-frame-showing f "Cursors past the limit move only alike"))
+      (false (tuatara.command:editor-transient-map editor)))
+    ;; and after c on a rectangle taller than its limit
+    (let ((tuatara-user:*rectangle-cursors-limit* 2))
+      (multiple-value-bind (f editor)
+          (run-keys-in-turns '("m v j j j c Q C-g" "C-g i X C-g" "") :text text :width 150 :height 10)
+        (declare (ignore f))
+        (is = 1 (count #\X (session-text editor)))
+        (false (tuatara.command:editor-transient-map editor))))))
+
+(define-modal-test (split undo-while-typing-reaches-every-place)
+  ;; an undo while typing at places, some out of sight, takes the typing back at every one, not
+  ;; only at those in sight with the others then written; a redo makes it again at them all
+  (let ((tuatara.defaults::*split-sight-octets* 16)
+        (tuatara-user:*cursors-limit* 1000)
+        (text (format nil "~{foo ~d~%~}" (loop for i below 300 collect i))))
+    (flet ((typed-p (editor)
+             (every (lambda (line) (or (string= line "") (string= "XYfoo" line :end2 5))) (session-lines editor))))
+      (is string= text (session-text (nth-value 1 (run-keys "V g e t i X Y C-/" :text text :width 80 :height 10))))
+      (true (typed-p (nth-value 1 (run-keys "V g e t i X Y C-/ C-g U" :text text :width 80 :height 10))))
+      (multiple-value-bind (f editor)
+          (run-keys-in-turns '("% f f o o RET" "i X Y C-/") :text text :width 80 :height 10)
+        (is string= text (session-text editor))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Split ended: what was typed at its places is one change")))
+      (true (typed-p (nth-value 1 (run-keys-in-turns '("% f f o o RET" "i X Y C-/ C-g U")
+                                                     :text text :width 80 :height 10)))))))
+
+(define-modal-test (split line-selected-cursors-followed-through-an-edit)
+  ;; C at cursors that select their lines: each cursor stays at the character it was at, not as
+  ;; many octets into a line the comment sign has moved along
+  (flet ((commented (text)
+           (session-text (nth-value 1 (run-keys-in-turns '("l l t V C i X C-g") :text text :width 60 :height 10
+                                                                                :mode 'tuatara.defaults::lisp-mode)))))
+    (is string= (format nil ";; ééXé~%;; ééXé") (commented (format nil "ééé~%ééé")))
+    (is string= (format nil ";; abXc~%;; abXc") (commented (format nil "abc~%abc")))))
+
+(define-modal-test (split cursors-count-characters-as-read)
+  ;; d, c with a count and a at the cursors take a letter with its accent as one character, as
+  ;; they do at one cursor
+  (let ((text (format nil "e~cx~%e~cx~%" (code-char #x301) (code-char #x301))))
+    (is string= (format nil "x~%x~%") (split-text "t d" text))
+    (is string= (format nil "Zx~%Zx~%") (split-text "t c Z C-g" text))
+    (is string= (format nil "e~cZx~%e~cZx~%" (code-char #x301) (code-char #x301)) (split-text "t a Z C-g" text))
+    (is string= (split-text "d" text) (format nil "x~%e~cx~%" (code-char #x301)))
+    ;; and on the lines out of sight past the limit
+    (let ((wide (format nil "~{b~a~cy~%~}" (loop repeat 3 collect "e" collect (code-char #x301)))))
+      (is string= (format nil "by~%by~%by~%") (every-line-text '("l v j j t d") wide)))))
+
+(define-modal-test (split refused-cursor-begins-nothing)
+  ;; t or T with no line that way is refused before a cursor is made: no split of one cursor is
+  ;; left standing with the cursors' keys up
+  (dolist (keys '("t" "T" "C-u 3 t"))
+    (multiple-value-bind (f editor) (run-keys keys :text "only" :width 80 :height 10)
+      (true (tuatara.frontend.fake:fake-frame-showing f "No line"))
+      (false (tuatara.command:editor-transient-map editor) "~a left the cursors' keys up" keys))))
+
+(define-modal-test (split lines-opened-at-every-cursor-or-none)
+  ;; o that cannot open a line at one cursor takes back the lines opened at the others and
+  ;; leaves the cursors where they were, as a command run at every cursor does
+  (let ((text (format nil "a~%b~%c")) (calls 0))
+    (unwind-protect
+         (multiple-value-bind (f editor)
+             (run-keys (list "t t"
+                             (lambda ()
+                               (sb-int:encapsulate 'tuatara.defaults::newline 'failing
+                                                   (lambda (function &rest arguments)
+                                                     (when (= (incf calls) 2)
+                                                       (tuatara.defaults::refuse "No line opened here"))
+                                                     (apply function arguments))))
+                             "o"
+                             (lambda () (sb-int:unencapsulate 'tuatara.defaults::newline 'failing))
+                             "i X C-g")
+                       :text text :width 100 :height 10)
+           (is = 2 calls)
+           (true (tuatara.frontend.fake:fake-frame-showing f "No line opened here"))
+           (is string= (format nil "Xa~%Xb~%Xc") (session-text editor)))
+      (sb-int:unencapsulate 'tuatara.defaults::newline 'failing))))
+
+(define-modal-test (split undo-stops-the-writing-out-of-sight)
+  ;; an undo straight after a verb past the limit takes the verb back whole: the job still
+  ;; writing at the places out of sight is stopped, and they are as they were
+  (let ((text (format nil "~{~a~%~}" (loop repeat 300 collect "o o o o o")))
+        (tuatara-user:*split-limit* 20)
+        (tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
+    (dolist (keys '("d u" "i X C-g u"))
+      (multiple-value-bind (f editor) (run-keys-in-turns (list "% f o RET" keys "") :text text :width 150 :height 10)
+        (is string= text (session-text editor) "~a taken back whole" keys)
+        (true (tuatara.frontend.fake:fake-frame-showing f "The writing at the other matches of o is stopped")
+              "~a said" keys)))
+    ;; an edit made in between is what the undo takes back: the writing goes on
+    (is = 0 (count #\o (session-text (nth-value 1 (run-keys-in-turns '("% f o RET" "d g e i Z C-g u" "")
+                                                                      :text text :width 150 :height 10)))))))
+
+(define-modal-test (split undo-stops-a-writer-ended-and-not-taken-in)
+  ;; an undo given once the writing out of sight has ended, its result not yet taken in, takes the verb back
+  ;; whole: that result is not taken in behind it. The writing is held until the undo is given, and the undo
+  ;; until the writing has ended.
+  (let ((text "one two three four")
+        (held t)
+        (ended nil))
+    (sb-int:encapsulate 'tuatara.defaults::stop-split-writer 'ended-first
+                        (lambda (stop buffer)
+                          (let ((job (second (tuatara.defaults::split-writer buffer))))
+                            (setf held nil)
+                            (when (tuatara.defaults::rewrite-p job)
+                              (setf ended (and (tuatara.runtime:wait-until
+                                                (lambda () (not (tuatara.runtime:job-running-p job))) 10)
+                                               (tuatara.runtime:job-status job)))))
+                          (funcall stop buffer)))
+    (unwind-protect
+         (let ((tuatara-user:*split-limit* 2)
+               (tuatara.defaults::*rewrite-piece-hook*
+                 (lambda () (tuatara.runtime:wait-until (lambda () (not held)) 10))))
+           (is string= text
+               (session-text (nth-value 1 (run-keys-in-turns '("% f o RET d u" "") :text text :width 120 :height 10)))))
+      (setf held nil)
+      (sb-int:unencapsulate 'tuatara.defaults::stop-split-writer 'ended-first))
+    (is eq :done ended "the writing had ended, its result not taken in, as the undo came")))

@@ -129,8 +129,14 @@ and a regular expression names no case ([[:upper:]], \\p{Lu})."
 (defun search-line-matcher (line regex)
   "How to find LINE's pattern (MAKE-PATTERN-MATCHER): a MATCHER, or NIL and
 the reason the pattern does not compile. REGEX tells whether it is a regular
-expression; case is ignored as its flags say (SEARCH-LINE-FOLD)."
-  (make-pattern-matcher (search-line-pattern line) :regex regex :fold (search-line-fold line regex)))
+expression; case is ignored as its flags say (SEARCH-LINE-FOLD). A line with
+a replacement, to replace or to count, finds every match of up to
+TUATARA.SYNTAX:*REGEX-LONGEST-MATCH* octets whole, however many lines it
+runs across (TUATARA.SYNTAX:*REGEX-THOROUGH*): what is replaced, counted and
+lit leaves no match out for being long. A plain search keeps the shorter
+reach, which is quicker as it is typed."
+  (let ((tuatara.syntax:*regex-thorough* (or tuatara.syntax:*regex-thorough* (and (search-line-replacement line) t))))
+    (make-pattern-matcher (search-line-pattern line) :regex regex :fold (search-line-fold line regex))))
 
 (defun replacement-escape (char newline)
   "What a backslash before CHAR stands for in any replacement, literal or for
@@ -294,19 +300,21 @@ large to hold in memory is refused before the heap runs out.")
   "The octets a replacement may plan to use now (*REPLACEMENT-BUDGET*)."
   (heap-budget *replacement-budget*))
 
-(defun line-matches (rope matcher regex low high &key stop count-only)
+(defun line-matches (rope matcher regex low high &key stop count-only (bound high))
   "Every match of MATCHER in ROPE starting at or after LOW and ending by HIGH,
 found in parallel within the replacement budget (TUATARA.SYNTAX:COLLECT-MATCHES).
 Three values: the matches as sorted lists (START END TEXT GROUPS), NIL or
 :STOPPED or :OVER, and how many were found. TEXT is NIL for a literal search
 (REGEX false) that matched case exactly, whose replacement needs nothing from
 the match; and with COUNT-ONLY, which also keeps the estimate to the matches
-alone."
+alone. With BOUND past HIGH, the matches that start before HIGH in a scan of
+the text up to BOUND, as COUNT-LINE-MATCHES counts them: the pattern sees the
+text up to BOUND, and a match may end there."
   (let ((texts (and (not count-only) (or regex (matcher-fold matcher)))))
     (tuatara.syntax:collect-matches
      (lambda (function from to halt)
        ;; empty matches too (^, $), and the one at the very end of the scope
-       (stretch-matches function rope matcher from to (eql to high) texts halt high))
+       (stretch-matches function rope matcher from to (and (eql to high) (eql high bound)) texts halt bound))
      low high :stop stop :cost-limit (replacement-budget)
               :match-cost (if count-only 96 400) :block-size (if count-only 1 16384))))
 
@@ -380,18 +388,17 @@ whole text goes on (TUATARA.SYNTAX:JOIN-PIECES)."
                  end)))))
       (values total nil))))
 
-(defun next-line-match (buffer matcher regex from high &optional stop)
-  "The first match of MATCHER in BUFFER starting at or after FROM and ending by
+(defun next-line-match (rope matcher regex from high &optional stop)
+  "The first match of MATCHER in ROPE starting at or after FROM and ending by
 HIGH as (START END TEXT GROUPS), or NIL, TEXT given when REGEX or case is
 ignored. STOP, when given, is asked now and then whether to give way, and
 :STOPPED is the answer then."
-  (let ((rope (tuatara.buffer:buffer-text buffer)))
-    (when (<= from high)
-      (multiple-value-bind (s e m g) (matcher-search rope matcher from high :stop stop)
-        (cond (s (list s e (or m (and (or regex (matcher-fold matcher))
-                                      (tuatara.text:rope-string rope :start s :end e)))
-                       g))
-              ((eq e :stopped) :stopped))))))
+  (when (<= from high)
+    (multiple-value-bind (s e m g) (matcher-search rope matcher from high :stop stop)
+      (cond (s (list s e (or m (and (or regex (matcher-fold matcher))
+                                    (tuatara.text:rope-string rope :start s :end e)))
+                     g))
+            ((eq e :stopped) :stopped)))))
 
 (defun replacement-sets-case-p (replacement)
   "True when REPLACEMENT, read in a regular expression, says the case it
@@ -444,16 +451,18 @@ followed when MATCHER ignores case, a line break in it NEWLINE."
         (lambda (m) (funcall text-of (match-case-kind (third m)) (fourth m)))
         (lambda (m) (funcall text-of (third m) (fourth m))))))
 
-(defun pieces-line-matches (rope matcher regex pieces all &key stop count-only)
+(defun pieces-line-matches (rope matcher regex pieces all &key stop count-only bound)
   "LINE-MATCHES over each of PIECES, (START . END) in order, the matches of all
 together; without ALL the first on each line of each piece only. Three values
 as LINE-MATCHES gives them, gathering stopped at the first piece that could
-not be finished."
+not be finished. With BOUND, each piece's matches are those that start in it
+in a scan of the text up to BOUND, not of the piece alone."
   (let ((runs '()) (counted 0))
     (flet ((found () (loop for run in (reverse runs) append run)))
       (dolist (piece pieces (values (found) nil counted))
         (multiple-value-bind (these status count)
-            (line-matches rope matcher regex (car piece) (cdr piece) :stop stop :count-only count-only)
+            (line-matches rope matcher regex (car piece) (cdr piece) :stop stop :count-only count-only
+                                                                     :bound (or bound (cdr piece)))
           (incf counted count)
           (when status (return (values (found) status counted)))
           (push (if all these (first-per-line rope these)) runs))))))
@@ -461,41 +470,42 @@ not be finished."
 (defun pieces-next-match (buffer matcher regex pieces all &key stop)
   "A NEXT-MATCH for QUERY-REPLACE-LOOP over PIECES of BUFFER, (START . END) in
 order: from an offset, the next match within a piece, without ALL the first
-on each of its lines (FIRST-ON-LINE-GATE, the line a match ends on told by the
-text before it was replaced). The pieces after a replacement move by the
-change it made to the buffer's size, as only one is made between two calls;
-as a second value, a REST for its \\`!' over what is left of them. STOP is
-asked now and then while a match is looked for, as NEXT-LINE-MATCH asks it."
-  (let ((pieces (map 'vector (lambda (piece) (cons (car piece) (cdr piece))) pieces))
-        (i 0) (allowed 0) (size (tuatara.buffer:buffer-size buffer)))
-    (flet ((settle ()
-             ;; the replacement just made lies in piece I, before ALLOWED: they and the pieces after it move
-             (let ((delta (- (tuatara.buffer:buffer-size buffer) size)))
-               (setf size (tuatara.buffer:buffer-size buffer))
-               (unless (zerop delta)
-                 (when (plusp allowed) (incf allowed delta))
-                 (when (< i (length pieces)) (incf (cdr (aref pieces i)) delta))
-                 (loop for j from (1+ i) below (length pieces)
-                       do (incf (car (aref pieces j)) delta) (incf (cdr (aref pieces j)) delta))))))
+on each of its lines (FIRST-ON-LINE-GATE). The matches walked are those of
+BUFFER's text as it is now, before any is replaced, the ones a replacement
+made at once replaces: each is looked for in that text and told where it
+stands after the replacements made since, all of them before it. So what a
+replacement wrote, or uncovered, is never matched again. As a second value,
+a REST for its \\`!': from an offset, the matches left, as
+PIECES-LINE-MATCHES gives them, told where they stand now. STOP is asked now
+and then while matches are looked for, as NEXT-LINE-MATCH asks it."
+  (let* ((rope (tuatara.buffer:buffer-text buffer))
+         (size (tuatara.text:rope-octet-length rope))
+         (pieces (coerce pieces 'simple-vector))
+         (i 0) (allowed 0))
+    (flet ((moved (m shift)
+             (if (zerop shift) m (list* (+ (first m) shift) (+ (second m) shift) (cddr m)))))
       (values
        (lambda (pos)
-         (settle)
-         (loop while (< i (length pieces))
-               do (let* ((piece (aref pieces i))
-                         (m (next-line-match buffer matcher regex (max pos (car piece) allowed) (cdr piece) stop)))
-                    (cond ((eq m :stopped) (return m))
-                          (m (unless all
-                               (setf allowed (funcall (first-on-line-gate (tuatara.buffer:buffer-text buffer))
-                                                      (first m) (second m))))
-                             (return m))
-                          (t (setf i (1+ i) allowed 0))))))
+         ;; the replacements made lie before POS: the text from there on stands SHIFT further on than it did
+         (let* ((shift (- (tuatara.buffer:buffer-size buffer) size))
+                (pos (- pos shift)))
+           (loop while (< i (length pieces))
+                 do (let* ((piece (aref pieces i))
+                           (m (next-line-match rope matcher regex (max pos (car piece) allowed) (cdr piece) stop)))
+                      (cond ((eq m :stopped) (return m))
+                            (m (unless all
+                                 (setf allowed (next-line-start-after rope (second m) (first m))))
+                               (return (moved m shift)))
+                            (t (setf i (1+ i) allowed 0)))))))
        (lambda (pos)
-         (settle)
-         (let ((rest (loop for j from i below (length pieces)
-                           collect (if (= j i)
-                                       (cons (max pos (car (aref pieces j))) (cdr (aref pieces j)))
-                                       (aref pieces j)))))
-           (pieces-line-matches (tuatara.buffer:buffer-text buffer) matcher regex rest all)))))))
+         (let* ((shift (- (tuatara.buffer:buffer-size buffer) size))
+                (pos (- pos shift))
+                (rest (loop for j from i below (length pieces)
+                            collect (if (= j i)
+                                        (cons (max pos (car (aref pieces j))) (cdr (aref pieces j)))
+                                        (aref pieces j)))))
+           (multiple-value-bind (found status count) (pieces-line-matches rope matcher regex rest all :stop stop)
+             (values (if (zerop shift) found (mapcar (lambda (m) (moved m shift)) found)) status count))))))))
 
 (defun in-sight-lines (buffer low high)
   "The whole lines of BUFFER within LOW and HIGH that are in sight or near it
@@ -513,26 +523,45 @@ asked now and then while a match is looked for, as NEXT-LINE-MATCH asks it."
   "Replace LINE's matches between LOW and HIGH of BUFFER as START-REWRITE does,
 those on the lines in sight at once (IN-SIGHT-LINES), so that what is seen
 changes on RET, and the rest in the background, both one change for undo;
-the report counts them together. With another job running or waiting in
-BUFFER, or nothing out of sight, all of it is done in the background."
+the report counts them together. The matches in sight are those one scan of
+the whole scope finds on those lines, and the job leaves out just them
+\(MAPPER-AFTER-SIGHT), so that together they replace what the job alone
+would. All of it is done in the background with another job running or
+waiting in BUFFER, with nothing out of sight, for a pattern whose matches
+may run across lines (MATCHER-WITHIN-LINE-P), which one scan from LOW alone
+finds as they are, and for a count (the n flag), which changes nothing, in
+sight or out of it."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (lines (and (not (job-busy-p buffer)) (not (queued-in buffer)) (in-sight-lines buffer low high)))
+         (lines (and (not (counting-flags-p flags)) (matcher-within-line-p matcher)
+                     (not (job-busy-p buffer)) (not (queued-in buffer)) (not (lines-uncounted-p buffer))
+                     (in-sight-lines buffer low high)))
          (rest-out-of-sight (and lines (or (> (car (first lines)) low)
                                            (< (cdr (car (last lines))) high)
                                            (rest lines)))))
-    (multiple-value-bind (found status) (and rest-out-of-sight (pieces-line-matches rope matcher regex lines all))
+    (multiple-value-bind (found status)
+        (and rest-out-of-sight
+             ;; each line through its end, the pattern seeing the text after it as the job's scan does
+             (pieces-line-matches rope matcher regex
+                                  (loop for (start . end) in lines collect (cons start (min high (1+ end))))
+                                  all :bound high))
       (if (or (null found) status)
           (start-rewrite buffer line regex low high words flags)
-          (let* ((shifts (loop for m in found
-                               collect (cons (second m)
-                                             (- (tuatara.text:string-octet-length (funcall replacement-for m))
-                                                (- (second m) (first m))))))
-                 (moved (lambda (at) (+ at (loop for (end . shift) in shifts while (<= end at) sum shift))))
+          (let* ((replaced (map 'vector
+                                (lambda (m)
+                                  (list (first m) (second m)
+                                        (tuatara.text:string-octet-length (funcall replacement-for m))))
+                                found))
                  (shown (replace-matches buffer found replacement-for))
                  (shown-lines (matched-lines rope found))
-                 (joins (tuatara.buffer:buffer-undo-stack buffer)))
-            (start-rewrite buffer line regex low (funcall moved high) words flags
-                           :skip (map 'vector (lambda (l) (cons (funcall moved (car l)) (funcall moved (cdr l)))) lines)
+                 (joins (tuatara.buffer:buffer-undo-stack buffer))
+                 (sight (coerce lines 'vector))
+                 ;; nothing ran or waited as the matches in sight were replaced: the job's turn is now
+                 (*starting-queued-job* t))
+            (start-rewrite buffer line regex low
+                           (+ high (- (tuatara.buffer:buffer-size buffer) (tuatara.text:rope-octet-length rope)))
+                           words flags
+                           :mapper (lambda (texts)
+                                     (mapper-after-sight (rewrite-mapper-for rope matcher texts high) sight replaced))
                            :joins joins
                            :report (lambda (job how count seconds kept)
                                      (let ((lines (+ shown-lines (nth-value 1 (rewrite-totals job)))))
@@ -579,19 +608,17 @@ or counted here."
             buffer next replacement-for (search-line-pattern line) replacement
             (if pieces
                 rest
-                ;; ! : the rest at once from the match asked at, gathered within the budget, the scope's end
-                ;; moved as replacements changed its length
+                ;; ! : the rest at once from the match asked at, gathered within the budget
                 (let ((tail (- (tuatara.buffer:buffer-size buffer) high)))
                   (lambda (pos)
-                    (let* ((rope (tuatara.buffer:buffer-text buffer))
-                           (high (- (tuatara.buffer:buffer-size buffer) tail)))
-                      (multiple-value-bind (found status count) (line-matches rope matcher regex pos high :stop stop)
-                        (if (eq status :over)
-                            ;; too many to hold: those in sight at once, the rest in the background
-                            (progn (rewrite-after-sight buffer line regex pos high words flags
-                                                        matcher replacement-for all)
-                                   (values nil :background count))
-                            (values (if all found (first-per-line rope found)) status count))))))))))
+                    (multiple-value-bind (found status count) (funcall rest pos)
+                      (if (eq status :over)
+                          ;; too many to hold: those in sight at once, the rest in the background, the
+                          ;; scope's end moved as the replacements made changed its length
+                          (progn (rewrite-after-sight buffer line regex pos (- (tuatara.buffer:buffer-size buffer) tail)
+                                                      words flags matcher replacement-for all)
+                                 (values nil :background count))
+                          (values found status count)))))))))
         (t
          (let ((rope (tuatara.buffer:buffer-text buffer)) (counting (counting-flags-p flags)))
            (when (and (null pieces) (large-for-here-p low high))

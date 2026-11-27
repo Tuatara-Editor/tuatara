@@ -381,19 +381,22 @@ nowhere), the size in octets and the entry's own kind (:SYMLINK for a link,
 whatever it leads to; :OTHER when it could not be examined). With STAMPS they
 hold the STAMP of what it leads to (NIL when it could not be examined). Read
 as LIST-DIRECTORY reads it: only the directory is opened, so named pipes and
-devices in it are safe to list, and nothing is examined twice. NIL when it
-cannot be read."
-  (sort (loop for entry in (list-directory (native (directory-pathname directory)))
-              for octets = (listed-octets entry)
-              unless (dot-entry-name-p octets)
-                collect (let* ((own (listed-stamp entry))
-                               (stamp (if (and own (eq (stamp-kind own) :symlink))
-                                          (or (listed-target-stamp entry) own)
-                                          own))
-                               (fields (list (listed-name entry) (if stamp (stamp-kind stamp) :other)
-                                             (and stamp (stamp-size stamp)) (if own (stamp-kind own) :other))))
-                          (if stamps (append fields (list stamp)) fields)))
-        order :key #'first))
+devices in it are safe to list, and nothing is examined twice. NIL, and the
+reason as a second value, when it cannot be read."
+  (multiple-value-bind (listed reason) (list-directory (native (directory-pathname directory)))
+    (values (sort (loop for entry in listed
+                        for octets = (listed-octets entry)
+                        unless (dot-entry-name-p octets)
+                          collect (let* ((own (listed-stamp entry))
+                                         (stamp (if (and own (eq (stamp-kind own) :symlink))
+                                                    (or (listed-target-stamp entry) own)
+                                                    own))
+                                         (fields (list (listed-name entry) (if stamp (stamp-kind stamp) :other)
+                                                       (and stamp (stamp-size stamp))
+                                                       (if own (stamp-kind own) :other))))
+                                    (if stamps (append fields (list stamp)) fields)))
+                  order :key #'first)
+            reason)))
 
 (defun call-with-entry (directory octets function)
   "Call FUNCTION with a descriptor open on the file whose name is OCTETS in

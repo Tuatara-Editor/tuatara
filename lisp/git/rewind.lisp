@@ -289,7 +289,7 @@ in it, nor is a file that is not text shown."
            (git-rewind-leave buffer))
           ((rimu-list-p buffer)
            (with-git-repository (top)
-             (let ((directory (tuatara.io:native (tuatara.buffer:buffer-local buffer 'rimu-directory))))
+             (let ((directory (tuatara.io:native (rimu-list-directory buffer))))
                (if (tuatara.io:path-within-p directory top)
                    (rimu-rewind buffer top)
                    (message "~a is not in the repository at ~a" (abbreviated-path directory) (abbreviated-path top))))))

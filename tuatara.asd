@@ -5,7 +5,7 @@
   :description "Tuatara: an Emacs-shaped editor in Common Lisp."
   :author "Michael A Jones <yardquit@pm.me>"
   :license "GPL-3.0-or-later"
-  :version "0.90.48"
+  :version "0.90.49"
   :depends-on ("tuatara/core")
   :in-order-to ((test-op (test-op "tuatara/tests"))))
 
@@ -178,6 +178,7 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                              (:file "rectangles") (:file
                                                    "registers") (:file
                                                                  "banked-lines") (:file "wrapping") (:file "split")
+                             (:file "split-jobs")
                              (:file "cursors") (:file "digraph-table")
                              (:file "input-method-table") (:file
                                                            "input-methods") (:file "digraphs") (:file "characters")))

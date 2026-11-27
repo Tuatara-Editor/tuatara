@@ -13,15 +13,14 @@
 (defparameter *scratch-buffers*
   '(("*lisp-scratch*" lisp-interaction-mode
      ";; Lisp to try out: \\<lisp-interaction-mode>\\[eval-last-expression] after an expression evaluates it.
-;; This text is not kept: it goes when Tuatara quits, unless
-;; *scratch-text-kept* is on. \\<global>\\[save-buffer] saves it to a file;
-;; \\[find-file] opens one.
+;; This text goes when Tuatara quits, unless *scratch-text-kept* is on;
+;; \\<global>\\[save-buffer] saves it.
 
 ")
     ("*org-scratch*" org-mode
-     "# Notes in Org that are not kept: they go when Tuatara quits, unless
-# *scratch-text-kept* is on. \\[save-buffer] saves them to a file;
-# \\[find-file] opens one.
+     "# Org-mode notes for quick jottings: \\<org-mode>\\[org-cycle] on a heading folds it.
+# This text goes when Tuatara quits, unless *scratch-text-kept* is on;
+# \\<global>\\[save-buffer] saves it.
 
 "))
   "The scratch buffers made at startup: name, major mode and first text, a
@@ -142,11 +141,13 @@ file.
 (defun filled-scratch-header (text)
   "TEXT, a scratch buffer's first text, with the keys it names written in
 \(SUBSTITUTE-COMMAND-KEYS) and each paragraph of its comment filled to
-*FILL-COLUMN* (FILL-LINES), the blank lines between paragraphs and after it kept."
+*FILL-COLUMN* (FILL-LINES), the blank lines between paragraphs and after it kept.
+Only the comment's marker and spaces begin each line, so a word starting with *
+stays whole."
   (let ((paragraphs (cl-ppcre:split "\\n\\n" (string-right-trim '(#\Newline) (substitute-command-keys text)))))
     (format nil "~{~{~a~^~%~}~^~%~%~}~%~%"
             (mapcar (lambda (paragraph)
-                      (fill-lines (cl-ppcre:split "\\n" paragraph) *fill-column* *fill-prefix-characters*))
+                      (fill-lines (cl-ppcre:split "\\n" paragraph) *fill-column* "; #"))
                     paragraphs))))
 
 (defun make-scratch-buffer (name &optional (kind name))

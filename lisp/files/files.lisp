@@ -133,25 +133,39 @@ THEN).")
 is not asked and counts as answered no."
   (and (not quiet) (funcall function prompt)))
 
+(defun own-file-p (buffer target existing)
+  "True when TARGET, the file a save of BUFFER as another file would write
+with its links followed, is the file BUFFER visits under another name: its
+links lead to the same name, or EXISTING, the stamp of the file there, is of
+the file BUFFER read or of its file now (the same device and inode), as with a
+second name of it (a hard link) or a path through a link to its directory."
+  (let ((file (tuatara.buffer:buffer-file buffer)))
+    (and file
+         (or (equal target (tuatara.io:resolve-links file))
+             (tuatara.io:same-stamped-file-p existing (tuatara.io:buffer-file-stamp buffer))
+             (tuatara.io:same-stamped-file-p existing (tuatara.io:path-stamp file :failure nil))))))
+
 (defun save-buffer-with-care (buffer &key path then quiet)
   "Save BUFFER to its file, or to PATH (save as), as \\[save-buffer] does: ask
 before overwriting a file changed on disk since it was read, a write-protected
 file, or another existing file; then save on a thread of its own, waiting up to
 *SAVE-WAIT* seconds for it, after which it carries on in the background. An
-unmodified buffer whose file is as it was is not written again. A new file
-in a directory not there yet has the directory made, after asking. A new file
-whose name says encrypted but not by GnuPG (.age) is not written: its text
-would be there to read. Nor is a buffer that work still writes into
-\(*SAVE-REFUSALS*), such as typing at a split's places. Saved as a file
-another buffer visits, that buffer is killed after asking, or the save is
-refused when it has changes not saved. A function of
-*BEFORE-SAVE-FUNCTIONS* that returns :LATER (formatting first) has the save
-wait: it saves the buffer itself once ready. THEN, a function of the buffer,
-runs once the buffer is saved, as the next command when the save went on in
-the background, or at once when nothing needed saving; never when it was not
-saved. True when BUFFER is saved, or being saved; NIL when it was not. With
-QUIET nothing is asked, each question counting as answered no (the file
-changed on disk, write-protected, another file's name): the save is refused."
+unmodified buffer whose file is as it was is not written again. A new file in a
+directory not there yet has the directory made, after asking. A new file whose
+name says encrypted but not by GnuPG (.age) is not written: its text would be
+there to read. Nor is a buffer that work still writes into (*SAVE-REFUSALS*),
+such as typing at a split's places, nor one opened safely, even once made
+editable, other than as another file; never as its own file under another name,
+a link to it or a second name of it (OWN-FILE-P). Saved as a file another
+buffer visits, that buffer is killed after asking, or the save is refused when
+it has changes not saved. A function of *BEFORE-SAVE-FUNCTIONS* that returns
+:LATER (formatting first) has the save wait: it saves the buffer itself once
+ready. THEN, a function of the buffer, runs once the buffer is saved, as the
+next command when the save went on in the background, or at once when nothing
+needed saving; never when it was not saved. True when BUFFER is saved, or being
+saved; NIL when it was not. With QUIET nothing is asked, each question counting
+as answered no (the file changed on disk, write-protected, another file's
+name): the save is refused."
   (let* ((file (save-target buffer path))
          (name (tuatara.buffer:buffer-name buffer))
          (as (and path (not (equal file (tuatara.buffer:buffer-file buffer)))))
@@ -164,6 +178,12 @@ changed on disk, write-protected, another file's name): the save is refused."
     (cond
       (running (message "~a is already being saved (~d%)" name (tuatara.io:save-progress running)))
       (refused (message "~a" refused))
+      ((and (not as) (tuatara.io:safe-visit-p buffer))
+       (message "~a is opened safely and not saved, even once made editable (~a); ~
+                 \\[write-file] saves it as another file"
+                name (end-safe-visit-words buffer)))
+      ((and (tuatara.io:safe-visit-p buffer) (own-file-p buffer target existing))
+       (message "~a is the file ~a is opened safely from, under another name: not written over" called name))
       ((remote-name-p path)
        (message "~a is on another machine: not saved; open it there (\\[find-file]) and save that buffer" path))
       ((eq (tuatara.io:file-disk-state buffer) :stale)

@@ -53,7 +53,7 @@ Office document) is kept as its file, opened again as it opens. It is NIL for
 a buffer not kept (help, lists, terminals, buffers with no file, an encrypted
 file's text, a file on another machine)."
   (let* ((point (tuatara.buffer:buffer-point buffer))
-         (directory (tuatara.buffer:buffer-local buffer 'rimu-directory))
+         (directory (rimu-list-directory buffer))
          ;; a view (a PDF's pages, a picture, an Office document's pages or text) kept by the file it shows
          (file (and (not directory)
                     (or (tuatara.buffer:buffer-file buffer)

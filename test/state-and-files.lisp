@@ -842,3 +842,19 @@ file of text; their native names, as two values."
   (let ((path (format nil "/a\\b~c~c~cc" #\Tab #\Newline #\Return)))
     (is string= path (tuatara.defaults::unescape-path (tuatara.defaults::escape-path path))))
   (is string= "C:\\x" (tuatara.defaults::unescape-path "C:\\x")))
+
+(define-test (state-and-files tree-size-says-when-whole)
+  ;; the sum of a directory tells, as its second value, whether every directory below was read: not when one of
+  ;; them cannot be
+  (with-test-directory (dir)
+    (let* ((root (tuatara.io:native dir))
+           (closed (concatenate 'string root "sub/closed/")))
+      (put-file (ensure-directories-exist (merge-pathnames "sub/deeper/b.txt" dir))
+                (make-string 50 :initial-element #\b))
+      (put-file (ensure-directories-exist (merge-pathnames "sub/closed/c.txt" dir)) "seven..")
+      (put-file (merge-pathnames "sub/a.txt" dir) (make-string 100 :initial-element #\a))
+      (is equal '(157 t) (multiple-value-list (tuatara.io:tree-size root)) "a walk that read everything")
+      (sb-posix:chmod closed 0)
+      (unwind-protect
+           (is equal '(150 nil) (multiple-value-list (tuatara.io:tree-size root)) "a directory that cannot be read")
+        (sb-posix:chmod closed #o755)))))

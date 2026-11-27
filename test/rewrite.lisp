@@ -638,3 +638,28 @@ FACE)) in a job's face, as (ROW START END FACE)."
            (is = 3 looked))
       (sb-int:unencapsulate 'tuatara.defaults::match-shading-now 'counted)
       (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (rewrite count-changes-nothing-at-any-size)
+  ;; the n flag only counts: in memory and in a scope large enough for the background alike it
+  ;; changes nothing, says how many, and counts in a read-only buffer and a file opened safely; the text
+  ;; reaches well past what is in sight, where a replacement would change the lines shown first
+  (let ((text (format nil "~{foo ~d~%~}" (loop for i below 20000 collect i))))
+    (dolist (keys (list (format nil "M-x ~a RET ~a RET" (key-string "query-replace") (key-string "%o/0/gn"))
+                        (format nil "M-x ~a RET ~a RET" (key-string "query-replace") (key-string "%o/0/n"))))
+      (dolist (threshold (list 0 tuatara.defaults::*rewrite-threshold*))
+        (dolist (locked '(nil :read-only :safe))
+          (multiple-value-bind (frame editor)
+              (let ((tuatara.defaults::*rewrite-threshold* threshold))
+                (run-keys (list (lambda ()
+                                  (let ((buffer (tuatara.command:current-buffer)))
+                                    (when locked (setf (tuatara.buffer:buffer-read-only-p buffer) t))
+                                    (when (eq locked :safe) (setf (tuatara.io:safe-visit-p buffer) t))))
+                                keys)
+                          :text text :width 100 :height 10))
+            (is string= text (session-text editor) "~a over ~d octets, ~a: the text" keys threshold locked)
+            (false (tuatara.buffer:buffer-modified-p (session-buffer editor))
+                   "~a over ~d octets, ~a: modified" keys threshold locked)
+            (true (tuatara.frontend.fake:fake-frame-showing frame "40,000 matches on 20,000 lines")
+                  "~a over ~d octets, ~a: the count said" keys threshold locked)
+            (false (tuatara.frontend.fake:fake-frame-showing frame "Replaced")
+                   "~a over ~d octets, ~a: nothing replaced" keys threshold locked)))))))

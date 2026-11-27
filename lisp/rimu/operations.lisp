@@ -94,14 +94,14 @@ its full native name."
 (defun rimu-set-mark (buffer line mark)
   "Give the entry on LINE of the rimu list BUFFER MARK, or none with NIL; a
 list narrowed by search filters is laid out again soon after, so that the
-whole list it is narrowed from shows the mark too (RIMU-LAY-OUT-MARKED)."
+whole list it is narrowed from shows the mark too (RIMU-LAY-OUT-AGAIN)."
   (let ((entry (list-line-entry buffer line)))
     (when (rimu-markable-p entry)
-      (let ((key (rimu-mark-key (tuatara.buffer:buffer-local buffer 'rimu-directory) entry)))
+      (let ((key (rimu-mark-key (rimu-list-directory buffer) entry)))
         (rimu-put-mark buffer key mark))
       (rimu-show-mark buffer line mark)
       (when (list-filters-on-p buffer)
-        (setf (tuatara.buffer:buffer-local buffer 'rimu-marks-changed) t))
+        (setf (tuatara.buffer:buffer-local buffer 'rimu-lay-out-again) t))
       t)))
 
 (defun rimu-mark-and-go-on (mark)
@@ -154,7 +154,7 @@ the list then laid out again in the background, as it is while search
 filters narrow it."
   (if (and (<= (length changes) *rimu-marks-shown-by-line*) (not (list-filters-on-p buffer)))
       (loop for (line nil mark) in changes do (rimu-set-mark buffer line mark))
-      (let ((directory (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+      (let ((directory (rimu-list-directory buffer)))
         (loop for (nil entry mark) in changes
               do (rimu-put-mark buffer (rimu-mark-key directory entry) mark))
         (rimu-update buffer))))
@@ -164,7 +164,7 @@ filters narrow it."
 how many are marked in other directories goes too."
   (let* ((marks (rimu-marks buffer))
          (count (hash-table-count marks))
-         (directory (tuatara.buffer:buffer-local buffer 'rimu-directory))
+         (directory (rimu-list-directory buffer))
          (found (rimu-found-p buffer)))
     (if (loop for key being the hash-keys of marks thereis (not (rimu-mark-here-p key directory found)))
         (progn (rimu-clear-marks buffer)
@@ -181,7 +181,7 @@ how many are marked in other directories goes too."
   "The entries of the directory shown; the files marked in other directories
 stay so, as do the entries search filters hide."
   (let ((marked 0)
-        (directory (tuatara.buffer:buffer-local buffer 'rimu-directory))
+        (directory (rimu-list-directory buffer))
         (changes '()))
     (rimu-each-line buffer (lambda (line entry)
                              (when line
@@ -197,7 +197,7 @@ order shown, those search filters hide among them; with MARK #\\> and none
 marked in any directory (with HERE-ONLY, in this one), the one on the line,
 when it is not . or .. (RIMU-CHOSEN-PATHS takes those of the others too)."
   (let ((chosen '())
-        (directory (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+        (directory (rimu-list-directory buffer)))
     ;; with nothing marked, no name is made for each line to look for a mark
     (when (plusp (hash-table-count (rimu-marks buffer)))
       (rimu-each-line buffer (lambda (line entry)
@@ -278,7 +278,7 @@ stay as they are, only the list shows fewer, to look at what is left.
         (message "No file on this line")
         (progn
           (dolist (entry chosen)
-            (rimu-put-mark buffer (rimu-mark-key (tuatara.buffer:buffer-local buffer 'rimu-directory) entry) nil))
+            (rimu-put-mark buffer (rimu-mark-key (rimu-list-directory buffer) entry) nil))
           (rimu-take-out buffer chosen)
           (message "~d line~:p taken out of the list; \\<rimu-mode>\\[revert-buffer] shows ~:*~[~;it~:;them~] again"
                    (length chosen))))))
@@ -289,7 +289,7 @@ with MARK: the directory's shown in their order (RIMU-CHOSEN), then, unless
 HERE-ONLY, those marked in other directories (RIMU-MARKED-ELSEWHERE); with
 FILES-ONLY only regular files. NIL when BUFFER is no list."
   (when (rimu-list-p buffer)
-    (let ((directory (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+    (let ((directory (rimu-list-directory buffer)))
       (append (loop for entry in (rimu-chosen buffer mark)
                     when (or (not files-only) (eq (rimu-leads-to entry) :regular))
                       collect (tuatara.io:native (rimu-path directory entry)))
@@ -339,7 +339,7 @@ target copies and moves are offered first; NIL when there is none."
         for shown = (tuatara.display:window-buffer window)
         when (and (not (eq shown buffer)) (rimu-list-p shown)
                   (not (tuatara.buffer:buffer-local shown 'rimu-preview-buffer)))
-          return (tuatara.buffer:buffer-local shown 'rimu-directory)))
+          return (rimu-list-directory shown)))
 
 (defun rimu-place-kind (target)
   "What TARGET, a place files are copied or moved to, is, as TUATARA.IO:PATH-KIND
@@ -585,17 +585,20 @@ said, and NIL returned."
     (message "~a ~d...~@[ (~a)~]" (rimu-operation-words operation) (length pairs) (rimu-target verb pairs))
     operation))
 
-(defun rimu-refresh-lists (paths)
+(defun rimu-refresh-lists (paths &key below)
   "Read again, in the background, the rimu lists showing a directory any of
 PATHS is in, or is, and the lists of files found under a directory any of
-PATHS is in."
+PATHS is in. The sizes kept of PATHS and the directories above them are
+forgotten (RIMU-FORGET-SIZES); with BELOW, for PATHS that are trees written,
+moved or taken away, those of the directories under them too."
+  (rimu-forget-sizes paths :below below)
   (let ((directories (make-hash-table :test 'equal)))
     (dolist (path paths)
       (setf (gethash (tuatara.io:parent-path path) directories) t
             (gethash (concatenate 'string (string-right-trim "/" path) "/") directories) t))
     (dolist (buffer (copy-list tuatara.buffer:*buffers*))
       (when (and (rimu-list-p buffer)
-                 (let ((directory (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+                 (let ((directory (rimu-list-directory buffer)))
                    ;; a directory as a commit left it does not change; one on another machine does
                    (and (or (not (rimu-source buffer)) (remote-name-p directory))
                         (if (rimu-found-p buffer)
@@ -617,7 +620,7 @@ marks of what went, and read the lists touched again."
     (when (eq (rimu-operation-verb operation) :move)
       (follow-moved-paths done))
     (when (and (live-buffer-p list) (rimu-list-p list) (member (rimu-operation-verb operation) '(:move :trash :delete)))
-      (let ((directory (tuatara.buffer:buffer-local list 'rimu-directory))
+      (let ((directory (rimu-list-directory list))
             (found (rimu-found-p list))
             (elsewhere nil))
         (dolist (pair done)
@@ -626,7 +629,8 @@ marks of what went, and read the lists touched again."
               (setf elsewhere t))))
         ;; the line saying how many are marked elsewhere, laid out again (a read of its directory below comes after)
         (when elsewhere (rimu-update list :wait nil))))
-    (rimu-refresh-lists (append (mapcar #'car pairs) (remove nil (mapcar #'cdr pairs))))
+    ;; whole trees were written, moved or taken away: sizes kept while that went on, under them too, no longer hold
+    (rimu-refresh-lists (append (mapcar #'car pairs) (remove nil (mapcar #'cdr pairs))) :below t)
     (when (or (member (rimu-operation-verb operation) '(:trash :delete)) (plusp (rimu-operation-replaced operation)))
       (trash-changed))
     (when (rimu-operation-then operation)
@@ -702,7 +706,7 @@ DETAILS, lines of the caller's own."
 entries to a place asked for."
   (let* ((buffer (current-buffer))
          (paths (rimu-chosen-paths buffer))
-         (here (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+         (here (rimu-list-directory buffer)))
     (if (null paths)
         (message "~a" (rimu-nothing-words buffer (rimu-verb-words verb :verb)))
         (let* ((offered (or (rimu-other-directory buffer)
@@ -890,7 +894,7 @@ once whole. One there already is replaced only when you say so, the old
 going to the trash."
   (let* ((buffer (current-buffer))
          (paths (rimu-chosen-paths buffer))
-         (here (tuatara.buffer:buffer-local buffer 'rimu-directory))
+         (here (rimu-list-directory buffer))
          (locked (and (prefix-argument) t)))
     (if (null paths)
         (message "~a" (rimu-nothing-words buffer "archive"))
@@ -957,7 +961,7 @@ directory of the other list beside this one offered first. diff does it in
 the background, shut in the sandbox."
   (let* ((buffer (current-buffer))
          (paths (rimu-chosen-paths buffer))
-         (here (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+         (here (rimu-list-directory buffer)))
     (cond ((null paths) (message "~a" (rimu-nothing-words buffer "compare")))
           ((rest (rest paths))
            (message "~d entries are marked: mark two to compare them, or one to compare with another" (length paths)))
@@ -992,7 +996,7 @@ bsdtar does it in the background, shut in the sandbox."
          (paths (or (rimu-chosen-paths buffer :files-only t)
                     (refuse "~a" (rimu-nothing-words buffer "extract" :files-only t
                                                     :none "No file here: mark archives, or put the cursor on one"))))
-         (here (tuatara.buffer:buffer-local buffer 'rimu-directory))
+         (here (rimu-list-directory buffer))
          (offered (if (rest paths)
                       here
                       (tuatara.io:slash-ended (tuatara.io:path-join (tuatara.io:parent-path (first paths))
@@ -1021,8 +1025,7 @@ renames many as text, \\[rimu-move] moves into another directory."
            (let* ((from (first paths))
                   (old (tuatara.io:native-file-name from))
                   (new (ask-list-question (read-string :end " ")
-                         (rimu-question "Rename" paths :here (tuatara.buffer:buffer-local buffer 'rimu-directory)
-                                                       :after "to:")
+                         (rimu-question "Rename" paths :here (rimu-list-directory buffer) :after "to:")
                          :initial old))
                   (to (tuatara.io:path-join (tuatara.io:parent-path from) new)))
              (cond ((or (string= new "") (string= new old)) (message "Not renamed"))
@@ -1047,7 +1050,7 @@ renames many as text, \\[rimu-move] moves into another directory."
 them, asking first; those that cannot go to the trash are deleted only after a
 second, plain yes. Those on another machine, which keeps no trash, are
 deleted for good after one plain yes that says so."
-  (let ((here (and (live-buffer-p buffer) (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+  (let ((here (and (live-buffer-p buffer) (rimu-list-directory buffer)))
         (remote (remove-if-not #'remote-name-p paths)))
     (when remote
       (when (ask-list-question (yes-or-no-p* :end " for good?")
@@ -1104,7 +1107,7 @@ always does."
   "Make a directory, asked for, in this list's directory unless given
 elsewhere, with those above it that are not there; the list shows it."
   (let* ((buffer (current-buffer))
-         (here (tuatara.buffer:buffer-local buffer 'rimu-directory))
+         (here (rimu-list-directory buffer))
          (native (read-native-path "Make directory: " :initial (abbreviated-path here) :writing t))
          (path (and native (string-right-trim "/" native))))
     (cond ((or (null path) (string= (concatenate 'string path "/") here)) (message "No directory named"))
@@ -1169,7 +1172,7 @@ narrow the list, only the names it shows are edited."
                        (tuatara.buffer:unique-buffer-name
                         (format nil "*Rename: ~a*"
                                 (tuatara.io:native-file-name
-                                 (string-right-trim "/" (tuatara.buffer:buffer-local list 'rimu-directory)))))
+                                 (string-right-trim "/" (rimu-list-directory list)))))
                        :text (format nil "~{~a~%~}" (mapcar #'tuatara.io:listed-name entries)))))
           (set-major-mode buffer 'rimu-names-mode)
           (setf (tuatara.buffer:buffer-local buffer 'rimu-names-list) list
@@ -1181,7 +1184,7 @@ narrow the list, only the names it shows are edited."
                                 collect (tuatara.text:make-anchor version
                                                                   (tuatara.buffer:buffer-goto-line buffer line)))
                           'vector))
-                (buffer-given-directory buffer) (tuatara.buffer:buffer-local list 'rimu-directory)
+                (buffer-given-directory buffer) (rimu-list-directory list)
                 (tuatara.display:buffer-header-line buffer)
                 (let ((text (substitute-command-keys
                              (format nil " Rename: \\<rimu-names-mode>\\[rimu-names-finish] renames the lines changed, ~
@@ -1326,6 +1329,7 @@ when a line does not do, none, and why is said."
           (multiple-value-bind (done failed why) (rimu-rename-in-two-steps directory changes)
             (when why (nothing-renamed "~a" why))
             (follow-moved-paths done)
+            (rimu-forget-sizes (loop for (from . to) in done collect from collect to))
             (when (live-buffer-p list)
               (rimu-marks-renamed list done))
             (let ((list (rimu-names-back buffer)))
@@ -1344,7 +1348,7 @@ open it; a file or directory there has its times set to now (a link's own,
 not those of where it leads). \\`RET' alone touches the marked entries, or the
 one on the line. A name with a / or a control character in it is refused."
   (let* ((buffer (current-buffer))
-         (here (tuatara.buffer:buffer-local buffer 'rimu-directory))
+         (here (rimu-list-directory buffer))
          (chosen (rimu-chosen-paths buffer))
          (name (multiple-value-bind (words details) (and chosen (rimu-question nil chosen))
                  (read-string (format nil "Touch in ~a~@[ (RET: ~a)~]: " (abbreviated-path here) words)
@@ -1369,7 +1373,7 @@ one on the line. A name with a / or a control character in it is refused."
   "Show PATH, made just now, in LIST when it is in LIST's directory, point on
 it; the other lists of its directory read again."
   (rimu-refresh-lists (list path))
-  (when (string= (tuatara.io:parent-path path) (tuatara.buffer:buffer-local list 'rimu-directory))
+  (when (string= (tuatara.io:parent-path path) (rimu-list-directory list))
     (rimu-update list :reread t :point-on (tuatara.text:string-octets (tuatara.io:native-file-name path))))
   (message "Made ~a; \\<rimu-mode>\\[rimu-open] opens it" (abbreviated-path path)))
 
@@ -1379,7 +1383,7 @@ what new-file-formatted asks but the subdirectory (the title, the keywords,
 the kind and the template), with the header of its kind, saved at once; the
 list shows it, point on it."
   (let* ((list (current-buffer))
-         (directory (tuatara.buffer:buffer-local list 'rimu-directory)))
+         (directory (rimu-list-directory list)))
     (multiple-value-bind (asked title keywords type template) (ask-formatted-file-answers :skip '(:subdirectory))
       (declare (ignore asked))
       (reporting-errors ("making a formatted file in ~a" directory)
@@ -1396,7 +1400,7 @@ list shows it, point on it."
                                                      :files-only t
                                                      :none "No file here: mark files, or put the cursor on one")))))
     (when (multiple-value-call #'confirm-wipe paths
-            (rimu-question nil paths :here (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+            (rimu-question nil paths :here (rimu-list-directory buffer)))
       (start-wiping paths))))
 
 (defun install-rimu-operations ()

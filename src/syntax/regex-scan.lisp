@@ -141,15 +141,30 @@ O(1)."
   (let ((plain (and traits (regex-traits-plain traits))))
     (if (and plain (not (tuatara.text:rope-holds-return-p rope))) plain scanner)))
 
-(defun needle-line (octets filled needle fold from)
-  "The line of the first occurrence of NEEDLE (folded when FOLD) in the
+(defun regex-within-line-p (scanner)
+  "True when every match of SCANNER, made by COMPILE-REGEX, surely lies within
+one line, its lookaheads too (REGEX-TRAITS). O(1)."
+  (let ((traits (gethash scanner **regex-traits**)))
+    (and traits (regex-traits-line-bound traits) t)))
+
+(defun regex-line-alone-p (scanner)
+  "True when no match of SCANNER, made by COMPILE-REGEX, depends on anything
+outside the line it lies on (REGEX-TRAITS, LINE-ALONE-P): texts put one
+after another, a line end between them, are then searched as one. O(1)."
+  (let ((traits (gethash scanner **regex-traits**)))
+    (and traits (regex-traits-alone traits) t)))
+
+(defun needle-line (octets filled needle fold from &optional variants)
+  "The line of the first occurrence of NEEDLE (folded when FOLD), or of one of
+VARIANTS (FOLD-VARIANTS) when that comes first, in the
 first FILLED octets of OCTETS at or after FROM, as two offsets. They are where
 it starts, FROM at the earliest, and where it ends, after the octet that ends
 it (TUATARA.TEXT:LINE-END-OCTET-P; a carriage return as the last octet filled
 taken for one a newline may follow) or at FILLED. NIL when NEEDLE is not
 there."
   (declare (type tuatara.text:octets octets needle) (type fixnum filled from) (optimize speed))
-  (let ((at (scan-chunk octets needle fold from filled filled)))
+  (let* ((found (scan-chunk octets needle fold from filled filled))
+         (at (or (and variants (variant-position octets variants from (or found filled) filled)) found)))
     (when at
       (let ((before (tuatara.text:octets-line-end-position-backward octets from at filled))
             (after (tuatara.text:octets-line-end-position octets at filled nil)))
@@ -162,7 +177,31 @@ later. Complexity: O(log n + POSITION - FLOOR)."
   (let ((newline (tuatara.text:rope-find-line-end-backward rope :start floor :end position)))
     (if newline (1+ newline) floor)))
 
-(defun map-regex-matches (function rope scanner start end &key bound decoder halt (texts t) empty)
+(defun fixed-place (rope traits start end chunk span)
+  "The first place starting in [START, END) of ROPE where what every match of
+a pattern holds stands, its needle or else its shape (TRAITS, a
+REGEX-TRAITS), read through CHUNK with SPAN octets past each stretch read; or
+where a character stands that a letter of the pattern is one with when case
+is ignored (REGEX-TRAITS-VARIANTS), which a match may hold in the letter's
+place, when that comes first, a second value true then. NIL when neither
+stands there."
+  (let ((needle (regex-traits-needle traits)) (shape (regex-traits-shape traits))
+        (variants (regex-traits-variants traits)) (variant-hit nil))
+    (values (cond (variants
+                   (flet ((look (filled below)
+                            (let* ((at (if needle
+                                           (scan-chunk chunk needle (regex-traits-fold traits) 0 below filled)
+                                           (scan-shape-chunk chunk shape 0 below filled)))
+                                   (other (variant-position chunk variants 0 (or at below) filled)))
+                              (setf variant-hit (and other t))
+                              (or other at))))
+                     (declare (dynamic-extent #'look))
+                     (scan-chunks-forward rope start end chunk span #'look)))
+                  (needle (scan-range-forward rope needle (regex-traits-fold traits) start end chunk))
+                  (t (scan-shape-forward rope shape start end chunk)))
+            variant-hit)))
+
+(defun map-regex-matches (function rope scanner start end &key bound decoder halt (texts t) empty (floor 0))
   "Call FUNCTION with (MATCH-START MATCH-END MATCHED-STRING GROUPS), byte
 offsets, the text matched and a vector of the groups' texts (NIL for a group
 that took no part; NIL instead of the vector for a pattern without groups).
@@ -171,7 +210,10 @@ function, it is what it makes of the text and no groups: MATCHED-TEXT. It is
 called for each non-empty, non-overlapping match of SCANNER in ROPE that
 starts at or after START and before END, in order. With EMPTY, each empty
 match too (^ at every line start, for one). The pattern sees no text past
-BOUND (the text end by default), so every match ends by then. Stops as soon as
+BOUND (the text end by default), so every match ends by then, and none before
+FLOOR (the text's start by default), which \\A and a lookbehind take for the
+start of the text: a text standing among others in ROPE is searched as it
+would be alone. Stops as soon as
 FUNCTION returns true and returns that value; else returns NIL. HALT, when
 given, is asked before each window and gives up the scan (returning NIL) when
 it answers true.
@@ -181,7 +223,10 @@ speed. A pattern whose matches lie within a line gets windows that end after a
 line and are looked for from the start of the line its fixed text is on. Its
 matches are so found whole and from where they begin on lines up to
 *REGEX-LONGEST-MATCH* octets. When the fixed text does not begin them, only
-the lines holding it are tried. \\z and \\Z are looked for at the end only.
+the lines holding it are tried. \\z and \\Z match at the end of the text the
+pattern sees, wherever they stand in the pattern, and never at a window's end
+\(*WINDOW-CUT*); a pattern every match of which ends there is looked for at
+the end only.
 Otherwise a match needing text more than the pattern's reach (REGEX-TRAITS:
 +REGEX-OVERLAP+ octets, a thorough scanner's *REGEX-LONGEST-MATCH*) past the
 stretch it starts in may be cut short or missed. So may one whose fixed text
@@ -189,12 +234,12 @@ lies further than that from its start.
 DECODER, when given, holds the text decoded; else a spare one does
 \(WITH-DECODER), so that a search piece after piece on several cores makes no
 new buffers."
-  (declare (type fixnum start end) (type function function))
+  (declare (type fixnum start end floor) (type function function))
   (unless decoder
     (return-from map-regex-matches
       (with-decoder (spare)
         (map-regex-matches function rope scanner start end
-                           :bound bound :decoder spare :halt halt :texts texts :empty empty))))
+                           :bound bound :decoder spare :halt halt :texts texts :empty empty :floor floor))))
   (let* ((total (tuatara.text:rope-octet-length rope))
          (bound (if bound (tuatara.text:rope-char-start rope (min bound total)) total))
          (end (min end bound))
@@ -202,9 +247,18 @@ new buffers."
          (last-end -1)
          (traits (gethash scanner **regex-traits**))
          (scanner (scanner-for-rope scanner rope traits))
+         ;; for a window that is all ASCII, where no letter is written another way
+         (narrow (let ((pair (and traits (regex-traits-narrow traits))))
+                   (and pair (or (and (not (tuatara.text:rope-holds-return-p rope)) (cdr pair)) (car pair)))))
          (needle (and traits (regex-traits-needle traits)))
          (shape (and traits (regex-traits-shape traits)))
+         ;; a character a letter of the pattern is one with when case is ignored may stand in a
+         ;; match in place of that letter: where one stands is looked at too
+         (variants (and traits (or needle shape) (regex-traits-variants traits)))
+         (variant-hit nil) (q nil)
          (needle-length (cond (needle (length needle)) (shape (length shape)) (t 0)))
+         ;; the octets read past a chunk, for what is looked for to be seen whole
+         (span (if variants (max needle-length 4) needle-length))
          (prefix-p (and traits (regex-traits-prefix traits)))
          (line-bound (and traits (regex-traits-line-bound traits)))
          ;; each match lies within a line holding NEEDLE: only those lines are tried
@@ -214,7 +268,7 @@ new buffers."
          ;; the window a filter may read the rope around (*WINDOW-ROPE*): one list, set for each window
          (window (list rope 0 0 bound))
          (chunk (and (or needle shape)
-                     (let ((size (+ +search-chunk+ needle-length)))
+                     (let ((size (+ +search-chunk+ span)))
                        (when (< (length (decoder-skip decoder)) size)
                          (setf (decoder-skip decoder) (tuatara.text:make-octets size)))
                        (decoder-skip decoder))))
@@ -222,7 +276,8 @@ new buffers."
          ;; starting before END: past END by the pattern's reach, or for matches within a
          ;; line, to the end of the line holding END - 1
          (scan-end (cond ((or (not (or needle shape)) (>= pos end)) end)
-                         (prefix-p end)
+                         ;; a character standing in for a letter may come after where a match starts
+                         ((and prefix-p (not variants)) end)
                          (line-bound
                           (let ((cap (min bound (+ end *regex-longest-match*))))
                             (or (tuatara.text:rope-find-line-end rope :start (max pos (1- end)) :end cap) cap)))
@@ -243,11 +298,10 @@ new buffers."
                  ;; could contain it. After a long jump the occurrences are sparse: only
                  ;; the starts up to this one are worth the regex, the next jump finds the
                  ;; next occurrence.
-                 (let ((q (if needle
-                              (scan-range-forward rope needle (regex-traits-fold traits) pos scan-end chunk)
-                              (scan-shape-forward rope shape pos scan-end chunk))))
+                 (progn
+                   (multiple-value-setq (q variant-hit) (fixed-place rope traits pos scan-end chunk span))
                    (unless q (return))
-                   (let ((to (cond (prefix-p q)
+                   (let ((to (cond ((and prefix-p (not variant-hit)) q)
                                    (line-bound (line-start-within rope q (max pos (- q *regex-longest-match*))))
                                    (t (tuatara.text:rope-char-start rope (max 0 (- (+ q needle-length) overlap)))))))
                      (if shape
@@ -257,7 +311,7 @@ new buffers."
                          (progn (when (> to (+ pos overlap)) (setf range (max overlap (- (1+ q) to))))
                                 (setf pos (max pos to)))))
                    (when (>= pos end) (return))))
-             (let* ((context-start (tuatara.text:rope-char-start rope (max 0 (- pos context))))
+             (let* ((context-start (tuatara.text:rope-char-start rope (max floor (- pos context))))
                     (limit (let ((l (tuatara.text:rope-char-start rope (min end (+ pos range)))))
                              (if (> l pos) l (min bound (tuatara.text:rope-next-boundary rope pos)))))
                     (reach (cond ((and traits (regex-traits-end-anchored traits)) bound)
@@ -287,7 +341,7 @@ new buffers."
                                    ;; the pattern is tried on the next line holding its text alone
                                    (multiple-value-bind (line-start line-end)
                                        (needle-line (decoder-octets decoder) (- window-end context-start) needle
-                                                    (regex-traits-fold traits) (index-octet table from))
+                                                    (regex-traits-fold traits) (index-octet table from) variants)
                                      (unless line-start (return t))
                                      (setf from (max from (octet-index table line-start count))
                                            try-end (octet-index table line-end count))))
@@ -295,9 +349,12 @@ new buffers."
                                      (tuatara.runtime:stoppable
                                        (let ((*window-open* (and (= try-end count) (< window-end bound)))
                                              (*window-rope* window)
+                                             (*window-cut* (and (or (< try-end count) (< window-end bound))
+                                                                (+ context-start (index-octet table try-end))))
                                              (*window-reached* nil))
                                          (multiple-value-bind (ms me group-starts group-ends)
-                                             (cl-ppcre:scan scanner string :start from :end try-end :real-start-pos 0)
+                                             (cl-ppcre:scan (if (and narrow (null table)) narrow scanner) string
+                                                            :start from :end try-end :real-start-pos 0)
                                            (values ms me group-starts group-ends *window-reached*))))
                                    (if (null ms)
                                        (if (= try-end count)
@@ -469,7 +526,10 @@ occurrence of STRING in ROPE that starts at or after START and before END and
 ends by BOUND (the text end by default), in order. TEXT is the text matched
 when TEXTS is true, else NIL. Stops and returns FUNCTION's value as soon as it
 returns true, or returns NIL when HALT, asked before each chunk, answers true;
-else returns NIL. CASE-FOLD ignores case, as for SEARCH-FORWARD.
+else returns NIL. CASE-FOLD ignores case, as for SEARCH-FORWARD: a chunk
+holding a character a letter of STRING is one with then (FOLD-VARIANTS, the
+long s for s) is searched through the pattern of the text, where a match may
+be longer than STRING.
 The text is read a chunk at a time into a spare decoder's buffer
 \(WITH-DECODER), so that a search piece after piece on several cores makes no
 new ones. A match's text is taken from that chunk, and given again as it was
@@ -483,9 +543,13 @@ of a few texts make nothing each."
   (with-decoder (decoder)
     (let* ((needle (needle-octets string case-fold)) (n (length needle))
            (total (tuatara.text:rope-octet-length rope))
-           (end (min end (1+ (- (min (or bound total) total) n)))) ; the last start that fits, exclusive
-           (chunk (progn (when (< (length (decoder-skip decoder)) (+ +search-chunk+ n))
-                           (setf (decoder-skip decoder) (tuatara.text:make-octets (+ +search-chunk+ n))))
+           (bound (min (or bound total) total))
+           (end (min end (1+ (- bound n)))) ; the last start that fits, exclusive
+           ;; a letter of STRING written another way (the long s): a chunk holding one goes by the pattern
+           (variants (and case-fold (fold-variants string)))
+           (span (if variants (* 3 n) n))
+           (chunk (progn (when (< (length (decoder-skip decoder)) (+ +search-chunk+ span))
+                           (setf (decoder-skip decoder) (tuatara.text:make-octets (+ +search-chunk+ span))))
                          (decoder-skip decoder)))
            (next start)
            ;; the octets last matched and what was given for them: a pattern matches few texts
@@ -502,17 +566,25 @@ of a few texts make nothing each."
       (when (plusp n)
         (loop for pos of-type fixnum from start below end by +search-chunk+
               do (when (and halt (funcall halt)) (return-from map-literal-matches nil))
-                 (let* ((chunk-end (min total (+ pos +search-chunk+ (1- n))))
+                 (let* ((chunk-end (min total (+ pos +search-chunk+ (1- span))))
                         (filled (tuatara.text:rope-copy-into rope pos chunk-end chunk))
                         (below (min filled +search-chunk+ (- end pos)))
                         (i (max 0 (- next pos)))
                         (other-case (cons nil nil)))
                    (declare (type fixnum filled below i))
-                   (loop
-                     (let ((hit (and (< i below) (scan-chunk chunk needle case-fold i below filled other-case))))
-                       (unless hit (return))
-                       (let* ((s (+ pos hit)) (e (+ s n))
-                              (result (funcall function s e (and texts (text-at hit)) nil)))
-                         (when result (return-from map-literal-matches result))
-                         (setf next e i (+ hit n)))))))))
+                   (if (and variants (variant-position chunk variants 0 filled filled))
+                       (let ((result (map-regex-matches (lambda (s e m g)
+                                                          (setf next e)
+                                                          (funcall function s e m g))
+                                                        rope (literal-scanner string t)
+                                                        (character-start-from rope (max pos next)) (+ pos below)
+                                                        :bound bound :halt halt :texts texts)))
+                         (when result (return-from map-literal-matches result)))
+                       (loop
+                         (let ((hit (and (< i below) (scan-chunk chunk needle case-fold i below filled other-case))))
+                           (unless hit (return))
+                           (let* ((s (+ pos hit)) (e (+ s n))
+                                  (result (funcall function s e (and texts (text-at hit)) nil)))
+                             (when result (return-from map-literal-matches result))
+                             (setf next e i (+ hit n))))))))))
       nil)))

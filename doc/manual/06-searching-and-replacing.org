@@ -71,6 +71,13 @@ kiwi. As soon as the pattern has a capital, case counts: =Kiwi= finds only
 Kiwi. So you can search loosely most of the time, and type one capital when a
 word is too common.
 
+Ignoring case follows Unicode's simple case folding, in plain text and in a
+regex alike. A letter finds every character that folding makes one with it,
+also where that is more than a capital and a small letter: =s= finds the long
+s (ſ), =k= the Kelvin sign (K), =å= the Ångström sign (Å), and =σ= the final
+sigma (ς) as well as Σ. The Turkish capital İ and dotless ı fold with
+nothing, so =i= does not find them.
+
 *** Regular expressions and plain text
 
 What you type after ~C-s~ is a regular expression, called a regex for short. It
@@ -157,6 +164,11 @@ selected and how many there are. When nothing matches it says =0/0= and
 the search says =No match=. It always stands in the same six columns, so what
 you type does not move as you go from match to match.
 
+The total is what one pass over the text finds, matches never overlapping. A
+search begun inside a run, =aa= from the second a of =aaaaa=, can stand at a
+match that lies across two of those. It then shows the place of the one it
+begins in, so the first number is never larger than the second.
+
 Counting takes time in a large buffer, and Tuatara does it in the background so
 that typing never lags. A text of up to a megabyte is counted at every key. A
 larger one is counted at every key when Tuatara can go through it in about a
@@ -172,7 +184,10 @@ plus what it needs. It will find a match of more than 4 KB that runs across
 lines only when the text after the match is already in view. For a block such
 as =BEGIN[\s\S]*?END= use a thorough command instead. It finds every match of
 up to a megabyte, at up to twice the time. The prompt says =thorough= when it
-is in use. The thorough form of replacing is described in the next section.
+is in use. A replacement, and a count with the =n= flag, is always thorough:
+it finds every match of up to a megabyte, so none is left out for being long.
+The count shown before a search's prompt has the reach of the search itself,
+so the two agree.
 
 #+begin_try Try it, with a list of names
 1. Press ~C-x C-f~, type =~/birds.txt= and press ~RET~. Press ~i~ and type these
@@ -228,7 +243,9 @@ occurrences on 3 lines=.
 Typed at the C-s prompt, a pattern with a =/= in it also replaces, the way it
 does in the Vim editor. A word after the last slash gives flags: =g= replaces
 every match on a line, =c= asks at each match, =n= only counts what would be
-replaced, and =i= or =I= ignores or keeps case.
+replaced, and =i= or =I= ignores or keeps case. A count changes nothing in a
+text of any size, so it also works in a read-only buffer and in a file
+opened safely.
 
 *** What goes in the new text
 
@@ -262,14 +279,31 @@ match, with =Query replacing ... with ...:= and the keys =y n ! . q=:
 key are shown below the question, and a long pattern or replacement is
 shortened on the question's line.
 
+The matches you are asked about are those of the text as it stood when the
+question began. What a replacement writes, or brings next to other text, is
+not asked about again. So ~y~ at every match leaves the same text as ~r r~
+does, and so does ~!~ at the first.
+
 ~M-%~ is the same for plain text, with no special characters to think about.
 ~C-z r q~ is the key for ~r q~ in every state.
 
 When you want to be sure of each change, use the question form. When a
 change is plain and mechanical, use ~r r~ and look at the preview.
 
-If the text you replace can run over many lines, use the thorough forms of
-the commands. They are described under searching, above.
+Text you replace may run over many lines. A replacement finds every match of
+up to a megabyte whole, as the thorough search described above does, at up to
+twice the time for a pattern that can cross lines. A longer match is cut
+short or missed.
+
+*** Replacing in a large text
+
+A replacement over more than 32 MB runs in the background, and the echo area
+says so. ~C-x J~ stops it. When every match stays within one line, the lines
+you can see change at once and the rest follows. A pattern that can take a
+line's end, such as =\n= or =\s+=, is replaced by the background job alone,
+so that the result is what one pass from the start of the text gives. The
+matches still to change are shaded until it is done. Either way one undo
+takes the whole replacement back.
 
 #+begin_try Try it, with a letter
 1. Open =~/letter.txt= and type this text: =Dear Hana,=, a line break,
@@ -370,6 +404,12 @@ followed, so a link in the tree to a file elsewhere is not searched as part of
 it. Each word is a regex, as for ~C-s~, and ~M-r~ switches to plain text, where
 the whole line you typed is found as it stands, spaces and all.
 
+Each file is searched as a text of its own, as if you had opened it and
+searched there. A match never runs from one file into the next. =\A= and
+=\z= match where a file begins and ends, a lookbehind sees nothing of the
+file before, and =foo\n= does not find a last line that has no line break
+after it.
+
 Files that are not text are not searched: binary files, UTF-16 text (it holds
 zero bytes), pictures, archives and encrypted files, and files you may not
 read. The question counts them in brackets, as in =[3 files not searched]=,
@@ -377,6 +417,12 @@ and so does the first line of the list. At most =*search-files-lines-limit*=
 lines are listed. When the search stops there, the question says
 =[first 2,000 lines only]=, the first line of the list says so too, and
 ~M-g n~ says =Line 5 of the first 2,000 found=.
+
+Each key you type stops the search before it and starts a new one, even in
+the middle of a pattern that is slow on some line. A pattern that takes more
+than two seconds on one stretch of text, such as =^(a+)+$= on a long line it
+does not match, is given up, and the question says
+=[slow pattern: search stopped]=. The lines found until then stay listed.
 
 Move down the list with ~C-n~ (modal: ~j~) and ~RET~ opens the file at that
 line. With =*preview-file-search*= set to true, the file of the selected line is

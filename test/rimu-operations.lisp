@@ -1701,6 +1701,38 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
                        (logand #o7777 (tuatara.io:stamp-mode (tuatara.io:path-stamp (namestring (here out name)))))
                        "~a ~a" program name)))))))
 
+(define-test (rimu-operations operation-forgets-sizes-below)
+  ;; a copy of a tree taken in: a size kept under its target while it was written is forgotten, as is one under
+  ;; the directory files were copied to out of evidence; a size kept beside them stays
+  (with-operations-tree (dir)
+    (let* ((top (namestring dir))
+           (stamp (tuatara.io:path-stamp top :follow nil))
+           (deep (concatenate 'string top "out/sub/deep/"))
+           (beside (concatenate 'string top "other/deep/"))
+           (work (concatenate 'string top "work/"))
+           (copied (concatenate 'string work "case/files/")))
+      (flet ((kept-p (directory) (nth-value 1 (gethash directory tuatara.defaults::*rimu-sizes*))))
+        (unwind-protect
+             (progn
+               (ensure-directories-exist (concatenate 'string top "out/"))
+               (dolist (directory (list deep beside copied))
+                 (tuatara.defaults::rimu-keep-size directory stamp 5))
+               (let ((operation (tuatara.defaults::rimu-start-operation
+                                 :copy (list (cons (concatenate 'string top "sub") (concatenate 'string top "out/sub")))
+                                 nil)))
+                 (wait-for-rimu-operations)
+                 (tuatara.runtime:job-take-in operation))
+               (true (probe-file (concatenate 'string top "out/sub/c.txt")) "the tree copied")
+               (false (kept-p deep) "a size kept under the tree written")
+               (true (kept-p beside) "a size kept beside it")
+               (let ((copy (tuatara.defaults::make-evidence-copy '() work)))
+                 (setf (tuatara.runtime:job-status copy) :stopped)
+                 (tuatara.runtime:job-take-in copy))
+               (false (kept-p copied) "a size kept under the directory copied to out of evidence")
+               (true (kept-p beside)))
+          (dolist (directory (list deep beside copied))
+            (remhash directory tuatara.defaults::*rimu-sizes*)))))))
+
 (define-test (rimu-operations archive-password-kept-from-debug-log)
   ;; an archive that turns out no archive once its password is given: the
   ;; failure, with the calls under way, never shows the password

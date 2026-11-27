@@ -477,8 +477,8 @@ case writes it."
   ;; blocks of 12 KB, each after 6 KB of other lines, matched as wholes: typed,
   ;; C-s finds the first, its search starting at the match as the pattern grows;
   ;; repeated from there it misses the second, which needs text more than 4 KB
-  ;; past where it looks, and so does replacing from the start; the thorough
-  ;; twins find them whole, and say so in the prompt
+  ;; past where it looks; the thorough twins find them whole, and say so in the
+  ;; prompt, and replacing from the start finds them whole either way
   (let* ((filler (with-output-to-string (o) (dotimes (i 3000) (format o "y~%"))))
          (block (concatenate 'string "BEGIN" (string #\Newline)
                              (with-output-to-string (o) (dotimes (i 6000) (format o "x~%")))
@@ -496,7 +496,9 @@ case writes it."
       (is = second-start (session-point (nth-value 1 (after (format nil "g e C-r ~a C-r RET" pattern)))))
       (is = (length filler)
           (session-point (nth-value 1 (after (format nil "g e M-x ~a RET ~a C-r RET" (key-string "regex-search-backward-thorough") pattern)))))
-      (is string= text (session-text (nth-value 1 (after (format nil "r r % ~a / Z RET" pattern)))))
+      ;; a replacement is thorough by itself: it leaves no match out for being long
+      (is string= (format nil "~aZ~%~aZ~%" filler filler)
+          (session-text (nth-value 1 (after (format nil "r r % ~a / Z RET" pattern)))))
       (is string= (format nil "~aZ~%~aZ~%" filler filler)
           (session-text (nth-value 1 (after (format nil "M-x ~a RET % ~a / Z RET" (key-string "replace-regexp-thorough") pattern)))))))
   ;; a pattern kept within a line is found the same either way
@@ -1121,6 +1123,16 @@ than holding the run."
          (run-keys (list "C-s ^ $" #'wait-for-search-count :tick "C-g") :text (format nil "a~%~%b~%~%c") :width 80)
          "1/2    Regex search forward: ^$")))
 
+(define-test (incremental-search count-place-never-past-the-total)
+  ;; a search begun inside a run finds matches one scan of the whole text does not: aa from the second
+  ;; a of aaaaa stands across the scan's two, and its place is that of the one it begins in, the first
+  ;; of 2 and then the second, where it once said 3 of 2
+  (dolist (case '(("C-f C-s a a" "1/2") ("C-f C-s a a C-s" "2/2")))
+    (destructuring-bind (keys place) case
+      (let ((frame (run-keys (list keys #'wait-for-search-count :tick "C-g") :text "aaaaa" :width 80)))
+        (true (tuatara.frontend.fake:fake-frame-showing frame (format nil "~a    Regex search" place)) "~a" keys)
+        (false (tuatara.frontend.fake:fake-frame-showing frame "3/2") "~a" keys)))))
+
 (define-test (incremental-search pattern-prompts-alike)
   ;; every question taking a pattern names its kind one way, a thorough regex too, and
   ;; refuses one that cannot be used, saying why
@@ -1152,8 +1164,10 @@ than holding the run."
          (dolist (regex '(nil t))
            (let ((matcher (tuatara.defaults::make-pattern-matcher "zz" :regex regex))
                  (high (tuatara.buffer:buffer-size buffer)))
-             (is eq :stopped (tuatara.defaults::next-line-match buffer matcher regex 0 high (constantly t)))
-             (is = (- high 2) (first (tuatara.defaults::next-line-match buffer matcher regex 0 high)))))
+             (is eq :stopped (tuatara.defaults::next-line-match (tuatara.buffer:buffer-text buffer) matcher regex 0 high
+                                                                (constantly t)))
+             (is = (- high 2)
+                 (first (tuatara.defaults::next-line-match (tuatara.buffer:buffer-text buffer) matcher regex 0 high)))))
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-test (incremental-search literal-return)

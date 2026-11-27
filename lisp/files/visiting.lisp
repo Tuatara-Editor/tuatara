@@ -216,7 +216,7 @@ none; a directory on another machine as its name, /ssh:HOST:/directory/."
         dir
         (tuatara.io:expand-path (if (string= dir "") "./" dir)))))
 
-(defun directory-candidates (expanded chosen &key writing)
+(defun directory-candidates (expanded chosen &key writing cancel)
   "Completion candidates for the entries of the directory EXPANDED (an absolute
 pathname, or the name of a directory on another machine), directories first
 and marked by a trailing slash. Each has its permissions, its size (or what
@@ -227,9 +227,11 @@ NIL, or with something in them chosen, are ranked the latest first
 so a named pipe in it cannot hold the editor up. The candidates of a
 directory are made once while it does not change, not again at each key
 typed in it. The directory is read on the thread calling this, which in a
-question for a file is one of its own (READ-PATH)."
+question for a file is one of its own (READ-PATH). CANCEL, a cons whose car
+turns true once the candidates are no longer wanted, stops the reading of a
+directory on another machine."
   (when (remote-name-p expanded)
-    (return-from directory-candidates (remote-candidates expanded)))
+    (return-from directory-candidates (remote-candidates expanded cancel)))
   (let* ((native (tuatara.io:native expanded))
          (time (let ((stamp (tuatara.io:path-stamp expanded :failure nil))) (and stamp (tuatara.io:stamp-mtime stamp))))
          (kept *file-candidates-kept*))
@@ -445,8 +447,7 @@ A directory whose listing has not ended yet is not listed again."
       (let ((listing (start-gathering
                       "tuatara file names"
                       (lambda (give cancel)
-                        (declare (ignore cancel))
-                        (let ((all (directory-candidates expanded chosen :writing writing)))
+                        (let ((all (directory-candidates expanded chosen :writing writing :cancel cancel)))
                           (funcall give (if keep
                                             (remove-if-not (lambda (c) (funcall keep (candidate-string c))) all)
                                             all)))))))

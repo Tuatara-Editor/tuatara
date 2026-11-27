@@ -1116,7 +1116,7 @@ DIRECTORY; LOG, the log written beside them once done."
 
 (defmethod tuatara.runtime:job-take-in ((job evidence-copy))
   "Say how many files were copied out, each checked, and where the log is; or why not."
-  (rimu-refresh-lists (list (evidence-copy-directory job)))
+  (rimu-refresh-lists (list (evidence-copy-directory job)) :below t)
   (let ((log (evidence-copy-log job)))
     (if (and log (eq (tuatara.runtime:job-status job) :done))
         (message "Copied ~:d file~:p to ~a, each copy's SHA-256 checked against its original; the log is ~a"

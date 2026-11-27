@@ -101,17 +101,21 @@ question for a file, are kept to be offered again (REMOTE-CANDIDATES).")
 directory's name, each (WHEN . CANDIDATES), WHEN the internal real time they
 were read.")
 
-(defun remote-candidates (directory)
+(defun remote-candidates (directory &optional cancel)
   "Completion candidates of the entries of DIRECTORY, a name /ssh:HOST:PATH
 ending in /, as DIRECTORY-CANDIDATES gives those of a directory here:
 directories first, each with what is known of it; read from the server on
 the thread asking, those read for it within *REMOTE-CANDIDATES-SECONDS* given
 again instead, older ones let go of as new ones are kept. A name that would
-not show as it is (REMOTE-CLEAN-NAME-P) is left out."
-  (let ((kept (gethash directory **remote-candidates-kept**)) (now (get-internal-real-time)))
+not show as it is (REMOTE-CLEAN-NAME-P) is left out. CANCEL, a cons whose car
+turns true once they are no longer wanted, stops the reading then, waiting
+for the connection too (*REMOTE-CANCEL*), and none are given."
+  (let ((*remote-cancel* cancel)
+        (kept (gethash directory **remote-candidates-kept**)) (now (get-internal-real-time)))
     (if (and kept (< (- now (car kept)) (* *remote-candidates-seconds* internal-time-units-per-second)))
         (cdr kept)
-        (let ((candidates (read-remote-candidates directory))
+        (let ((candidates (handler-case (read-remote-candidates directory)
+                            (tuatara.runtime:job-stopped () (return-from remote-candidates '()))))
               (oldest (- now (* *remote-candidates-seconds* internal-time-units-per-second))))
           (sb-ext:with-locked-hash-table (**remote-candidates-kept**)
             (maphash (lambda (key value) (when (<= (car value) oldest) (remhash key **remote-candidates-kept**)))
@@ -369,10 +373,6 @@ opened, or says how much has come: of ROLE :REST, :WAITING or :RESUME."
     :verb "read it"
     :left-words "nothing read")
 
-(defconstant +remote-most-arriving+ (ash 1 46)
-  "The most octets a server may say a file holds and have it opened before it
-has all come: what can be mapped into memory, however little of it ever comes.")
-
 (defun remote-early-p (size job)
   "True when a file of SIZE octets, read by JOB, opens before all of it has
 arrived (ARRIVAL): not one read again, which takes the place of its text
@@ -387,14 +387,6 @@ a size past +REMOTE-MOST-ARRIVING+."
   "A function called, with no arguments, on the job reading the rest of a
 file, after each lot of it has come; NIL for none. Tests use it to hold a
 transfer at a known point.")
-
-(defun remote-check-room (copy wanted)
-  "Refuse to go on reading into COPY when the file system holding it would be
-left with less than TUATARA.IO:*SNAPSHOT-FREE-MARGIN* free, WANTED octets more being written."
-  (let ((free (tuatara.io:free-octets (tuatara.io:parent-path copy))))
-    (when (and free (< free (+ wanted tuatara.io:*snapshot-free-margin*)))
-      (refuse "there is no room for the rest here: ~a free, ~a more to come"
-              (octets-words free) (octets-words wanted)))))
 
 (defun read-remote-rest (job)
   "The work of JOB, a REMOTE-READ-JOB for the REST of a file that has opened:
@@ -431,7 +423,7 @@ after it is read, or ended sooner than it said, or room here runs short
        (remote-read-job-directory job)
        (lambda ()
          (remote-download host path (remote-read-job-fd job)
-                          :arrival arrival
+                          :arrival arrival :room (remote-read-job-copy job)
                           :on-piece (lambda ()
                                       (when mapping
                                         (setf (tuatara.text:mapping-holes mapping) (arrival-holes arrival)))
@@ -444,8 +436,6 @@ after it is read, or ended sooner than it said, or room here runs short
                                           (setf (arrival-wanted arrival) nil)
                                           (when wake (funcall wake))))
                                       (when *arrival-hook* (funcall *arrival-hook*))))))
-      (when (< (arrival-end arrival) (arrival-size arrival))
-        (refuse "~a became shorter on the server as it was being read" (remote-name host path)))
       (check-unchanged :torn t)
       (note-remote-copy job :all))))
 
@@ -730,15 +720,12 @@ for the rest (JOB's ARRIVAL and FD). Its attributes as it was read are noted."
                (remote-writing-copy directory
                                     (lambda ()
                                       (setf (remote-file-attributes remote)
-                                            (remote-download host path fd :arrival arrival))))))
+                                            (remote-download host path fd :arrival arrival :room copy))))))
         (if early
             (progn (setf (remote-read-job-fd job) fd
                          (remote-read-job-arrival job) arrival)
-                   (remote-check-room copy (loop for (from . to) in (arrival-holes arrival) sum (- to from)))
                    (sb-posix:ftruncate fd size)
-                   (download)
-                   (when (< (arrival-end arrival) size)
-                     (refuse "~a became shorter on the server as it was being read" (remote-name host path))))
+                   (download))
             (unwind-protect (download)
               (sb-posix:close fd)))))))
 
@@ -1269,7 +1256,9 @@ may be in it. The sum of what was sent is taken likewise."
       (multiple-value-bind (fd check)
           (tuatara.io:create-free-file (tuatara.io:parent-path copy) (lambda (n) (format nil ".check.~d" n)))
         (unwind-protect
-             (progn (unwind-protect (remote-download host path fd) (sb-posix:close fd))
+             (progn (unwind-protect (handler-case (remote-download host path fd :most +remote-hash-most+ :room check)
+                                      (remote-too-large () (refuse "it was changed on the server since it was read")))
+                      (sb-posix:close fd))
                     (unless (equal (file-sha256 check) (remote-file-sum remote))
                       (refuse "it was changed on the server since it was read")))
           (tuatara.io:remove-file check))))
@@ -1339,10 +1328,13 @@ written over whole only after a yes."
 (defmethod tuatara.runtime:job-take-in ((job remote-write-job))
   "Say how sending JOB's copy went; when it failed, its buffer shows as not
 saved again, while it holds the text that was to be sent, and says so when
-it left the file there partly written."
+it left the file there partly written. Either way the sizes rimu kept of the
+directories above the file there are forgotten (RIMU-FORGET-SIZES), as one
+counted while the copy was sent may be of the file before."
   (let* ((buffer (tuatara.runtime:job-buffer job))
          (remote (remote-write-job-remote job))
          (name (remote-name (remote-file-host remote) (remote-file-path remote))))
+    (rimu-forget-sizes (list name))
     (cond ((eq (tuatara.runtime:job-status job) :done)
            (setf (remote-file-attributes remote) (remote-write-job-attributes job)
                  (remote-file-sum remote) (remote-write-job-sum job)

@@ -381,12 +381,15 @@ A line shorter than the column gets its cursor at its end. If lines are
 selected, the first ~t~ puts one cursor on every selected line instead. At the
 start of each line when the selection was made with ~V~, or in the cursor's
 column otherwise. Lines that a fold or a search filter hides get no cursor,
-even past the limit below.
+even past the limit below. A narrowed buffer takes cursors only on the lines of
+the part shown. If it is narrowed while cursors stand outside that part, the
+keys that change text say so and change nothing until you widen it.
 
 Press ~i~ and type, and the text appears at every cursor. Press ~C-g~ and you
 are back in NORMAL state with the cursors still there. Press ~C-g~ again and
 the cursors end. One ~u~ (non-modal: ~C-/~) takes back what was done at all of
-them.
+them. An undo while you are still typing ends the cursors first, so that it too
+takes back all you typed, at every cursor.
 
 #+begin_try Try it, with a list of names
 1. Press ~C-x C-f~, type =~/names.txt= and press ~RET~. Press ~i~ and type four
@@ -430,6 +433,11 @@ each cursor. The table lists the keys that need a word of explanation.
 
 A key the cursors do not know ends them and then does its own work.
 
+While you type at the cursors, a key that deletes beside your cursor deletes as
+many characters at every other cursor as it took at yours. ~C-k~ there takes
+the length of your line's tail from every line, not each line's own tail. To
+kill each line's own tail, press ~C-g~ and then ~D~.
+
 The copy and paste rule is worth a moment. Say you select four lines, one at
 each of four cursors, and press ~y~. The four lines are one kill. ~p~ at the
 same four cursors puts each line back at its own cursor. If you paste a
@@ -449,7 +457,11 @@ sight beyond the limit still works as one. Those out of sight are written to in
 the background as each thing is done, and they move only together: ~h~, ~l~,
 ~g h~ and ~g l~ (non-modal: ~C-b~, ~C-f~, ~C-a~, ~C-e~) move them all alike, and
 ~i~, ~a~, ~I~, ~A~, ~c~ and ~d~ edit at them. Any other key says what works and
-leaves them as they were.
+leaves them as they were. If you undo straight after such an edit, while the
+lines out of sight are still being written, that writing is stopped: the undo
+takes back the lines in sight and the others stay as they were. A redo after
+that brings back only the lines in sight. The same holds for the matches of
+~f~ past its limit.
 
 #+table: commands add-cursor-below add-cursor-above drop-last-cursor align-cursors cursors-select cursors-select-lines cursors-insert cursors-append cursors-insert-line cursors-append-line cursors-open-below cursors-open-above cursors-line-end cursors-change cursors-delete cursors-kill-line cursors-copy cursors-yank cursors-indent cursors-comment cursors-upcase cursors-downcase cursors-capitalise cursors-undo cursors-redo cursors-repeat cursors-replay cursors-run-toggle cursors-run-step-back cursors-run-step-forward cursors-move-past-limit cursors-bank cursors-unbank
 
@@ -486,6 +498,19 @@ is one change, so ~u~ (non-modal: ~C-/~) takes it all back. Case is ignored when
 the pattern has no capital letter. As you type the pattern, the number of
 matches shows before the prompt.
 
+While you type at the matches, a key that deletes just outside the match you
+are in, such as ~DEL~ at its start, deletes the same text beside every other
+match. If a match in sight has other text there, the split ends and the
+deletion is made at yours only. A match out of sight with other text there is
+left as it was when you finish; the others are written, and the echo area says
+how many were left.
+
+Two matches that touch cannot both be places, since a place needs a character
+between it and the next, so ~f~ refuses them and says where they are. Past
+=*split-limit*= the matches near the window are refused the same way when they
+are seen. The writing in the background stops when it finds two that touch, and
+writes nothing out of sight.
+
 If the selection is a rectangle, ~f~ searches its block. With a number first
 it searches each row's whole line.
 
@@ -508,7 +533,10 @@ many matches is limited by =*split-limit*=, and =*split-limit-ask*= lets you
 hold them all even so. A selection of 32 MB or more is searched in the
 background, and so is any selection where the pattern is so slow on its text
 that one step of the search would keep a key waiting. A key pressed while a
-smaller one is searched stops the search and nothing is split.
+smaller one is searched stops the search and nothing is split. When a search
+in the background ends, its matches are held only if the buffer is as it was
+left: if you have selected something, made cursors or made another split
+meanwhile, that stays and the echo area says the matches were not held.
 
 #+table: commands split-selection split-selection-thorough split-wrap
 

@@ -130,6 +130,61 @@ stretch from S to E, the ends of both included."
   (let ((i (tuatara.runtime:bisect (mid 0 (length spans)) (< (cdr (aref spans mid)) s))))
     (and (< i (length spans)) (<= (car (aref spans i)) e))))
 
+(defun mapper-after-sight (mapper lines replaced)
+  "A job's mapper (REWRITE) for a text of which some matches were replaced
+already, those on the lines in sight: MAPPER finds the matches in the text as
+it was before, and each is told where it stands in the text now. REPLACED, a
+vector in order of (START END LENGTH), are the matches replaced, where each
+stood and the octets now in its place; LINES, a vector of (START . END) in
+order, the lines in sight as they were, ends included. A match starting on one
+of them is told as passed over (PASS-OVER), replaced or not, and every other
+as it is. So the job changes what one scan of the text as it was finds off
+those lines, whatever the replacements in sight made of them. The pieces it
+is asked for, in the text now, are taken back to the text before: one
+beginning inside a replacement begins after the match replaced.
+Complexity: O(log of the matches replaced) for each match."
+  (let* ((n (length replaced))
+         (starts (make-array n :element-type 'fixnum)) (ends (make-array n :element-type 'fixnum))
+         (lengths (make-array n :element-type 'fixnum))
+         ;; where each replacement starts in the text now
+         (news (make-array n :element-type 'fixnum)))
+    (declare (type fixnum n))
+    (loop with shift fixnum = 0
+          for k from 0 below n
+          do (destructuring-bind (start end length) (aref replaced k)
+               (setf (aref starts k) start (aref ends k) end (aref lengths k) length
+                     (aref news k) (+ start shift))
+               (incf shift (- length (- end start)))))
+    (flet ((now (at)
+             ;; where AT of the text before, in no match replaced, stands now
+             (declare (type fixnum at))
+             (let ((k (1- (tuatara.runtime:bisect (mid 0 n) (<= (aref ends mid) at)))))
+               (if (minusp k) at (+ (aref news k) (aref lengths k) (- at (aref ends k))))))
+           (before (at)
+             ;; where AT of the text now stood, the end of a match replaced for a place inside its replacement
+             (declare (type fixnum at))
+             (let ((k (1- (tuatara.runtime:bisect (mid 0 n) (< (aref news mid) at)))))
+               (if (minusp k) at (+ (aref ends k) (max 0 (- at (aref news k) (aref lengths k)))))))
+           (replaced-at (s e)
+             (declare (type fixnum s e))
+             (let ((k (tuatara.runtime:bisect (mid 0 n) (< (aref starts mid) s))))
+               (loop while (and (< k n) (= (aref starts k) s))
+                     do (when (= (aref ends k) e) (return k))
+                        (incf k)))))
+      (lambda (function from to halt)
+        (funcall mapper
+                 (lambda (s e m g)
+                   (declare (type fixnum s e))
+                   (let ((k (replaced-at s e)))
+                     (if k
+                         (pass-over function (aref news k) (+ (aref news k) (aref lengths k)))
+                         (let ((at (now s)))
+                           (declare (type fixnum at))
+                           (if (spans-meet-p lines s s)
+                               (pass-over function at (+ at (- e s)))
+                               (funcall function at (+ at (- e s)) m g))))))
+                 (before from) (before to) halt)))))
+
 (defun changes-in-view (rope finder stretches all &key (low 0) keep)
   "What a job at matches changes within STRETCHES, (START . END) of ROPE's text
 shown, as (START END) ranges in order. They are the matches FINDER finds, a
@@ -191,12 +246,14 @@ what it will change in the text shown, as the text stands now
           (when (and (< start end) (not (counting-flags-p flags)))
             (matcher-shading (tuatara.buffer:buffer-text buffer) matcher (list (cons start end)) all :low low)))))))
 
-(defun start-rewrite (buffer line regex low high words flags &key slow skip joins report)
+(defun start-rewrite (buffer line regex low high words flags &key slow mapper joins report)
   "Start replacing, or with the n flag counting, LINE's matches between LOW and
 HIGH of BUFFER in the background (see this file's header), and say so, that
 the pattern is slow on this text first when SLOW is true; the matches a fold
-hides are replaced too, the folds kept. SKIP, a vector of (START . END) in
-order, are lines left as they are, those replaced in sight already; the
+hides are replaced too, the folds kept. MAPPER, when given, a function of
+what the replacement needs of each match (REWRITE-EXPANDER), gives the job's
+mapper in place of one over all the matches (REWRITE-MAPPER-FOR): those
+replaced in sight already are left as they are (MAPPER-AFTER-SIGHT); the
 job's change then joins JOINS for undo, and REPORT says how it ended (both as
 REWRITE takes them). Returns the job, or :QUEUED when another job runs or
 waits in BUFFER: it then waits its turn (QUEUE-IF-BUSY), LOW and HIGH followed
@@ -207,7 +264,7 @@ turn the same way until they are, the editor answering keys meanwhile."
                        (list (cons low :before) (cons high :after))
                        (lambda (low high)
                          (start-rewrite buffer line regex low high words flags
-                                        :slow slow :skip skip :joins joins :report report))
+                                        :slow slow :mapper mapper :joins joins :report report))
                        :shade (matches-shade buffer line regex flags)
                        :counted (not (counting-flags-p flags)))
     (return-from start-rewrite :queued))
@@ -229,15 +286,7 @@ turn the same way until they are, the editor answering keys meanwhile."
         (let* ((job (%make-match-rewrite
                      :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope
                      :low low :high high :words words :what (rewrite-description line words flags)
-                     :mapper (let ((mapper (rewrite-mapper-for rope matcher texts high)))
-                               (if skip
-                                   (lambda (function from to halt)
-                                     (funcall mapper (lambda (s e m g)
-                                                       (if (spans-meet-p skip s s)
-                                                           (pass-over function s e)
-                                                           (funcall function s e m g)))
-                                              from to halt))
-                                   mapper))
+                     :mapper (if mapper (funcall mapper texts) (rewrite-mapper-for rope matcher texts high))
                      :joins joins :report report
                      :expand expand
                      :all (every-match-flags-p flags) :count-only count-only

@@ -384,7 +384,7 @@ a group left with one file leaving it. \\[revert-buffer] compares again."
                                      (let ((marks (tuatara.buffer:buffer-local buffer 'rimu-marks)))
                                        (and marks (plusp (hash-table-count marks)) (rimu-chosen buffer #\>))))))
          (directory (if marked
-                        (tuatara.buffer:buffer-local buffer 'rimu-directory)
+                        (rimu-list-directory buffer)
                         (rimu-search-directory "Find duplicates in: "))))
     (when directory
       (rimu-show-found (list :kind :duplicates :directory directory :hidden hidden

@@ -105,7 +105,7 @@ NIL when there is none.")
   "True when BUFFER, a rimu list, shows a directory on another machine and is
 opened safely."
   (and (tuatara.io:safe-visit-p buffer)
-       (remote-name-p (tuatara.buffer:buffer-local buffer 'rimu-directory))))
+       (remote-name-p (rimu-list-directory buffer))))
 
 (defun rimu-previewing-p (buffer)
   "True when BUFFER is a rimu list, not one made for a preview, with its
@@ -261,7 +261,7 @@ is taken away."
    :follow (lambda (state list)
              (let ((entry (list-entry-at list (tuatara.buffer:buffer-point list))))
                (cond ((and entry (not (eq entry (car (rimu-preview-wanted state)))))
-                      (setf (rimu-preview-wanted state) (cons entry (tuatara.buffer:buffer-local list 'rimu-directory))
+                      (setf (rimu-preview-wanted state) (cons entry (rimu-list-directory list))
                             (rimu-preview-due state)
                             (+ (get-internal-real-time)
                                (round (* *rimu-preview-delay* internal-time-units-per-second)))))
@@ -281,7 +281,7 @@ is taken away."
                           (eq (tuatara.io:sandbox-status-now) :ready)
                           (find-pdf-decoder))
                  (rimu-quick-edit-file state (rimu-preview-buffer-entry state)
-                                       (tuatara.buffer:buffer-local list 'rimu-directory)
+                                       (rimu-list-directory list)
                                        (tuatara.io:safe-visit-p list))
                  ;; the modal keys were taken from the preview this command: from the PDF's view now
                  (modal-sync editor))))))
@@ -307,7 +307,7 @@ preview closed."
     (if (and state (rimu-previewing-p list) (eq (rimu-preview-list-window state) list-window))
         (let ((entry (list-entry-at list (tuatara.buffer:buffer-point list))))
           (rimu-preview-drop-job state)
-          (setf (rimu-preview-wanted state) (cons entry (tuatara.buffer:buffer-local list 'rimu-directory))
+          (setf (rimu-preview-wanted state) (cons entry (rimu-list-directory list))
                 (rimu-preview-shown state) entry)
           (unless (rimu-preview-show state buffer nil entry)
             (display-buffer buffer :other t)))
@@ -648,7 +648,7 @@ file on another machine is opened with \\`RET' instead."
          (list-window (current-window))
          (entry (list-entry-at))
          (why (and entry (rimu-unopenable-reason entry)))
-         (directory (tuatara.buffer:buffer-local list 'rimu-directory))
+         (directory (rimu-list-directory list))
          (state *rimu-preview-state*)
          (place nil))
     (unless (and state (eq (rimu-preview-list-window state) list-window))
@@ -678,7 +678,7 @@ file on another machine is opened with \\`RET' instead."
                (let ((shown (rimu-preview-buffer state)))
                  (unless (and shown (live-buffer-p shown) (rimu-list-p shown)
                               (member (rimu-preview-window state) (editor-windows))
-                              (equal (tuatara.buffer:buffer-local shown 'rimu-directory)
+                              (equal (rimu-list-directory shown)
                                      (directory-name (rimu-path directory entry) :clean t)))
                    (rimu-preview-directory-list state entry directory))
                  (when (rimu-preview-window state)

@@ -588,10 +588,15 @@ lost. ~M-x revert-buffer~ reads the server's version, and then you can copy
 your changes over it. A new name is a new file on the server when you save.
 
 A file with more than one name, or one whose owner a new file cannot be given,
-is written in place, and the echo area says so. If such a write fails halfway,
-the file there is partly written. The buffer keeps your text, and the next save
-asks whether to write it over, whatever the file now holds. Answer =yes=
-to write it whole.
+is written in place, and the echo area says so. So is a file in a directory
+where you may not make a new file, and one whose name is too long for the new
+file's name beside it. If such a write fails halfway, the file there is partly
+written. The buffer keeps your text, and the next save asks whether to write it
+over, whatever the file now holds. Answer =yes= to write it whole.
+
+When the server refuses the new file for another reason, such as a full disk or
+a quota, nothing is written in place. The save fails, the echo area says why,
+and the file on the server is as it was.
 
 Tuatara keeps the file you work on as a copy under =~/.cache/tuatara/remote/=,
 which only you can read. The copy stays in the cache when you kill the buffer,
@@ -671,7 +676,13 @@ in evidence directories are not read for a preview, and a list opened safely has
 no preview.
 
 A server keeps no trash. A file deleted there is deleted for good, and the list
-says so in its question.
+says so in its question. A directory deleted there is looked at again just
+before it is gone into: one replaced by a link meanwhile is deleted as a link,
+and what it leads to is left alone.
+
+A move on a server is a rename there, so it is done only within one account:
+the same name for the server, or the same machine and the same user. Between
+two accounts, copy the file, then delete it.
 
 Evidence directories may be on a server as well. An entry of
 =*evidence-directories*= may name a directory there, and files in it open safely

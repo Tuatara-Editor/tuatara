@@ -97,17 +97,34 @@ newline, which matches a line end of either kind (TUATARA.SYNTAX:BY-PATTERN-P).
                      (values nil (regex-problem e))))
                (error (e) (values nil (regex-problem e))))))))
 
-(defun map-matcher-matches (function rope matcher from to &key (bound to) texts halt empty)
+(defun matcher-within-line-p (matcher)
+  "True when every match of MATCHER lies within one line, and looks at nothing
+after it: literal text found as octets, which holds no line end, or a regular
+expression that surely crosses none (TUATARA.SYNTAX:REGEX-WITHIN-LINE-P)."
+  (or (eq (matcher-kind matcher) :literal)
+      (tuatara.syntax:regex-within-line-p (matcher-scanner matcher))))
+
+(defun matcher-line-alone-p (matcher)
+  "True when no match of MATCHER depends on anything outside the line it lies
+on: literal text found as octets, or a regular expression kept within a line
+that looks neither back nor for the text's ends
+\(TUATARA.SYNTAX:REGEX-LINE-ALONE-P). Files put one after another are then
+searched as one text and each is found in as it would be alone."
+  (or (eq (matcher-kind matcher) :literal)
+      (tuatara.syntax:regex-line-alone-p (matcher-scanner matcher))))
+
+(defun map-matcher-matches (function rope matcher from to &key (bound to) texts halt empty (floor 0))
   "Call FUNCTION with (MATCH-START MATCH-END MATCHED GROUPS) for each match of
 MATCHER in ROPE starting in [FROM, TO) and ending by BOUND, in order, as one
 scan from FROM finds them; MATCHED and GROUPS only with TEXTS, empty matches
-only with EMPTY (literal text has none). True, stopped, when FUNCTION returns
-true; NIL when HALT answers true, or all are done."
+only with EMPTY (literal text has none). A regular expression takes FLOOR
+for where the text starts (TUATARA.SYNTAX:MAP-REGEX-MATCHES). True, stopped,
+when FUNCTION returns true; NIL when HALT answers true, or all are done."
   (if (eq (matcher-kind matcher) :literal)
       (tuatara.syntax:map-literal-matches function rope (matcher-pattern matcher) from to
                                           :bound bound :case-fold (matcher-fold matcher) :texts texts :halt halt)
       (tuatara.syntax:map-regex-matches function rope (matcher-scanner matcher) from to
-                                        :bound bound :texts texts :halt halt :empty empty)))
+                                        :bound bound :texts texts :halt halt :empty empty :floor floor)))
 
 (defun rope-empty-match-at-p (rope scanner position)
   "True when SCANNER, a compiled regular expression, matches nothing just at

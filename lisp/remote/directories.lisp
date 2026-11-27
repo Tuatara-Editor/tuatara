@@ -262,14 +262,15 @@ name no entry can have (TUATARA.IO:ENTRY-NAME-P)."
 (defun remote-copy-down (from to)
   "Copy the file FROM, on another machine, to TO, a new name here, readable
 by you alone: read into a new file beside TO, given TO's name once whole,
-never over a file there; taken away when the copy fails or is stopped."
+never over a file there; taken away when the copy fails or is stopped, or the
+file system here has no room for it (REMOTE-DOWNLOAD's ROOM)."
   (multiple-value-bind (host path) (remote-name-parts from)
     (multiple-value-bind (fd temporary)
         (tuatara.io:create-free-file (tuatara.io:parent-path to)
                                      (lambda (n) (format nil ".~a.~d.part" (tuatara.io:native-file-name to) n)))
       (let ((done nil))
         (unwind-protect
-             (progn (unwind-protect (remote-download host path fd) (sb-posix:close fd))
+             (progn (unwind-protect (remote-download host path fd :room temporary) (sb-posix:close fd))
                     (tuatara.io:rename-path temporary to)
                     (setf done t))
           (unless done
@@ -287,13 +288,9 @@ FROM's permissions, never over a file there (REMOTE-UPLOAD)."
                             :expected (lambda (attributes) (and attributes "a file of that name is there"))))
         (sb-posix:close fd)))))
 
-(defun remote-copy-file (from to &optional size)
+(defun remote-copy-file (from to)
   "Copy the file FROM to TO, a new name, either or both on another machine;
-between two on other machines through a private copy here, deleted after.
-Refused when the file system here has no room for the SIZE octets of a file
-from another machine, when SIZE is given."
-  (when (and size (remote-name-p from) (not (remote-name-p to)))
-    (remote-check-room to size))
+between two on other machines through a private copy here, deleted after."
   (cond ((not (and (remote-name-p from) (remote-name-p to)))
          (if (remote-name-p from) (remote-copy-down from to) (remote-copy-up from to)))
         (t (let ((directory (new-private-directory (private-cache-directory "remote/"))))
@@ -303,12 +300,12 @@ from another machine, when SIZE is given."
                     (remote-copy-up copy to))
                (delete-private-directory directory))))))
 
-(defun remote-copy-tree (from to skip &optional (kind (remote-or-local-kind from)) size (depth 0))
+(defun remote-copy-tree (from to skip &optional (kind (remote-or-local-kind from)) (depth 0))
   "Copy FROM, a file or a directory with all in it, to the new name TO, either
 or both on another machine; a link, and what is neither file nor directory,
 left out, SKIP called with its name and words saying why. KIND, what FROM is
-\(REMOTE-OR-LOCAL-KIND, asked when not given) and SIZE, its octets, are known
-from the listing of the directory holding it. A directory more than
+\(REMOTE-OR-LOCAL-KIND, asked when not given) is known from the listing of the
+directory holding it. A directory more than
 *REMOTE-TREE-DEPTH* levels down is refused."
   (tuatara.runtime:job-check-stop)
   (when (> depth *remote-tree-depth*)
@@ -319,12 +316,11 @@ from the listing of the directory holding it. A directory more than
      (if (remote-name-p to)
          (multiple-value-bind (host path) (remote-name-parts to) (remote-change host :mkdir path))
          (tuatara.io:make-directory to))
-     (loop for (name entry-kind entry-size) in (remote-or-local-entries from)
+     (loop for (name entry-kind) in (remote-or-local-entries from)
            do (if (and (remote-name-p from) (not (remote-clean-name-p name)))
                   (funcall skip (escape-controls (remote-join from name)) "a name that would not show as it is")
-                  (remote-copy-tree (remote-join from name) (remote-join to name) skip entry-kind entry-size
-                                    (1+ depth)))))
-    (:file (remote-copy-file from to size))
+                  (remote-copy-tree (remote-join from name) (remote-join to name) skip entry-kind (1+ depth)))))
+    (:file (remote-copy-file from to))
     (t (funcall skip from (if (eq kind :link) "a link" "neither a file nor a directory")))))
 
 (defun remote-check-writing (name operation &key tree)
@@ -381,10 +377,29 @@ really are there."
              (or (into-p from-path to-path)
                  (into-p (remote-place-real-path from-host from-path) (remote-place-real-path to-host to-path))))))))
 
-(defun remote-delete-tree (name &optional (kind (remote-or-local-kind name)) (depth 0))
+(defun remote-ssh-user (host)
+  "The account name ssh logs in as on HOST, as its configuration gives it (ssh -G), or
+NIL when it says none. ssh -G reaches no machine, but is a program run on the
+thread asking: not for the editor's own thread."
+  (let ((program (and (not (host-refusal host)) (tuatara.io:system-program *ssh-program*))))
+    (and program (cdr (assoc "user" (ssh-settings program host) :test #'string=)))))
+
+(defun remote-same-account-p (from-host to-host)
+  "True when FROM-HOST and TO-HOST, as ssh takes them, reach one account on one
+machine: the same name, or one machine (SSH-MACHINE) and the same user there
+\(REMOTE-SSH-USER)."
+  (or (string= from-host to-host)
+      (and (string= (ssh-machine from-host) (ssh-machine to-host))
+           (let ((user (remote-ssh-user from-host)))
+             (and user (equal user (remote-ssh-user to-host)))))))
+
+(defun remote-delete-tree (name &optional (kind (remote-or-local-kind name) given) (depth 0))
   "Delete NAME, on another machine, for good: a file or a link, or a directory
 with all in it. KIND, what NAME is (REMOTE-OR-LOCAL-KIND), is asked when not given.
-A directory more than *REMOTE-TREE-DEPTH* levels down is refused."
+A directory given as one, as by the listing of the directory holding it, is
+looked at again just before it is gone into, and one that is a link by then
+is deleted as a link, what it leads to left as it is. A directory more than
+*REMOTE-TREE-DEPTH* levels down is refused."
   (tuatara.runtime:job-check-stop)
   (when (> depth *remote-tree-depth*)
     (refuse "~a is more than ~d directories deep to be deleted" name *remote-tree-depth*))
@@ -392,15 +407,19 @@ A directory more than *REMOTE-TREE-DEPTH* levels down is refused."
     (case kind
       ((nil) (refuse "it is not there"))
       (:directory
-       (loop for (entry entry-kind) in (remote-or-local-entries name)
-             do (remote-delete-tree (remote-join name entry) entry-kind (1+ depth)))
-       (remote-change host :rmdir path))
+       (let ((now (if given (remote-or-local-kind name) kind)))
+         (if (eq now :directory)
+             (progn (loop for (entry entry-kind) in (remote-or-local-entries name)
+                          do (remote-delete-tree (remote-join name entry) entry-kind (1+ depth)))
+                    (remote-change host :rmdir path))
+             (remote-delete-tree name now depth))))
       (t (remote-change host :remove path)))))
 
 (defun remote-rimu-work (verb from to skip)
   "Do VERB, one of rimu's (*RIMU-VERBS*), to FROM, and TO, either on another
 machine: :COPY (REMOTE-COPY-TREE, SKIP told of what is left out); :MOVE
-within one machine, a rename there, never over a name there; :TRASH and
+within one account on one machine (REMOTE-SAME-ACCOUNT-P), a rename there,
+never over a name there; :TRASH and
 :DELETE, deleting for good, as a server keeps no trash; the others refused.
 Stopped between requests when the job is asked to stop, the file under way
 taken away. Nothing is begun that would write in evidence there, delete or
@@ -414,8 +433,8 @@ into itself, under any name of its machine."
                    (refuse "it would be copied into itself")))
                (remote-copy-tree from to skip))
         (:move (unless (and (remote-name-p from) (remote-name-p to)
-                            (string= (ssh-machine (remote-name-parts from)) (ssh-machine (remote-name-parts to))))
-                 (refuse "a move is done within one machine: copy it, then delete it"))
+                            (remote-same-account-p (remote-name-parts from) (remote-name-parts to)))
+                 (refuse "a move is done within one account on one machine: copy it, then delete it"))
                (remote-check-writing from "move" :tree t)
                (remote-check-writing to "move")
                (when (remote-into-itself-p from to)
@@ -438,21 +457,36 @@ HOST (REMOTE-LISTING), nothing run there. Links are not followed. SFTP tells
 of no file's identity nor drive, so a file with several names is counted once
 for each, and a drive mounted below is counted in. A directory that cannot be
 read, or lies more than *REMOTE-TREE-DEPTH* levels down, adds nothing; one of
-more than *SFTP-MOST-LISTED* entries adds those listed. WANTED, a function of
-no arguments, is asked before each directory whether the sum is still wanted:
-NIL is given when it says no. A connection lost or not answering in time is
-signalled (TUATARA.IO:FILE-SYSTEM-ERROR)."
-  (let ((total 0) (pending (list (cons directory 0))))
+more than *SFTP-MOST-LISTED* entries adds those listed; so does a name no
+entry can have. The second value is true when none of that happened: every
+directory below was read whole, and the sum leaves nothing out. WANTED, a
+function of no arguments, is asked before each directory whether the sum is
+still wanted:
+NIL is given when it says no; it is asked too while the connection is waited
+for, the wait ending once it says no (*REMOTE-CANCEL*). A connection lost or
+not answering in time is signalled (TUATARA.IO:FILE-SYSTEM-ERROR)."
+  (let ((total 0) (whole t) (pending (list (cons directory 0)))
+        (*remote-cancel* (if wanted (lambda () (not (funcall wanted))) *remote-cancel*)))
     (loop while pending
           do (destructuring-bind (path . depth) (pop pending)
                (when (and wanted (not (funcall wanted)))
                  (return-from remote-tree-size nil))
-               (dolist (entry (handler-case (remote-listing host path)
-                                (sftp-refusal () '())))
-                 (destructuring-bind (name . attributes) entry
-                   (when (tuatara.io:entry-name-p name)
-                     (case (remote-kind attributes)
-                       (:file (incf total (or (getf attributes :size) 0)))
-                       (:directory (when (< depth *remote-tree-depth*)
-                                     (push (cons (concatenate 'string path name "/") (1+ depth)) pending)))))))))
-    total))
+               (multiple-value-bind (entries cut)
+                   (handler-case (remote-listing host path)
+                     (sftp-refusal () (values '() t))
+                     (tuatara.runtime:job-stopped (condition)
+                       (if (and wanted (not (funcall wanted)))
+                           (return-from remote-tree-size nil)
+                           (error condition))))
+                 ;; a directory refused or listed in part leaves the sum short
+                 (when cut (setf whole nil))
+                 (dolist (entry entries)
+                   (destructuring-bind (name . attributes) entry
+                     (if (tuatara.io:entry-name-p name)
+                         (case (remote-kind attributes)
+                           (:file (incf total (or (getf attributes :size) 0)))
+                           (:directory (if (< depth *remote-tree-depth*)
+                                           (push (cons (concatenate 'string path name "/") (1+ depth)) pending)
+                                           (setf whole nil))))
+                         (setf whole nil)))))))
+    (values total whole)))

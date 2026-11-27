@@ -35,11 +35,21 @@ and memory to list them; lower it for a quicker list.
 - a whole number, 1 or more: the lines; 2000 as standard."
   :values (integer 1 *))
 
-(define-record (file-corpus (:constructor make-file-corpus (rope paths starts root)) (:copier nil))
-  "The text of files read for searching: ROPE holds them one after another,
-each ending with a newline; PATHS are their paths from ROOT, and STARTS the
-offset in ROPE where each begins, in the same order."
+(defparameter *search-files-slow-seconds* 2
+  "The seconds a search of files gives a pattern on one stretch of text (some
+64 KB, or a line) before it gives the pattern up as too slow there and says
+so: a pattern that repeats a repeated part can take for ever on a line it
+fails on.")
+
+(define-record (file-corpus (:constructor make-file-corpus (rope paths starts root &optional joined)) (:copier nil))
+  "The text of files read for searching: ROPE holds them one after another;
+PATHS are their paths from ROOT, and STARTS the offset in ROPE where each
+begins, in the same order. JOINED is true when a newline was put after each
+file's text (MAKE-CORPUS), which is no part of the file and which no pattern
+sees (CORPUS-LINES)."
   (rope nil :read-only t :documentation "The text of the files of a FILE-CORPUS, one after another.")
+  (joined nil :read-only t
+              :documentation "True when a newline that is no part of the file follows each file of a FILE-CORPUS.")
   (paths #() :type simple-vector :read-only t :documentation "The paths from the root of the files of a FILE-CORPUS.")
   (starts #() :type simple-vector :read-only t :documentation "Where each file of a FILE-CORPUS begins in its text.")
   (root "" :type string :read-only t :documentation "The directory the paths of a FILE-CORPUS are from."))
@@ -111,9 +121,13 @@ search (CORPUS-LINES); a text smaller than two of them is searched on one.")
 spaces) each a regular expression, all found on the line, in any order; else
 the whole of it as literal text. A line is matched by the longest word when any
 part of a match of it lies on the line, from the line holding the match's first
-octet through the line holding its last, a match never running from one file
-into the next; each such line is given once, when the other words are found on
-it too. A list of (INDEX LINE OFFSET TEXT) in file order, at most MOST
+octet through the line holding its last; each such line is given once, when the
+other words are found on it too. Each file is searched as a text of its own:
+no match runs from one file into the next or takes the newline put after a
+file (FILE-CORPUS-JOINED), \\A and \\z match where the file begins and ends,
+and a lookbehind sees nothing of the file before. The files are searched as one
+text all the same for a pattern that cannot tell (MATCHER-LINE-ALONE-P). A list
+of (INDEX LINE OFFSET TEXT) in file order, at most MOST
 \(*SEARCH-FILES-LINES-LIMIT*), between the octets START and END of its text
 \(all of it by default). INDEX is the file's index and LINE the line's number
 in it (from 1). OFFSET is the offset in the line where the longest word's first
@@ -133,6 +147,8 @@ few milliseconds on each thread, answers true, and a second value true then."
   (let* ((rope (file-corpus-rope corpus))
          (crlf (corpus-crlf corpus))
          (starts (file-corpus-starts corpus))
+         ;; the octets after a file's text that are no part of it
+         (added (if (file-corpus-joined corpus) 1 0))
          (size (min (or end (tuatara.text:rope-octet-length rope)) (tuatara.text:rope-octet-length rope))))
     (labels ((file-end (index)
                (if (< (1+ index) (length starts)) (aref starts (1+ index)) (tuatara.text:rope-octet-length rope)))
@@ -167,11 +183,14 @@ few milliseconds on each thread, answers true, and a second value true then."
                  (declare (type fixnum s file file-limit))
                  (labels ((take (line-start text-end after)
                             (declare (ignore after))
-                            ;; one line for each line matched, when the other words are on it too
+                            ;; one line for each line matched, when the other words are on it too, each
+                            ;; seeing its file's text and no more
                             (when (and (not done)
                                        (every (lambda (matcher)
                                                 (map-matcher-matches (lambda (&rest match) (declare (ignore match)) t)
-                                                                     rope matcher line-start text-end))
+                                                                     rope matcher line-start text-end
+                                                                     :bound (max text-end (- file-limit added))
+                                                                     :floor (aref starts file)))
                                               others))
                               (let ((line (1+ (- (tuatara.text:byte->line rope line-start)
                                                  (tuatara.text:byte->line rope (aref starts file))))))
@@ -186,33 +205,24 @@ few milliseconds on each thread, answers true, and a second value true then."
                             (funcall note-end e)
                             (setf marked (map-match-units #'take #'unit-of start e marked to))
                             done)
-                          (scan-from (at to bound crossing)
-                            ;; the matches from AT below TO seeing no text past BOUND; with
-                            ;; CROSSING, one running past its file's end stops it, and is its start
-                            (let ((crossed nil))
-                              (map-matcher-matches
-                               (lambda (start e m g)
-                                 (declare (ignore m g))
-                                 (if (and crossing (> e (if (>= start file-limit)
-                                                            (file-end (corpus-file-at corpus start))
-                                                            file-limit)))
-                                     (setf crossed start)
-                                     (found start e)))
-                               rope first at to :bound bound :texts nil :halt halt)
-                              crossed)))
+                          (scan-from (at to bound floor)
+                            ;; the matches from AT below TO, the pattern seeing the text from FLOOR to BOUND
+                            (map-matcher-matches (lambda (start e m g) (declare (ignore m g)) (found start e))
+                                                 rope first at to :bound bound :floor floor :texts nil :halt halt)))
                    (when carry
                      (setf file (corpus-file-at corpus from) file-limit (file-end file))
                      (found from carry)
                      (setf from carry))
-                   (let ((bound (if (< from to) (file-end (corpus-file-at corpus (1- to))) to)))
-                     (loop while (and (< from to) (not done))
-                           do (let ((crossed (scan-from from to bound t)))
-                                (if crossed
-                                    ;; a match may not run into the next file: that file's rest searched alone
-                                    (let ((end (file-end (corpus-file-at corpus crossed))))
-                                      (scan-from crossed (min end to) end nil)
-                                      (setf from end))
-                                    (return)))))
+                   (cond ((>= from to))
+                         ;; no match can tell where a file begins or ends: the files searched as one text
+                         ((matcher-line-alone-p first)
+                          (scan-from from to (file-end (corpus-file-at corpus (1- to))) 0))
+                         ;; each file searched as a text of its own, the newline put after it never seen
+                         (t (loop with index = (corpus-file-at corpus from)
+                                  while (and (< from to) (not done) (not (and halt (funcall halt))))
+                                  do (let* ((end (file-end index)) (text-end (- end added)))
+                                       (scan-from from (min to text-end) text-end (aref starts index))
+                                       (setf from end index (1+ index))))))
                    marked))))
       (when (and stop (funcall stop))
         (return-from corpus-lines (values nil t)))
@@ -474,7 +484,7 @@ from disk (LINES-ON-DISK); one that is no text, or cannot be read, as
 
 (defun make-corpus (texts size root)
   "A FILE-CORPUS of TEXTS, each (RELATIVE . OCTETS), SIZE octets with a
-newline after each, their paths from ROOT."
+newline after each (FILE-CORPUS-JOINED), their paths from ROOT."
   (let ((all (make-array size :element-type '(unsigned-byte 8)))
         (paths (make-array (length texts)))
         (starts (make-array (length texts)))
@@ -486,7 +496,7 @@ newline after each, their paths from ROOT."
              (incf at (length octets))
              (setf (aref all at) 10)
              (incf at))
-    (make-file-corpus (tuatara.text:octets->rope all) paths starts root)))
+    (make-file-corpus (tuatara.text:octets->rope all) paths starts root t)))
 
 (defun corpus-range (corpus inside)
   "The octets of CORPUS's text holding the files under INSIDE, a directory's
@@ -572,14 +582,15 @@ encrypted) or not readable" unread))))
     (cond ((and lines files) (format nil "~a. ~a" lines files))
           (t (or lines files)))))
 
-(defun found-lines-note (count most unread)
+(defun found-lines-note (count most unread &optional slow)
   "What the question of a search of files says in brackets of the COUNT lines
 found so far: that they are the first MOST only, when the search stops
-there, and how many files, UNREAD, were not searched; NIL when neither."
-  (cond ((and (>= count most) (plusp unread))
-         (format nil "first ~:d lines only; ~:d file~:p not searched" most unread))
-        ((>= count most) (format nil "first ~:d lines only" most))
-        ((plusp unread) (format nil "~:d file~:p not searched" unread))))
+there, that the pattern was given up as too SLOW on these files, and how
+many files, UNREAD, were not searched; NIL when none of these."
+  (let ((notes (remove nil (list (cond (slow "slow pattern: search stopped")
+                                       ((>= count most) (format nil "first ~:d lines only" most)))
+                                 (and (plusp unread) (format nil "~:d file~:p not searched" unread))))))
+    (and notes (format nil "~{~a~^; ~}" notes))))
 
 (defun search-files-as-read (root prompt &key preview)
   "Ask with PROMPT for words to find in the files under ROOT, read in the
@@ -587,7 +598,10 @@ background meanwhile (GATHER-FILE-TEXTS), or kept read already
 \(*INDEXED-DIRECTORIES*): the lines that have them listed as they are typed,
 and as more files are read; visit the chosen line's file there. Each input is
 searched on a thread of its own, the lines coming in as they are found. A new
-key stops it and starts the next, so that typing never waits. What is typed is
+key stops it and starts the next, so that typing never waits, in the middle
+of a pattern slow on a text too; a pattern that takes more than
+*SEARCH-FILES-SLOW-SECONDS* on one stretch of text is given up, the question
+saying slow pattern. What is typed is
 a regular expression's words, \\<pattern>\\[search-toggle-regex] switching to
 literal text and back, and PROMPT is shown after the kind (Regex search files
 in ~/x/: , Literal search files in ~/x/: , PATTERN-KIND-WORDS). In a directory
@@ -624,6 +638,8 @@ file of the line selected is shown meanwhile, at that line, opened safely
            (searching nil) (searched-input nil) (found '())
            ;; true once the search of the input typed last has ended; the most lines it gives
            (searched-all nil) (most *search-files-lines-limit*)
+           ;; true once that search was given up, its pattern too slow on these files
+           (slow nil)
            ;; true once the lines found are to be listed in a buffer, not one of them visited
            (listing nil)
            ;; whether what is typed is a regular expression's words, else literal text;
@@ -650,7 +666,7 @@ file of the line selected is shown meanwhile, at that line, opened safely
                    (and (< i (length corpora)) (not (car cancel)) (nth i corpora))))
                (start-search (input)
                  (when searching (stop-gathering searching))
-                 (setf searched-input (list input regex) fresh t searched-all nil unread-on-disk 0
+                 (setf searched-input (list input regex) fresh t searched-all nil slow nil unread-on-disk 0
                        searching
                        (start-gathering
                         "tuatara searching files"
@@ -687,7 +703,8 @@ file of the line selected is shown meanwhile, at that line, opened safely
                                          (funcall give (list :unread skipped))))))))
                             (when index
                               (sb-ext:atomic-decf (car *index-searches*))
-                              (note-sign-work :searching editor)))))))
+                              (note-sign-work :searching editor))))
+                        :slow *search-files-slow-seconds*)))
                (take ()
                  (let ((changed (shiftf toggled nil)) (working nil))
                    (when reading
@@ -715,7 +732,9 @@ file of the line selected is shown meanwhile, at that line, opened safely
                              ;; the search ended with nothing: the lines before go too
                              ((and done fresh)
                               (setf found '() fresh nil changed t)))
-                       (if done (setf searched-all t) (setf working t))))
+                       (cond ((not done) (setf working t))
+                             ((gathering-slow-p searching) (unless slow (setf slow t changed t)))
+                             (t (setf searched-all t)))))
                    ;; while files are read: how many so far
                    (values changed working (and (not read-all) (files-read)))))
                (lines (input)
@@ -746,7 +765,8 @@ file of the line selected is shown meanwhile, at that line, opened safely
                                                    (pattern-prompt regex prompt
                                                                    (or (problem (editor-minibuffer-text *editor*))
                                                                        (found-lines-note (length found) most
-                                                                                         (+ unread unread-on-disk)))))
+                                                                                         (+ unread unread-on-disk)
+                                                                                         slow))))
                                                  #'lines
                                                  :separator (code-char 0) :filter nil :require-match t
                                                  :source #'take :keymap *search-files-keymap*

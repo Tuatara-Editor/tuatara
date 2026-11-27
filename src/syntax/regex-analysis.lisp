@@ -147,10 +147,12 @@ its lower case (ODD-CASES)."
 octets, the octets of its other case in them when CASE-FOLD
 \(CASE-OCTET-SETS). NIL when CHAR cannot be told by its octets. That is a
 newline, which matches a carriage return and line feed (CR LF) too, a raw
-octet's character, or a letter whose cases are written in different numbers
-of octets."
+octet's character, a letter whose cases are written in different numbers of
+octets, or with CASE-FOLD a character past ASCII that an ASCII letter matches
+too (FOLDS-WITH-ASCII-P)."
   (let ((code (char-code char)))
     (cond ((or (char= char #\Newline) (tuatara.text:raw-byte-code-p code)) nil)
+          ((and case-fold (folds-with-ascii-p char)) nil)
           ((and case-fold (both-case-p char)) (case-octet-sets char))
           (t (map 'list #'octet-set (tuatara.text:string-octets (string char)))))))
 
@@ -318,6 +320,15 @@ crossing."
                         (t t))))))
     (and (walk tree) t)))
 
+(defun line-alone-p (tree)
+  "True when a match of the parse TREE, one that lies within a line
+\(CROSSES-LINES-P says so), depends on nothing outside that line: it has no
+lookbehind, which may look into the line before, and none of \\A, \\z and
+\\Z, which tell where the text begins and ends. Such a pattern finds the
+same in a file whatever stands before and after it."
+  (not (tree-has tree :positive-lookbehind :negative-lookbehind :modeless-start-anchor :modeless-end-anchor
+                 :modeless-end-anchor-no-newline)))
+
 (defun tree-has (tree &rest keywords)
   "True when one of KEYWORDS occurs anywhere in the parse TREE."
   (labels ((walk (x) (or (and (symbolp x) (member x keywords)) (and (consp x) (or (walk (car x)) (walk (cdr x)))))))
@@ -338,26 +349,45 @@ choices does."
     (walk tree)))
 
 (define-record (regex-traits (:constructor make-regex-traits
-                                          (&key needle shape fold prefix line-bound end-anchored reach context plain))
+                                          (&key needle shape fold variants narrow prefix line-bound alone end-anchored
+                                             reach context plain))
                             (:copier nil))
   "What COMPILE-REGEX learnt about a pattern for scanning a rope. NEEDLE is the
 octets of text every match holds (ASCII case folded when FOLD), or NIL. SHAPE,
 when it tells more than NEEDLE, is a vector of octet sets (REQUIRED-SHAPE)
-every match holds in its place, or NIL. PREFIX is true when every match starts
-with the one or the other. LINE-BOUND is true when every match lies within a
-line. END-ANCHORED is true when the pattern uses \\z or \\Z, which only match
-at the end of the text. REACH is the octets past the stretch a match starts in
-that a scan looks, +REGEX-OVERLAP+ or for a thorough scanner
-*REGEX-LONGEST-MATCH*. CONTEXT is the octets before a window's range decoded
-with it, enough for the longest lookbehind. PLAIN is the scanner for text
-without a carriage return, or NIL when it is the same."
+every match holds in its place, or NIL. VARIANTS are the octets of the
+characters past ASCII that a letter of the pattern is one with when case is
+ignored (FOLD-VARIANTS): a match may hold one in place of a letter of NEEDLE or
+SHAPE, so where one stands is looked at as where they stand is. NARROW, for
+such a pattern, is a cons of its scanners without those characters, the one for
+any text and the one for text without a carriage return (or NIL when they are
+the same): a window that is all ASCII is searched with them. There are none
+when a character of the pattern past ASCII is one with an ASCII letter
+\(FOLDS-WITH-ASCII-P), as such a window may then hold what only the pattern
+folded finds. PREFIX is true when every match starts with the one or the other.
+LINE-BOUND is true when every match lies within a line. ALONE is true when,
+more than that, no match depends on anything outside its line (LINE-ALONE-P).
+END-ANCHORED is true when the pattern uses \\z or \\Z, which only match at the
+end of the text. REACH is the octets past the stretch a match starts in that a
+scan looks, +REGEX-OVERLAP+ or for a thorough scanner *REGEX-LONGEST-MATCH*.
+CONTEXT is the octets before a window's range decoded with it, enough for the
+longest lookbehind. PLAIN is the scanner for text without a carriage return, or
+NIL when it is the same."
   (needle nil :documentation "The octets of text every match of the pattern holds, or NIL.")
   (shape nil :documentation "The octet sets every match of the pattern holds
 in their place, or NIL.")
   (fold nil :documentation "True when the needle is ASCII case folded and is looked for so.")
+  (variants nil :documentation "The octets of each character past ASCII a letter of
+the pattern is one with when case is ignored, a list of octet vectors.")
+  (narrow nil :documentation "The pattern's scanners for text that is all
+ASCII, a cons of the one for any line ends and the one for none with a
+carriage return, or NIL: when no letter of it folds with a character past
+ASCII, and when a character of it past ASCII folds with an ASCII letter.")
   (prefix nil :documentation "True when every match of the pattern starts
 with its needle or shape.")
   (line-bound nil :documentation "True when every match of the pattern lies within a line.")
+  (alone nil :documentation "True when no match of the pattern depends on
+anything outside the line it lies on.")
   (end-anchored nil :documentation "True when the pattern matches only at
 the end of the text (\\z, \\Z).")
   (reach +regex-overlap+ :documentation "Octets past the stretch a match starts in that
@@ -442,6 +472,116 @@ plain: a tree that is a string alone is given as a sequence."
                    (t (cons (first node) (mapcar (lambda (child) (walk child single multi behind)) (rest node)))))))
     (let ((walked (walk tree nil t nil)))
       (if (stringp walked) (list :sequence walked) walked))))
+
+(defun fold-tree (tree case-fold)
+  "TREE, a cl-ppcre parse tree, with each character it matches ignoring case
+that is one with more than its other case (FOLD-CLASS) made the set of all of
+them: s also the long s, k the Kelvin sign, sigma the final sigma, as Unicode
+simple case folding has it; a set holding such a character gains the others,
+and so does a range holding a letter of theirs that has two cases. CASE-FOLD
+tells whether the pattern ignores case where it sets no flag of its own; (?i)
+and (?-i) turn it on and off for what follows them, and a group's own for the
+group. As a second value, every such character met. TREE itself when it has
+none."
+  (let ((met '()))
+    (labels ((mode-after (flags fold)
+               (cond ((member :case-insensitive-p flags) t)
+                     ((member :case-sensitive-p flags) nil)
+                     (t fold)))
+             (folds-of (char)
+               (let ((class (fold-class char)))
+                 (when class (pushnew char met))
+                 class))
+             (widened-items (items)
+               ;; the items of a set, and the characters those of them fold with
+               (let ((more '()))
+                 (dolist (item items)
+                   (cond ((characterp item)
+                          (loop for other across (or (folds-of item) "") do (pushnew other more)))
+                         ;; a range gains what a letter in it folds with, not what a sign in it does:
+                         ;; a to z the long s, but all past ASCII no k for the Kelvin sign in it
+                         ((and (consp item) (eq (first item) :range))
+                          (maphash (lambda (char class)
+                                     (when (and (both-case-p char) (char<= (second item) char (third item)))
+                                       (pushnew char met)
+                                       (loop for other across class do (pushnew other more))))
+                                   **fold-classes**))))
+                 (append items (set-difference more items))))
+             (walk (node fold)
+               (cond ((characterp node)
+                      (let ((class (and fold (folds-of node))))
+                        (if class (cons :char-class (coerce class 'list)) node)))
+                     ((stringp node)
+                      (if (and fold (some #'fold-class node))
+                          (cons :sequence
+                                (let ((parts '()) (start 0))
+                                  (loop for i from 0 below (length node)
+                                        do (when (fold-class (char node i))
+                                             (when (< start i) (push (subseq node start i) parts))
+                                             (push (walk (char node i) t) parts)
+                                             (setf start (1+ i))))
+                                  (when (< start (length node)) (push (subseq node start) parts))
+                                  (nreverse parts)))
+                          node))
+                     ((atom node) node)
+                     ((member (first node) '(:char-class :inverted-char-class))
+                      (if fold (cons (first node) (widened-items (rest node))) node))
+                     ((eq (first node) :sequence)
+                      ;; inline flags change the mode for the rest of the sequence
+                      (let ((fold fold))
+                        (cons :sequence
+                              (loop for child in (rest node)
+                                    collect (if (and (consp child) (eq (first child) :flags))
+                                                (progn (setf fold (mode-after (rest child) fold)) child)
+                                                (walk child fold))))))
+                     ((eq (first node) :group)
+                      (let ((flags (butlast (rest node))))
+                        (append (list :group) flags (list (walk (car (last node)) (mode-after flags fold))))))
+                     ((eq (first node) :named-register)
+                      (list :named-register (second node) (walk (third node) fold)))
+                     ((member (first node) '(:property :inverted-property :back-reference :filter :flags)) node)
+                     (t (cons (first node) (mapcar (lambda (child) (walk child fold)) (rest node)))))))
+      (let ((walked (walk tree case-fold)))
+        (if met (values walked met) (values tree nil))))))
+
+(defun text-end-filter (position)
+  "A cl-ppcre filter standing for \\z: POSITION when the text scanned ends
+there and that is where the text the pattern may see ends, not a window cut
+short of it (*WINDOW-CUT*); else NIL."
+  (and (= position cl-ppcre::*end-pos*) (null *window-cut*) position))
+
+(defun text-end-or-last-newline-filter (position)
+  "A cl-ppcre filter standing for \\Z: POSITION when the text the pattern may
+see ends there, or one newline that ends it stands there; else NIL. Where
+the text scanned is a window cut short of that end (*WINDOW-CUT*), the rope
+tells what is left after it (*WINDOW-ROPE*)."
+  (let ((end cl-ppcre::*end-pos*) (cut *window-cut*))
+    (declare (type fixnum position end))
+    (cond ((= position end)
+           (and (or (null cut)
+                    (destructuring-bind (rope context octet bound) *window-rope*
+                      (declare (ignore context octet))
+                      (and (= (1+ cut) bound) (= 10 (tuatara.text:rope-octet rope cut)))))
+                position))
+          ((and (null cut) (= position (1- end)) (char= (char cl-ppcre::*string* position) #\Newline))
+           position))))
+
+(defun text-end-tree (tree)
+  "TREE, a cl-ppcre parse tree, with \\z and \\Z made filters that match at
+the end of the text the pattern may see and not at the end of each window of
+it a scan tries the pattern on (TEXT-END-FILTER,
+TEXT-END-OR-LAST-NEWLINE-FILTER). TREE itself when it has neither."
+  (if (tree-has tree :modeless-end-anchor :modeless-end-anchor-no-newline)
+      (labels ((walk (node)
+                 (cond ((eq node :modeless-end-anchor-no-newline) (list :filter #'text-end-filter 0))
+                       ((eq node :modeless-end-anchor) (list :filter #'text-end-or-last-newline-filter 0))
+                       ((atom node) node)
+                       ((member (first node) '(:char-class :inverted-char-class :property :inverted-property
+                                               :back-reference :filter :flags))
+                        node)
+                       (t (cons (first node) (mapcar #'walk (rest node)))))))
+        (walk tree))
+      tree))
 
 (defun tree-max-octets (tree)
   "The most octets a match of TREE, a cl-ppcre parse tree, and the text it

@@ -1328,6 +1328,27 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
         (true (search "tracked-one  lisp/a.lisp" out) "~a" out)
         (false (search "untracked-one" out) "~a" out)))))
 
+(define-test (tools possible-copies-finds-short-alike-bodies)
+  ;; two short functions alike but for one call are a pair in --bodies, though each body is under the length long
+  ;; bodies are compared at; a short body is never paired with a long one
+  (with-test-directory (directory)
+    (write-test-file directory "r/lisp/a.lisp"
+                     (format nil "(in-package #:one)~%(defun until-shown ()~%  \"When.\"~%  ~
+                                  (+ (get-internal-real-time) (ceiling (* *wait* internal-time-units-per-second))))~%"))
+    (write-test-file directory "r/lisp/b.lisp"
+                     (format nil "(in-package #:one)~%(defun deadline-after (seconds)~%  \"When.\"~%  ~
+                                  (+ (get-internal-real-time) (round (* seconds internal-time-units-per-second))))~%"))
+    (write-test-file directory "r/test/api/reuse-index.txt" "")
+    (let ((r (uiop:native-namestring (merge-pathnames "r/" directory))))
+      (uiop:run-program (list "bash" "-c" "cd \"$1\" && git init -q && git add . &&
+                                           git -c user.name=t -c user.email=t@example.invalid commit -q -m x"
+                              "_" r))
+      (let ((out (uiop:run-program (list "python3" "-I" (tools-script "possible-copies.py") "--bodies"
+                                         "--threshold" "30")
+                                   :directory r :output :string)))
+        (true (search "until-shown" out) "~a" out)
+        (true (search "deadline-after" out) "~a" out)))))
+
 (define-test (tools benchmark-counts-a-one-octet-needle-once)
   ;; the benchmark counts what a file holds chunk by chunk; a needle of one octet at the start of the first chunk is
   ;; counted once, not again with the next chunk

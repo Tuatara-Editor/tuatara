@@ -175,17 +175,33 @@ rather read them as numbers, as the =chmod= command does, set
 
 ~H~ shows the names that start with a dot. ~s~ swaps the order between by
 name and by time, with the most recently changed first. The mode line says
-which one is in force. ~S~ shows a size before each name. For a directory it is
-the size of everything inside, and it is worked out in the background, so the
-column fills in after a moment while you carry on. In a list of a directory on
-another machine, each directory below is read over the list's connection, one
-at a time, and nothing is run on the server. The server does not say which
-names are one file, nor where another drive is mounted, so a file with several
-names is counted once for each, and a drive mounted below is counted in. A
-connection that is lost or too slow ends the sizes, and those not yet found
-stay empty. ~G~ shows, after each
-name, when the file was last committed to git and the first line of what the
-commit said. Chapter 15 describes git.
+which one is in force. ~S~ shows a size before each name. A file's size shows
+at once. For a directory it is the size of everything inside, and it is worked
+out in the background while you carry on: a faint … stands before each
+directory not counted yet, and its size takes its place as soon as that
+directory is done. The sizes found are kept, in memory only, so a list you come
+back to has something to show at once. A size kept shows faint: it is what the
+directory took when it was last counted, and something deep inside may have
+changed since. Every directory is counted again each time the list is read and
+each time you show the column, and the faint size gives way to the new one, in
+the colour of sizes, as soon as that directory is done. So a size in the colour
+of sizes was counted for the list you see, and a faint one is from before. Rimu
+forgets a kept size when it sees a change in that directory or one under it,
+when you save a file under it, and for everything under a list you read again
+with ~g r~ (non-modal: ~M-x revert-buffer~); a faint … stands there until it is
+counted. A directory holding one you may not read shows the size of what could
+be counted, and that size is not kept. In a list of a directory on another
+machine, each directory below is read over the list's connection, one at a
+time, and nothing is run on the server. The server does not say which names are
+one file, nor where another drive is mounted, so a file with several names is
+counted once for each, and a drive mounted below is counted in. A size from
+another machine is kept, and shown faint the next time, when the walk read
+every directory below. A sum that leaves something out is shown but never kept:
+a directory the server refused, one listed only in part because it holds too
+many entries, or one deeper than the walk goes. A connection that is lost or
+too slow ends the sizes, and those not yet found stay empty. ~G~ shows, after
+each name, when the file was last committed to git and the first line of what
+the commit said. Chapter 15 describes git.
 
 The standard for each of these is off, with directories first and the order by
 name. The settings below change the standard for every list.

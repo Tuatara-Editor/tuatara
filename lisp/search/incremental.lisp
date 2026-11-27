@@ -479,13 +479,17 @@ match, point moved to it, or the search failing. True when it was taken in."
               (t (setf (search-state-failing state) t))))
       t)))
 
-(define-record (search-count (:constructor make-search-count (for total anchor before)) (:copier nil))
+(define-record (search-count (:constructor make-search-count (for total anchor through)) (:copier nil))
   "The matches of a search counted FOR what SEARCH-COUNT-KEY gives: TOTAL, how
-many there are, and BEFORE, how many come before the match starting at ANCHOR."
+many one scan of the text searched finds, and THROUGH, how many of them start
+at or before ANCHOR, where the match the search stands at starts. That is
+the place of that match among them; of a match the scan does not find, one
+found from where the search began and lying across two of the scan's, the
+place of the scan's match it begins in. So the place is never past TOTAL."
   (for nil :read-only t :documentation "What the matches of a SEARCH-COUNT were counted for (SEARCH-COUNT-KEY).")
   (total 0 :read-only t :documentation "How many matches a SEARCH-COUNT found.")
-  (anchor nil :read-only t :documentation "Where the match a SEARCH-COUNT counts the matches before starts, or NIL.")
-  (before 0 :read-only t :documentation "How many matches come before a SEARCH-COUNT's ANCHOR."))
+  (anchor nil :read-only t :documentation "Where the match a SEARCH-COUNT tells the place of starts, or NIL.")
+  (through 0 :read-only t :documentation "How many matches start at or before a SEARCH-COUNT's ANCHOR."))
 
 (defun search-count-hidden (count)
   "What of the text search filters hid when COUNT, a SEARCH-COUNT, was counted."
@@ -512,23 +516,29 @@ for the text it searches), or NIL."
   "Which match STATE's search is at, from its count (SEARCH-STATE-COUNT), or
 NIL when that is to be counted again: the place of the match last counted
 for moved by the matches counted between the two, while they stand within
-*SEARCH-COUNT-NEAR* of each other."
+*SEARCH-COUNT-NEAR* of each other. Never less than 1 nor more than the
+count's total."
   (let ((count (search-state-count state))
         (start (car (search-state-match state))))
     (when (and count (equal (search-count-for count) (search-count-key state)))
-      (let ((anchor (search-count-anchor count)) (before (search-count-before count)))
-        (cond ((null anchor) nil)
-              ((= start anchor) (1+ before))
-              ((<= (abs (- start anchor)) *search-count-near*)
-               (let* ((rope (tuatara.buffer:buffer-text (current-buffer)))
-                      (between (count-line-matches rope (search-matcher state) (min start anchor) (max start anchor)
-                                                   :bound (nth-value 1 (search-bounds state))
-                                                   :hidden (search-count-hidden count)))
-                      (before (if (> start anchor) (+ before between) (- before between))))
-                 ;; a count of its own: an earlier state keeps the one it had
-                 (setf (search-state-count state)
-                       (make-search-count (search-count-for count) (search-count-total count) start before))
-                 (1+ before))))))))
+      (let ((anchor (search-count-anchor count)) (through (search-count-through count)))
+        (flet ((place (through) (min (search-count-total count) (max 1 through))))
+          (cond ((null anchor) nil)
+                ((= start anchor) (place through))
+                ((<= (abs (- start anchor)) *search-count-near*)
+                 (let* ((rope (tuatara.buffer:buffer-text (current-buffer)))
+                        (bound (nth-value 1 (search-bounds state)))
+                        (from (min start anchor))
+                        ;; from the earlier of the two through the later: the scan finds the earlier first
+                        (between (count-line-matches rope (search-matcher state) from
+                                                     (min bound (tuatara.text:rope-next-boundary
+                                                                 rope (max start anchor)))
+                                                     :bound bound :hidden (search-count-hidden count)))
+                        (through (if (> start anchor) (+ through (1- between)) (- through (1- between)))))
+                   ;; a count of its own: an earlier state keeps the one it had
+                   (setf (search-state-count state)
+                         (make-search-count (search-count-for count) (search-count-total count) start through))
+                   (place through)))))))))
 
 (defun update-search-count (state)
   "Keep STATE's count of matches (SEARCH-STATE-COUNT) up to date while it is a
@@ -546,10 +556,10 @@ pauses (*TYPING-PAUSE*). True while one goes on, or the seconds still to wait."
     (when result
       (setf (search-state-counting state) nil)
       (unless (eq (first result) :error)
-        (destructuring-bind (total anchor before) result
+        (destructuring-bind (total anchor through) result
           (setf (search-state-count state)
                 (make-search-count (first (tuatara.runtime:background-work-key counting))
-                                   (or total (search-count-total (search-state-count state))) anchor before))))))
+                                   (or total (search-count-total (search-state-count state))) anchor through))))))
   (let ((match (search-state-match state))
         (failing (search-state-failing state)))
     (if (or (search-replacing-p state) (search-state-filtering state) (search-state-background state)
@@ -588,8 +598,11 @@ pauses (*TYPING-PAUSE*). True while one goes on, or the seconds still to wait."
                                                 (if status (return-from counting (list :error status)) count))))
                                        (if (null start)
                                            (list (count-to high) nil nil)
-                                           ;; the total stands while only the match moved
-                                           (list (and (not known) (count-to high)) start (count-to start))))))))
+                                           ;; the total stands while only the match moved; the scan's
+                                           ;; matches up to the one at hand, that one counted
+                                           (list (and (not known) (count-to high)) start
+                                                 (count-to (min high (tuatara.text:rope-next-boundary
+                                                                      rope start))))))))))
                               "tuatara search count" (editor-job-waker)))))
                    t))))))
 
@@ -1420,10 +1433,10 @@ buffer after a % in front; no flags, a / in the pattern or the replacement
 written \\/; the word or symbol at point offered as the pattern, selected. &
 and \\1 in the replacement stand for the match and its first group. How many
 matches there are to ask at shows before the prompt as the pattern is typed. A
-match in folded text is asked at too, its fold opened first. A match of more
-than 4 KB that runs across lines and needs text further on can be missed, as
-regex-search-forward says; \\[query-replace-regexp-thorough] finds every match
-of up to a megabyte."
+match in folded text is asked at too, its fold opened first. Every match of
+up to a megabyte is found, however many lines it runs across, as
+\\[regex-search-forward-thorough] finds them: a search may miss a long match,
+a replacement does not."
   (search-start t t :preset '(:flags "c" :every-after-percent t) :suggest t))
 
 (define-command replace-regexp ()
@@ -1440,10 +1453,10 @@ the match and its first group. How many matches it replaces shows before the
 prompt as the pattern is typed.
 On a word or symbol, with no region, it is offered as the pattern (as whole
 words), selected: \\[search-exit] takes it, typing takes its place. The
-matches in folded text are replaced too, the folds kept folded. A match of
-more than 4 KB that runs across lines and needs text further on can be
-missed, as regex-search-forward says; \\[replace-regexp-thorough] finds every
-match of up to a megabyte."
+matches in folded text are replaced too, the folds kept folded. Every match
+of up to a megabyte is found, however many lines it runs across, as
+\\[regex-search-forward-thorough] finds them: a search may miss a long match,
+a replacement does not."
   (search-start t t :preset '(:flags "" :every-after-percent t) :suggest t))
 
 ;;; Thorough: every match of up to a megabyte found whole

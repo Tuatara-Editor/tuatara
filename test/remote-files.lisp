@@ -600,7 +600,11 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                  (remote-session (format nil "C-x C-f C-a C-k ~a C-j"
                                          (typed-keys (concatenate 'string "/ssh:box:" there)))
                                  (list :until #'remote-list-read)
-                                 "S" (list :until (lambda () (vectorp (cells)))))
+                                 "S" (list :until (lambda ()
+                                                    (let ((cells (cells)))
+                                                      (and (vectorp cells)
+                                                           (not (find tuatara.defaults::+rimu-size-unknown+
+                                                                      cells)))))))
                  (let* ((list (remote-rimu-buffer))
                         (entries (tuatara.defaults::rimu-listing-entries
                                   (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-listing))))
@@ -611,6 +615,144 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                      (is string= (tuatara.defaults::rimu-size-words 250) (size-of "sub"))
                      (is string= (tuatara.defaults::rimu-size-words 7) (size-of "c.txt")))))
             (kill-remote-lists))))))
+
+(define-test (remote-files sizes-there-kept-going-in-and-out)
+  ;; S in a list there, then into a directory and back out: each list shows its sizes, and Documents is walked
+  ;; again for the list come back to
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((there (namestring dir))
+               (top (format nil "/ssh:box:~a" there))
+               (documents (format nil "/ssh:box:~aDocuments/" there))
+               (walks 0))
+          (put-file (ensure-directories-exist (merge-pathnames "Documents/big/b.txt" dir))
+                    (make-string 300 :initial-element #\b))
+          (put-file (merge-pathnames "Documents/c.txt" dir) "seven..")
+          (sb-int:encapsulate 'tuatara.defaults::remote-tree-size 'count
+                              (lambda (remote-tree-size host directory &rest arguments)
+                                (when (equal directory (concatenate 'string there "Documents/")) (incf walks))
+                                (apply remote-tree-size host directory arguments)))
+          (unwind-protect
+               (remote-session (format nil "C-x C-f C-a C-k ~a C-j" (typed-keys top)) (list :until #'remote-list-read)
+                               "S" (list :until (rimu-size-shown top "Documents" 307) 20)
+                               "RET" (list :until (rimu-size-shown documents "big" 300) 20)
+                               "h" (list :until (rimu-size-shown top "Documents" 307) 20))
+            (sb-int:unencapsulate 'tuatara.defaults::remote-tree-size 'count)
+            (kill-remote-lists))
+          (is = 2 walks "Documents walked for each list of its directory")
+          (true (nth-value 1 (gethash documents tuatara.defaults::*rimu-sizes*)) "the size of a whole walk there kept")
+          (rimu-forget)))))
+
+(define-test (remote-files sizes-walk-there-says-when-whole)
+  ;; the walk there gives true as its second value only when it read every directory below whole: not past the
+  ;; depth it goes to, not when a listing was cut short, not when the server refused a directory
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((there (namestring dir))
+               (sub (concatenate 'string there "sub/"))
+               (closed (concatenate 'string sub "closed/")))
+          (put-file (ensure-directories-exist (merge-pathnames "sub/deeper/b.txt" dir))
+                    (make-string 50 :initial-element #\b))
+          (put-file (ensure-directories-exist (merge-pathnames "sub/closed/c.txt" dir)) "seven..")
+          (put-file (merge-pathnames "sub/a.txt" dir) (make-string 100 :initial-element #\a))
+          (flet ((walk () (multiple-value-list (tuatara.defaults::remote-tree-size "box" sub))))
+            (is equal '(157 t) (walk) "a walk that read everything")
+            (let ((tuatara.defaults::*remote-tree-depth* 0))
+              (is equal '(100 nil) (walk) "a walk that left out what lies too deep"))
+            (let ((tuatara.defaults::*sftp-most-listed* 1))
+              (false (second (walk)) "a walk of a listing cut short said to be whole"))
+            (sb-posix:chmod closed 0)
+            (unwind-protect
+                 (is equal '(150 nil) (walk) "a walk the server refused a directory")
+              (sb-posix:chmod closed #o755)))))))
+
+(define-test (remote-files sizes-there-kept-only-when-whole)
+  ;; the size of a walk there is kept only when the walk says it read every directory below
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((there (namestring dir))
+               (top (format nil "/ssh:box:~a" there))
+               (documents (format nil "/ssh:box:~aDocuments/" there))
+               (whole nil)
+               (kept-of-part nil)
+               (kept-of-whole nil))
+          (put-file (ensure-directories-exist (merge-pathnames "Documents/big/b.txt" dir))
+                    (make-string 300 :initial-element #\b))
+          (sb-int:encapsulate 'tuatara.defaults::remote-tree-size 'whole
+                              (lambda (remote-tree-size &rest arguments)
+                                (values (apply remote-tree-size arguments) whole)))
+          (flet ((kept-p () (nth-value 1 (gethash documents tuatara.defaults::*rimu-sizes*)))
+                 (settled () (and (not (rimu-sizes-walking-p)) (funcall (rimu-size-shown top "Documents" 300)))))
+            (unwind-protect
+                 (remote-session (format nil "C-x C-f C-a C-k ~a C-j" (typed-keys top))
+                                 (list :until #'remote-list-read)
+                                 "S" (list :until #'settled 20)
+                                 (list :until (lambda () (setf kept-of-part (kept-p) whole t)))
+                                 "S" "S" (list :until (lambda () (and (settled) (kept-p))) 20)
+                                 (list :until (lambda () (setf kept-of-whole (kept-p)) t)))
+              (sb-int:unencapsulate 'tuatara.defaults::remote-tree-size 'whole)
+              (rimu-forget)
+              (kill-remote-lists)))
+          (false kept-of-part "the size of a walk that left something out kept")
+          (true kept-of-whole "the size of a whole walk kept")))))
+
+(define-test (remote-files save-there-forgets-sizes-above)
+  ;; saving a copy of a file on another machine forgets the sizes kept of the directories above the file there
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((there (namestring dir))
+               (file (concatenate 'string there "Documents/notes.txt"))
+               (name (concatenate 'string "/ssh:box:" file))
+               (documents (format nil "/ssh:box:~aDocuments/" there)))
+          (alexandria:write-string-into-file "first" (ensure-directories-exist file))
+          (flet ((kept-p () (nth-value 1 (gethash documents tuatara.defaults::*rimu-sizes*))))
+            (unwind-protect
+                 (progn
+                   (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name)))
+                                   (list :until (lambda ()
+                                                  (tuatara.defaults::rimu-keep-size
+                                                   documents (tuatara.io:path-stamp there :follow nil) 5)
+                                                  (kept-p)))
+                                   "M->" (typed-keys " more") "C-x C-s"
+                                   (list :until (lambda () (string= "first more" (file-text file)))))
+                   (false (kept-p) "the size of Documents there kept after a file in it was saved"))
+              (rimu-forget)
+              (kill-remote-buffers)))))))
+
+(define-test (remote-files send-taken-in-forgets-sizes-above)
+  ;; a size counted while a saved copy was being sent there, after the save itself forgot it, is forgotten once the
+  ;; send is taken in
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((there (namestring dir))
+               (file (concatenate 'string there "Documents/notes.txt"))
+               (name (concatenate 'string "/ssh:box:" file))
+               (documents (format nil "/ssh:box:~aDocuments/" there))
+               (kept-while-sent nil))
+          (alexandria:write-string-into-file "first" (ensure-directories-exist file))
+          (flet ((kept-p () (nth-value 1 (gethash documents tuatara.defaults::*rimu-sizes*))))
+            (sb-int:encapsulate 'tuatara.defaults::send-remote-copy 'count-meanwhile
+                                (lambda (send-remote-copy job)
+                                  (tuatara.defaults::rimu-keep-size
+                                   documents (tuatara.io:path-stamp there :follow nil) 5)
+                                  (setf kept-while-sent (kept-p))
+                                  (funcall send-remote-copy job)))
+            (unwind-protect
+                 (progn
+                   (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name)))
+                                   "M->" (typed-keys " more") "C-x C-s"
+                                   (list :until (lambda () (string= "first more" (file-text file))))
+                                   (list :until (lambda () (not (kept-p))) 10))
+                   (true kept-while-sent "a size kept while the copy was sent")
+                   (false (kept-p) "the size of Documents there kept after the send was taken in"))
+              (sb-int:unencapsulate 'tuatara.defaults::send-remote-copy 'count-meanwhile)
+              (rimu-forget)
+              (kill-remote-buffers)))))))
 
 (define-test (remote-files home-and-last-directory-there)
   ;; g h in a list of a directory there lists the home directory there, as the server names it; g l goes back and
@@ -849,7 +991,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
               ;; renamed there; a move to here refused
               (work :move (concatenate 'string remote "copied.txt") (concatenate 'string remote "renamed.txt"))
               (true (probe-file (merge-pathnames "renamed.txt" dir)))
-              (true (search "within one machine"
+              (true (search "within one account on one machine"
                             (failure (lambda () (work :move (concatenate 'string remote "renamed.txt")
                                                       (concatenate 'string local "renamed.txt"))))))
               ;; deleted whole, a trash meaning the same
@@ -2532,7 +2674,8 @@ killed after."
                                                                          (concatenate 'string (namestring here) "tree"))
                                                              (list nil)))))
             (is string= "x" (file-text (merge-pathnames "tree/sub/f7" here)))
-            (is = 1 (calls-of 'tuatara.defaults::remote-or-local-kind
+            ;; once for the tree, and once for each directory in it, just before it is gone into
+            (is = 2 (calls-of 'tuatara.defaults::remote-or-local-kind
                               (lambda ()
                                 (tuatara.defaults::rimu-work :delete (cons (concatenate 'string remote "tree") nil)
                                                              (list nil)))))
@@ -2752,3 +2895,288 @@ nothing seen by it yet; the views set back after."
                    (tuatara.buffer:buffer-local buffer :remote-file) remote)
              (true (tuatara.defaults::safe-visit-kept-reason buffer)))
         (tuatara.buffer:kill-buffer buffer)))))
+
+;;; Servers that answer short, without end or out of bounds
+
+(defun short-file-answers ()
+  "What a server says to a read of a file it says holds 100 octets, giving only
+the first 10 before saying it is at the end, and to the handle's close."
+  (server-octets '(:version 3) '(:handle 1 "h") (list :attrs 2 5 '(:u64 100) #o100644) '(:data 3 "0123456789")
+                 '(:status 4 1) '(:status 5 0)))
+
+(define-test (remote-files read-cut-short-refused)
+  ;; a file that ends before the size the server gave is refused, not taken whole: no copy is left under its name
+  (let ((tuatara-user:*remote-seconds* 1))
+    (with-stand-in-sftp (dir log :answers (short-file-answers))
+      (let ((to (namestring (merge-pathnames "copied" dir))))
+        (true (search "became shorter on the server"
+                      (remote-failure (lambda () (tuatara.defaults::remote-copy-down "/ssh:box:/f" to)))))
+        (false (probe-file to))
+        (is equal '() (remove-if-not (lambda (name) (search ".part" name))
+                                     (mapcar #'file-namestring (uiop:directory-files dir))))))))
+
+(defun endless-names-answers (names)
+  "What a server says to a listing that never ends: a handle, then fifty
+answers each of the names NAMES."
+  (apply #'server-octets '(:version 3) '(:handle 1 "h")
+         (loop for id from 2 to 51
+               collect (list* :name id (length names) (loop for name in names append (list name name 0))))))
+
+(define-test (remote-files listing-without-end-cut)
+  ;; answers of only . and .., or of no names, count toward the bounds: the listing is cut, not waited on for ever
+  (let ((tuatara-user:*remote-seconds* 1)
+        (tuatara.defaults::*sftp-most-listed* 3))
+    (dolist (names '(("." "..") ()))
+      (with-stand-in-sftp (dir log :answers (endless-names-answers names))
+        (is equal '(nil t) (multiple-value-list (tuatara.defaults::remote-listing "box" "/d/")) "~s" names)))
+    (with-stand-in-sftp (dir log :answers (endless-names-answers '("zz")))
+      (false (tuatara.defaults::call-with-sftp "box" "/d/f" "examine"
+                                               (lambda (link) (tuatara.defaults::sftp-entry-attributes link "/d/f")))
+             "an entry looked for in a listing without end is not found"))))
+
+(define-test (remote-files waiting-for-a-busy-link-stopped)
+  ;; work waiting for a connection another holds stops once it is no longer wanted: the file names of a question,
+  ;; the sizes of a list, any work given a cancel
+  (with-stand-in-sftp (dir log :answers (server-octets '(:version 3)))
+    (let* ((link (tuatara.defaults::sftp-link "box"))
+           (cell (list nil))
+           (asked 0)
+           (results (list nil nil nil))
+           (thread nil))
+      (sb-thread:grab-mutex (tuatara.defaults::sftp-link-lock link))
+      (unwind-protect
+           (progn
+             (setf thread
+                   (sb-thread:make-thread
+                    (lambda ()
+                      (handler-case
+                          (setf (first results)
+                                (handler-case (let ((tuatara.defaults::*remote-cancel* cell))
+                                                (tuatara.defaults::remote-attributes "box" "/x"))
+                                  (tuatara.runtime:job-stopped () :stopped))
+                                (second results)
+                                (tuatara.defaults::remote-tree-size "box" "/d/"
+                                                                    :wanted (lambda () (<= (incf asked) 1)))
+                                (third results)
+                                (tuatara.defaults::remote-candidates "/ssh:box:/d/" (list t)))
+                        (error (condition) (princ-to-string condition)))
+                      :done)))
+             (sleep 0.5)
+             (setf (car cell) t)
+             (let ((ended (sb-thread:join-thread thread :timeout 5 :default :waiting)))
+               (is eq :done ended "the waiting work ended")
+               (is equal '(:stopped nil nil) results)
+               ;; none is counted as waiting still, and the lock is its holder's as before
+               (is = 0 (tuatara.defaults::sftp-link-wanting link))
+               (true (sb-thread:holding-mutex-p (tuatara.defaults::sftp-link-lock link)))))
+        (sb-thread:release-mutex (tuatara.defaults::sftp-link-lock link))
+        (when (and thread (sb-thread:thread-alive-p thread))
+          (sb-thread:join-thread thread :timeout 10 :default nil))))))
+
+(define-test (remote-files safe-visit-never-sent)
+  ;; a file there opened safely and made editable is not saved, so nothing is sent to the server
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((file (concatenate 'string (namestring dir) "seen.txt"))
+               (name (concatenate 'string "/ssh:box:" file)))
+          (alexandria:write-string-into-file "kept" file)
+          (unwind-protect
+               (let (said)
+                 (remote-session (format nil "C-u ~a" (visit-keys name))
+                                 (list :until (lambda () (remote-buffer-of name)))
+                                 "C-x C-q M->" (typed-keys "!") "C-x C-s"
+                                 (list :until (lambda () (setf said (search "is opened safely and not saved"
+                                                                            (messages-since-step))))
+                                       10)
+                                 (list :wait 0.5))
+                 (true said)
+                 (true (tuatara.io:safe-visit-p (remote-buffer-of name)))
+                 (is string= "kept" (file-text file)))
+            (kill-remote-buffers))))))
+
+(define-test (remote-files save-in-a-closed-directory-written-in-place)
+  ;; a file whose directory takes no new file is written over in place, saying why, not refused
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((closed (namestring (merge-pathnames "closed/" dir)))
+               (target (concatenate 'string closed "notes.txt"))
+               (local (namestring (merge-pathnames "local" dir))))
+          (ensure-directories-exist closed)
+          (put-file target "old text, longer than the new")
+          (put-file local "new text")
+          (sb-posix:chmod closed #o555)
+          (unwind-protect
+               (let ((fd (sb-posix:open local sb-posix:o-rdonly)))
+                 (unwind-protect
+                      (multiple-value-bind (attributes why)
+                          (handler-case (tuatara.defaults::remote-upload "box" target fd 8 :expected (constantly nil))
+                            (tuatara.io:file-system-error (condition) (values nil (princ-to-string condition))))
+                        (is = 8 (getf attributes :size))
+                        (true (search "could not be made beside it" why) "~a" why)
+                        (is string= "new text" (file-text target)))
+                   (sb-posix:close fd)))
+            (sb-posix:chmod closed #o755))))))
+
+(defun sized-file-answers (size)
+  "What a server says to a read of a file it says holds SIZE octets, up to
+the close of its handle, before any piece of it is asked for."
+  (server-octets '(:version 3) '(:handle 1 "h") (list :attrs 2 5 (list :u64 size) #o100644) '(:status 3 0)))
+
+(define-test (remote-files sizes-from-the-server-bounded)
+  ;; a size past what can be read is refused, not a type error; one the drive here has no room for is refused before
+  ;; any of it is read, and no part of it is left
+  (let ((tuatara-user:*remote-seconds* 1))
+    (with-stand-in-sftp (dir log :answers (sized-file-answers (ash 1 62)))
+      (let ((fd (tuatara.io:create-free-file (namestring dir) (constantly "copy"))))
+        (unwind-protect
+             (true (search "more than can be read"
+                           (handler-case (progn (tuatara.defaults::remote-download "box" "/f" fd) "read")
+                             (error (condition) (princ-to-string condition)))))
+          (sb-posix:close fd))))
+    (with-stand-in-sftp (dir log :answers (sized-file-answers (ash 1 45)))
+      (let ((to (namestring (merge-pathnames "copied" dir))))
+        (true (search "no room"
+                      (handler-case (progn (tuatara.defaults::remote-copy-down "/ssh:box:/f" to) "copied")
+                        (error (condition) (princ-to-string condition)))))
+        (false (probe-file to))
+        (is equal '() (remove-if-not (lambda (name) (search ".part" name))
+                                     (mapcar #'file-namestring (uiop:directory-files dir))))))))
+
+(define-test (remote-files move-only-within-one-account)
+  ;; a move between two accounts on one machine is refused, nothing renamed; two names of one account move
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log :machine "accountsmachine")
+        (let ((there (namestring dir)))
+          (put-file (merge-pathnames "a.txt" dir) "x")
+          (true (search "within one account"
+                        (handler-case
+                            (progn (tuatara.defaults::remote-rimu-work
+                                    :move (format nil "/ssh:alice@accountsbox:~aa.txt" there)
+                                    (format nil "/ssh:bob@accountsbox:~ab.txt" there) (lambda (&rest skipped) skipped))
+                                   "moved")
+                          (error (condition) (princ-to-string condition)))))
+          (true (probe-file (merge-pathnames "a.txt" dir)) "nothing renamed")
+          (tuatara.defaults::remote-rimu-work :move (format nil "/ssh:accountsbox:~aa.txt" there)
+                                              (format nil "/ssh:me@accountsbox:~ab.txt" there)
+                                              (lambda (&rest skipped) skipped))
+          (true (probe-file (merge-pathnames "b.txt" dir)) "moved within one account")))))
+
+(define-test (remote-files delete-goes-into-no-swapped-link)
+  ;; a directory listed as one and a link by the time it is deleted is deleted as a link, what it leads to kept
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let ((there (namestring dir)))
+          (ensure-directories-exist (merge-pathnames "victim/" dir))
+          (ensure-directories-exist (merge-pathnames "tree/" dir))
+          (put-file (merge-pathnames "victim/keep.txt" dir) "x")
+          (sb-posix:symlink "../victim" (format nil "~atree/sub" there))
+          (tuatara.defaults::remote-delete-tree (format nil "/ssh:box:~atree/sub" there) :directory 1)
+          (true (probe-file (merge-pathnames "victim/keep.txt" dir)) "what the link leads to kept")
+          (false (tuatara.io:path-kind (format nil "~atree/sub" there) :follow nil) "the link deleted")))))
+
+(define-test (remote-files long-ssh-question-refused-once)
+  ;; a question longer than the bound is read to its end and answered no once, never split into more questions;
+  ;; the script cuts a question by octets whatever the language set
+  (true (search "export LC_ALL=C" tuatara.defaults::*ssh-asking-script*))
+  (with-test-directory (dir)
+    (let ((asking (tuatara.defaults::open-ssh-asking "/bin/false" (namestring dir) "box" :jump nil))
+          (asked '()))
+      (sb-int:encapsulate 'tuatara.defaults::ask-ssh-person 'noted
+                          (lambda (function asking text)
+                            (declare (ignore function asking))
+                            (push (length text) asked)
+                            (copy-seq "pw")))
+      (unwind-protect
+           (progn
+             (with-open-file (out (merge-pathnames "question" dir) :direction :output
+                                  :if-exists :append :element-type '(unsigned-byte 8))
+               (write-sequence (make-array 9000 :element-type '(unsigned-byte 8) :initial-element 97) out)
+               (write-byte 0 out))
+             (loop repeat 5
+                   while (consp (tuatara.io:wait-for-fds (list (tuatara.defaults::ssh-asking-question asking)) 1))
+                   do (tuatara.defaults::answer-ssh-question asking))
+             (let* ((buffer (make-array 200 :element-type '(unsigned-byte 8)))
+                    (got (sb-sys:with-pinned-objects (buffer)
+                           (sb-unix:unix-read (tuatara.defaults::ssh-asking-answer asking)
+                                              (sb-sys:vector-sap buffer) 200))))
+               (is equal '() asked "not put to you")
+               (is = 1 (tuatara.defaults::ssh-asking-asked asking))
+               (is string= (format nil "n~%") (and got (sb-ext:octets-to-string (subseq buffer 0 got))))))
+        (sb-int:unencapsulate 'tuatara.defaults::ask-ssh-person 'noted)
+        (tuatara.defaults::close-ssh-asking asking)))))
+
+(define-test (remote-files new-file-left-taken-away-at-next-connection)
+  ;; a write that fails when no new connection can be made to take its new file away leaves it only until the next
+  ;; connection to that server, which takes it away first
+  (let ((server (sftp-server-program)) (python (tuatara.io:find-program "python3")))
+    (if (not (and server python))
+        (skip "no sftp-server or python3 here" (true nil))
+        (with-stand-in-sftp (dir log)
+          (let* ((there (namestring dir))
+                 (target (concatenate 'string there "kept.txt"))
+                 (local (concatenate 'string there "local"))
+                 (proxy (put-file (merge-pathnames "proxy.py" dir) *refusing-write-proxy*)))
+            (flet ((left ()
+                     (remove-if-not (lambda (name) (uiop:string-prefix-p ".kept.txt." name))
+                                    (mapcar #'file-namestring (uiop:directory-files dir)))))
+              (put-file target "as it was")
+              (alexandria:write-byte-vector-into-file (make-array 300000 :element-type '(unsigned-byte 8)
+                                                                         :initial-element 65)
+                                                      local)
+              ;; the first connection refuses a write, the second cannot be made, the third is the server as it is
+              (setf tuatara.defaults::*ssh-program*
+                    (put-program (merge-pathnames "ssh3" dir)
+                                 (format nil "#!/bin/sh~%if [ -e '~athird' ]; then exec '~a'; fi~%~
+                                              if [ -e '~amore' ]; then : > '~athird'; exit 1; fi~%~
+                                              : > '~amore'~%exec '~a' '~a' '~a'~%"
+                                         there server there there there python (namestring proxy) server)))
+              (let ((fd (sb-posix:open local sb-posix:o-rdonly)))
+                (unwind-protect
+                     (true (search "the server failed"
+                                   (remote-failure (lambda () (tuatara.defaults::remote-upload
+                                                               "box" target fd 300000 :expected (constantly nil))))))
+                  (sb-posix:close fd)))
+              (true (probe-file (concatenate 'string there "third")) "no connection made to take it away")
+              (is = 1 (length (left)) "the new file left for now")
+              (true (tuatara.defaults::remote-attributes "box" target))
+              (is equal '() (left) "taken away at the next connection")
+              (is string= "as it was" (file-text target))))))))
+
+(define-test (remote-files save-fails-when-the-new-file-is-refused-for-want-of-room)
+  ;; the server refusing the new file as failed, as a full disk or a quota has it, fails the save there: the file
+  ;; itself is not opened to be written over in place
+  (let ((tuatara-user:*remote-seconds* 1))
+    (with-stand-in-sftp (dir log :answers (server-octets '(:version 3) (list :attrs 1 5 '(:u64 100) #o100644)
+                                                         '(:status 2 4 "No space left on device" "")))
+      (let* ((local (namestring (put-file (merge-pathnames "local" dir) "new text")))
+             (fd (sb-posix:open local sb-posix:o-rdonly)))
+        (unwind-protect
+             (let ((said (remote-failure (lambda ()
+                                           (tuatara.defaults::remote-upload "box" "/srv/notes.txt" fd 8
+                                                                            :expected (constantly nil))))))
+               (true (search "the server failed (No space left on device)" said) "~a" said)
+               (true (search "could not be made beside it" said) "~a" said))
+          (sb-posix:close fd))))))
+
+(define-test (remote-files save-beside-a-name-too-long-written-in-place)
+  ;; a file whose name leaves no room for the new file's longer one is written over in place, saying why
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((target (concatenate 'string (namestring dir) (make-string 250 :initial-element #\n)))
+               (local (namestring (merge-pathnames "local" dir))))
+          (put-file (sb-ext:parse-native-namestring target) "old text, longer than the new")
+          (put-file local "new text")
+          (let ((fd (sb-posix:open local sb-posix:o-rdonly)))
+            (unwind-protect
+                 (multiple-value-bind (attributes why)
+                     (handler-case (tuatara.defaults::remote-upload "box" target fd 8 :expected (constantly nil))
+                       (tuatara.io:file-system-error (condition) (values nil (princ-to-string condition))))
+                   (is = 8 (getf attributes :size))
+                   (true (search "could not be made beside it" why) "~a" why)
+                   (is string= "new text" (file-text (sb-ext:parse-native-namestring target))))
+              (sb-posix:close fd)))))))

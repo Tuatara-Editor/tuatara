@@ -373,7 +373,7 @@ left in the trash (TRASH-RESTORE-REFUSAL)."
            (message "Not put back: ~{~a~^; ~}" (trash-refused-words refused)))
           ((trash-restore-question things refused)
            (let ((back (remove nil (mapcar #'trash-restore-thing things))))
-             (rimu-refresh-lists back)
+             (rimu-refresh-lists back :below t)
              (trash-changed)
              (unmark-list list)
              (rimu-trash-read list :wait t)

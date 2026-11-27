@@ -15,6 +15,81 @@
   "Octets of overlap between regex chunks; the longest match found across a
 chunk edge.")
 
+(sb-ext:define-load-time-global **fold-classes**
+    (let ((table (make-hash-table)))
+      (flet ((fold-together (codes)
+               (let ((class (map 'string #'code-char codes)))
+                 (loop for char across class do (setf (gethash char table) class)))))
+        (mapc #'fold-together
+              '((#x4B #x6B #x212A)              ; K k and the Kelvin sign
+                (#x53 #x73 #x17F)               ; S s and the long s
+                (#xB5 #x39C #x3BC)              ; the micro sign and mu
+                (#xC5 #xE5 #x212B)              ; A with ring and the Angstrom sign
+                (#xDF #x1E9E)                   ; the sharp s and its capital
+                ;; DZ, LJ, NJ: three cases
+                (#x1C4 #x1C5 #x1C6) (#x1C7 #x1C8 #x1C9) (#x1CA #x1CB #x1CC) (#x1F1 #x1F2 #x1F3)
+                (#x345 #x399 #x3B9 #x1FBE)      ; iota, the one written under and the one beside
+                (#x392 #x3B2 #x3D0)             ; beta and its symbol
+                (#x395 #x3B5 #x3F5)             ; epsilon and the lunate one
+                (#x398 #x3B8 #x3D1 #x3F4)       ; theta and its symbols
+                (#x39A #x3BA #x3F0)             ; kappa and its symbol
+                (#x3A0 #x3C0 #x3D6)             ; pi and its symbol
+                (#x3A1 #x3C1 #x3F1)             ; rho and its symbol
+                (#x3A3 #x3C2 #x3C3)             ; sigma and the final sigma
+                (#x3A6 #x3C6 #x3D5)             ; phi and its symbol
+                (#x3A9 #x3C9 #x2126)            ; omega and the ohm sign
+                (#x412 #x432 #x1C80) (#x414 #x434 #x1C81) (#x41E #x43E #x1C82) (#x421 #x441 #x1C83)
+                (#x422 #x442 #x1C84 #x1C85) (#x42A #x44A #x1C86) (#x462 #x463 #x1C87) ; Cyrillic letters of old print
+                (#x1C88 #xA64A #xA64B)
+                (#x1E60 #x1E61 #x1E9B)))        ; s with dot above and the long one
+        ;; Roman numerals and circled letters: two cases that are no letters' cases
+        (dotimes (k 16) (fold-together (list (+ #x2160 k) (+ #x2170 k))))
+        (dotimes (k 26) (fold-together (list (+ #x24B6 k) (+ #x24D0 k)))))
+      table)
+  "The characters that Unicode simple case folding (CaseFolding.txt, statuses C
+and S) folds together where comparing the two cases of a letter does not:
+each to the string of all it folds with, itself among them. The capital I
+with dot above folds with nothing, as that folding has it.")
+
+(defun fold-class (char)
+  "The characters CHAR is one with when case is ignored, by Unicode simple case
+folding, as a string with CHAR among them, where they are more than a
+letter's two cases (**FOLD-CLASSES**): the long s with s, the Kelvin sign with
+k, the final sigma with sigma. NIL for every other character. O(1)."
+  (values (gethash char **fold-classes**)))
+
+(defun folds-with-ascii-p (char)
+  "True when CHAR, a character past ASCII, is one with an ASCII letter when
+case is ignored (FOLD-CLASS): the long s with s, the Kelvin sign with k. Text
+that is all ASCII then holds matches of it, and no octets of its own stand in
+every match. O(1)."
+  (and (>= (char-code char) 128)
+       (some (lambda (other) (< (char-code other) 128)) (or (fold-class char) ""))))
+
+(defun fold-variants (characters)
+  "The UTF-8 octets of each character past ASCII that one of CHARACTERS, a
+sequence, is one with when case is ignored (FOLD-CLASS), as a list of octet
+vectors without repeats; NIL when none of them has any."
+  (let ((variants '()))
+    (map nil (lambda (char)
+               (loop for other across (or (fold-class char) "")
+                     when (>= (char-code other) 128)
+                       do (pushnew (tuatara.text:string-octets (string other)) variants :test #'equalp)))
+         characters)
+    (nreverse variants)))
+
+(defun variant-position (chunk variants from below filled)
+  "Index of the first place from FROM below BELOW in the first FILLED octets of
+CHUNK where one of VARIANTS (FOLD-VARIANTS) stands whole; NIL when none. Each
+is looked for as SCAN-CHUNK looks for octets, many at a time."
+  (declare (type tuatara.text:octets chunk) (type fixnum from below filled))
+  (let ((best below))
+    (declare (type fixnum best))
+    (dolist (variant variants)
+      (let ((at (scan-chunk chunk variant nil from best filled)))
+        (when at (setf best at))))
+    (and (< best below) best)))
+
 (defun needle-octets (needle case-fold)
   "NEEDLE as UTF-8 octets, folded when CASE-FOLD; octets given as NEEDLE are
 taken as they are."
@@ -32,13 +107,13 @@ taken as they are."
 (defun by-pattern-p (string case-fold)
   "True when a search for STRING goes by the pattern of its text
 \(LITERAL-SCANNER), not by its octets alone: when, ignoring case (CASE-FOLD),
-it must fold letters past ASCII, as é with É; when STRING holds a newline,
-which matches a line end of either kind, as \\n in a pattern does; or when it
-holds a raw byte, which matches only a byte standing on its own, never one
-inside a character."
+it must fold letters past ASCII, as é with É or the final sigma with sigma
+\(FOLD-CLASS); when STRING holds a newline, which matches a line end of
+either kind, as \\n in a pattern does; or when it holds a raw byte, which
+matches only a byte standing on its own, never one inside a character."
   (some (lambda (c)
           (or (char= c #\Newline) (tuatara.text:raw-byte-code-p (char-code c))
-              (and case-fold (>= (char-code c) 128) (both-case-p c))))
+              (and case-fold (>= (char-code c) 128) (or (both-case-p c) (fold-class c)))))
         string))
 
 (defun character-start-from (rope byte)
@@ -202,7 +277,10 @@ sets, stands whole, reading through CHUNK; NIL when none."
 START and ending at or before END, and the offset after it, as two values; NIL
 when there is none. CASE-FOLD ignores case (the default when STRING has no
 upper-case letter): ASCII case on the octets, and for a STRING with letters
-past ASCII, case of every letter, through the pattern of its text. A newline
+past ASCII, case of every letter, through the pattern of its text; by Unicode
+simple case folding, so that s finds the long s and k the Kelvin sign too
+\(FOLD-CLASS), a stretch of text holding such a character searched through
+the pattern. A newline
 in STRING matches a line end of either kind, and a raw byte only a byte on
 its own (BY-PATTERN-P). STRING may instead be a vector of octets, found as
 exactly those octets wherever they are, case kept whatever CASE-FOLD
@@ -222,32 +300,64 @@ Complexity: O(distance scanned)."
                                                                         :end end :bound end :threads threads :stop stop)
         (values found after))))
   (let* ((needle (needle-octets string case-fold)) (n (length needle))
-         (end (- end (1- n))))              ; last position a match may start at, exclusive
+         (bound end)
+         (end (- end (1- n)))               ; last position a match may start at, exclusive
+         ;; a letter of STRING written another way (the long s): where one stands, by the pattern
+         (variants (and case-fold (stringp string) (fold-variants string)))
+         (span (if variants (* 3 n) n)))
     (when (and (plusp n) (< start end))
       (multiple-value-bind (hit stopped)
-          (directional-search start end *serial-window*
-                              (lambda (from to halt)
-                                (tuatara.text:with-octet-block (chunk (+ +search-chunk+ n))
-                                  (scan-range-forward rope needle case-fold from to chunk halt)))
-                              :stop stop :threads threads)
-        (cond (hit (values hit (+ hit n)))
+          (directional-search
+           start end *serial-window*
+           (lambda (from to halt)
+             (tuatara.text:with-octet-block (chunk (+ +search-chunk+ span))
+               (if variants
+                   (loop
+                     (let ((flagged nil))
+                       (flet ((look (filled below)
+                                (if (variant-position chunk variants 0 filled filled)
+                                    (progn (setf flagged t) 0)
+                                    (scan-chunk chunk needle case-fold 0 below filled))))
+                         (declare (dynamic-extent #'look))
+                         (multiple-value-bind (at why) (scan-chunks-forward rope from to chunk span #'look halt)
+                           (cond ((or (null at) (not flagged)) (return (values at why)))
+                                 (t (let ((stretch-end (min to (+ at +search-chunk+))))
+                                      (multiple-value-bind (found after)
+                                          (regex-search-forward rope (literal-scanner string t)
+                                                                :start (character-start-from rope at)
+                                                                :end stretch-end :bound bound :threads 1 :stop halt)
+                                        (when found (return (cons found after)))
+                                        (when (or (eq after :stopped) (>= stretch-end to))
+                                          (return (values nil after))))
+                                      (setf from stretch-end))))))))
+                   (scan-range-forward rope needle case-fold from to chunk halt))))
+           :stop stop :threads threads)
+        (cond ((consp hit) (values (car hit) (cdr hit)))
+              (hit (values hit (+ hit n)))
               (stopped (values nil :stopped)))))))
 
-(defun scan-range-backward (rope needle case-fold start end chunk &optional halt)
+(defun scan-range-backward (rope needle case-fold start end chunk &optional halt variants by-pattern)
   "Last occurrence of NEEDLE starting in [END, START) of ROPE, scanning backward
 through CHUNK; NIL when none; NIL and :STOPPED when HALT, a function asked
-every +HALT-CHUNKS+ chunks, answers true."
+every +HALT-CHUNKS+ chunks, answers true. With VARIANTS (FOLD-VARIANTS), a
+stretch read that holds one of them is searched by BY-PATTERN instead, a
+function of the stretch's start and end giving the last match starting in
+it as (START . END), or NIL; CHUNK then holds three times NEEDLE's length
+past a stretch."
   (declare (type fixnum start end) (type tuatara.text:octets needle chunk))
-  (let ((n (length needle)) (total (tuatara.text:rope-octet-length rope)))
+  (let* ((n (length needle)) (span (if variants (* 3 n) n)) (total (tuatara.text:rope-octet-length rope)))
     (when (< end start)
       (loop for pos of-type fixnum = (max end (- start +search-chunk+)) then (max end (- pos +search-chunk+))
             for k of-type fixnum from 1
             do (when (and halt (zerop (mod k +halt-chunks+)) (funcall halt))
                  (return (values nil :stopped)))
-               (let* ((chunk-end (min total (+ pos +search-chunk+ (1- n)) (+ start (1- n))))
-                      (filled (tuatara.text:rope-copy-into rope pos chunk-end chunk))
-                      (hit (scan-chunk-backward chunk needle case-fold (- (min filled (- start pos)) 1) filled)))
-                 (when hit (return (+ pos hit)))
+               (let* ((chunk-end (min total (+ pos +search-chunk+ (1- span)) (+ start (1- span))))
+                      (filled (tuatara.text:rope-copy-into rope pos chunk-end chunk)))
+                 (if (and variants (variant-position chunk variants 0 filled filled))
+                     (let ((found (funcall by-pattern pos (min start (+ pos +search-chunk+)))))
+                       (when found (return found)))
+                     (let ((hit (scan-chunk-backward chunk needle case-fold (- (min filled (- start pos)) 1) filled)))
+                       (when hit (return (+ pos hit)))))
                  (when (= pos end) (return nil)))))))
 
 (defun search-backward (rope string &key (start (tuatara.text:rope-octet-length rope)) (end 0)
@@ -265,13 +375,21 @@ parallel; STRING, case and STOP as for SEARCH-FORWARD."
           (regex-search-backward rope (literal-scanner string case-fold) :start start :end end
                                                                          :threads threads :stop stop)
         (values found after))))
-  (let* ((needle (needle-octets string case-fold)) (n (length needle)))
+  (let* ((needle (needle-octets string case-fold)) (n (length needle))
+         (variants (and case-fold (stringp string) (fold-variants string))))
     (when (and (plusp n) (< end start))
       (multiple-value-bind (hit stopped)
-          (directional-search start end *serial-window*
-                              (lambda (from to halt)
-                                (tuatara.text:with-octet-block (chunk (+ +search-chunk+ n))
-                                  (scan-range-backward rope needle case-fold to from chunk halt)))
-                              :backward t :stop stop :threads threads)
-        (cond (hit (values hit (+ hit n)))
+          (directional-search
+           start end *serial-window*
+           (lambda (from to halt)
+             (tuatara.text:with-octet-block (chunk (+ +search-chunk+ (if variants (* 3 n) n)))
+               (scan-range-backward rope needle case-fold to from chunk halt variants
+                                    (lambda (low high)
+                                      (multiple-value-bind (found after)
+                                          (regex-search-backward rope (literal-scanner string t)
+                                                                 :start high :end low :threads 1 :stop halt)
+                                        (and found (cons found after)))))))
+           :backward t :stop stop :threads threads)
+        (cond ((consp hit) (values (car hit) (cdr hit)))
+              (hit (values hit (+ hit n)))
               (stopped (values nil :stopped)))))))

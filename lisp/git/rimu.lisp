@@ -222,7 +222,7 @@ directory can have (., .. or one holding a /) is left out."
   "Go through the history of the directory the rimu LIST lists, in the
 repository at TOP: in a new rimu list shown at once in its place, the directory
 as its latest commit left it, point on the entry it was on (\\[git-rewind])."
-  (let* ((directory (tuatara.buffer:buffer-local list 'rimu-directory))
+  (let* ((directory (rimu-list-directory list))
          (dir (subseq directory (length top)))
          (entry (list-entry-at list (tuatara.buffer:buffer-point list)))
          (point-on (and entry (tuatara.io:listed-octets entry)))
@@ -270,7 +270,7 @@ the one shown, and say which it is, when it was not already."
   "A directory listed in its place as the commit left it, a file gone through
 from that commit back (GIT-REWIND-FILE), \\[quit-window] coming back to the list."
   (let ((top (git-rewound-top source)))
-    (let ((path (rimu-path (tuatara.buffer:buffer-local buffer 'rimu-directory) entry)))
+    (let ((path (rimu-path (rimu-list-directory buffer) entry)))
       (if (rimu-directory-p entry)
           (rimu-enter buffer (directory-name path :clean t))
           (git-rewind-file top (subseq path (length top)) :at (git-rewound-hash source) :list buffer)))))
@@ -279,7 +279,7 @@ from that commit back (GIT-REWIND-FILE), \\[quit-window] coming back to the list
   "End BUFFER, a rimu list of a directory as a commit left it, and the histories
 of files opened from it: list the directory as it is now, point on the entry it
 was on (RIMU-SHOW-NEAREST)."
-  (let* ((directory (tuatara.buffer:buffer-local buffer 'rimu-directory))
+  (let* ((directory (rimu-list-directory buffer))
          (entry (list-entry-at buffer (tuatara.buffer:buffer-point buffer)))
          (on (and entry (tuatara.io:listed-octets entry))))
     (dolist (opened (copy-list tuatara.buffer:*buffers*))

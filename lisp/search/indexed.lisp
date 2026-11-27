@@ -386,7 +386,7 @@ that its text is outside the heap and garbage collection never copies it;
 counted for lines on this thread. An error when it is not BYTES long."
   (let ((rope (tuatara.text:open-file-rope path)))
     (unless (= (tuatara.text:rope-octet-length rope) bytes) (refuse "piece ~a is not whole" path))
-    (make-file-corpus (tuatara.text:index-rope rope :threads 1) paths starts root)))
+    (make-file-corpus (tuatara.text:index-rope rope :threads 1) paths starts root t)))
 
 (defun index-piece-changed-p (piece directory)
   "True when the file PIECE, a piece of an index's text, is kept in, in

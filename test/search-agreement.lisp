@@ -91,7 +91,11 @@ fault shows it again."
     "[[:date:]]" "[[:dateutc<2026-07-01:]]" "[[:date:2026-03-01..2026-03-31:]]" "[[:datedmy:]]" "[[:datemdy<06/30/2026:]]"
     "[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:" "(?:on|sum) [0-9a-f]{2}"
     ;; across lines
-    "ora\\nfailed" "\\d\\n2026" "\\R2026")
+    "ora\\nfailed" "\\d\\n2026" "\\R2026"
+    ;; the text's ends, a group met again, lines' ends inside a match and looked at around it, sets taken
+    ;; the other way round that run over lines, a lookbehind longer than the context a window keeps
+    "\\A\\S+" "\\S+\\s*\\z" "(\\w+) \\1" "(?-m)^\\S+" "(?<=\\d\\n)\\S+" "\\d(?=\\n2026)" "[^a]+" "\\D+"
+    "(?<=a{80})a" "$\\n^\\d" "[\\r\\n]+" "x\\Z|ERROR \\w+")
   "Patterns of every kind, none of which matches an empty text, searched for
 in every evidence text.")
 
@@ -185,19 +189,18 @@ in parallel (LINE-MATCHES)."
                 (is = (length (tuatara.defaults::first-per-line rope oracle))
                     (tuatara.defaults::count-first-per-line rope matcher 0 size)
                     "first on each line of ~s~:[~;, CRLF~] at ~a" pattern (eq crlf t) sizes)
-                (unless (eq crlf t)
-                  (loop repeat 3
-                        for start = (tuatara.text:rope-char-start rope (random size))
-                        do (is eql (next-match-at scanner scanned start)
-                               (tuatara.syntax:regex-search-forward rope pattern :start start :threads 3)
-                               "next ~s from ~a at ~a" pattern start sizes)
-                           (let ((before (tuatara.syntax:regex-search-backward rope pattern :start start :threads 3)))
-                             ;; the start of the last match one scan of the whole text has before START
-                             (is eql (first (car (last (remove-if-not (lambda (m) (< (first m) start)) oracle)))) before
-                                 "before ~s from ~a at ~a" pattern start sizes)
-                             (when before
-                               (true (nearest-before-p scanner scanned oracle before start)
-                                     "before ~s from ~a at ~a: ~a" pattern start sizes before)))))))))))))
+                (loop repeat 3
+                      for start = (tuatara.text:rope-char-start rope (random size))
+                      do (is eql (next-match-at scanner scanned start)
+                             (tuatara.syntax:regex-search-forward rope pattern :start start :threads 3)
+                             "next ~s from ~a at ~a~:[~;, CRLF~]" pattern start sizes (eq crlf t))
+                         (let ((before (tuatara.syntax:regex-search-backward rope pattern :start start :threads 3)))
+                           ;; the start of the last match one scan of the whole text has before START
+                           (is eql (first (car (last (remove-if-not (lambda (m) (< (first m) start)) oracle)))) before
+                               "before ~s from ~a at ~a~:[~;, CRLF~]" pattern start sizes (eq crlf t))
+                           (when before
+                             (true (nearest-before-p scanner scanned oracle before start)
+                                   "before ~s from ~a at ~a: ~a" pattern start sizes before))))))))))))
 
 (define-test (search-agreement literal-agrees)
   ;; plain text, case kept and folded, ASCII and every kind of character: all of it, how
@@ -693,3 +696,464 @@ NIL, every match of a line with ALL, else the first of each."
     (is equal '(2 5) (line (format nil "x~cab~c" #\Return #\Return) 0))
     (is equal '(1 3) (line (format nil "xab") 1))
     (is equal '(nil) (line "xyz" 0))))
+
+(define-modal-test (search-agreement sight-then-job-replaces-as-at-once)
+  ;; a replacement over a large scope, made at once on the lines in sight and by a job on the rest, leaves
+  ;; the text one made at once in memory leaves: matches taking a line's end at the edge of sight, a
+  ;; lookbehind into a line changed in sight, replacements that add and take away lines
+  (let ((text (with-output-to-string (o) (loop for i below 400 do (format o "foo ~d bar  ~%" i))))
+        (in-sight 0))
+    (sb-int:encapsulate 'tuatara.defaults::mapper-after-sight 'counted
+                        (lambda (function &rest arguments)
+                          (incf in-sight)
+                          (apply function arguments)))
+    (unwind-protect
+         (dolist (case '(("%o/0" t) ("%\\n/;" nil) ("%\\s+/_" nil) ("%bar\\s*\\nfoo/X" nil) ("%  \\n/|" nil)
+                         ("%\\s+$/" nil) ("%r  $\\n?/R" nil) ("%(?<=\\n)foo/F" t) ("%^foo/F" t)
+                         ("%\\d+ bar  \\nfoo \\d+/J" nil) ("\\n/;" nil) ("bar\\s*\\nfoo/X" nil)
+                         ("%(?<=bar  \\n)foo|bar/Z" t) ("%bar/\\n" t) ("%o \\d+ b/" t) ("%$/;" t) ("%^/> " t)
+                         ("o/0" t) ("%\\d+/<&&>" t) ("%r  \\z|foo 0/E" t) ("%\\bfoo\\b(?= 1)/G" t)))
+           (destructuring-bind (typed sight) case
+             (dolist (reach '(65536 60))
+               (let* ((keys (format nil "C-x h r r ~a RET" (key-string typed)))
+                      (in-memory (replaced-text keys text))
+                      (before in-sight)
+                      ;; every scope goes to the background, the job in tiny pieces
+                      (mixed (let ((tuatara.defaults::*split-sight-octets* reach)
+                                   (tuatara.defaults::*rewrite-threshold* 0)
+                                   (tuatara.defaults::*rewrite-piece* 40)
+                                   (tuatara.defaults::*rewrite-checkpoint* 16))
+                               (session-text (nth-value 1 (run-keys keys :text text :width 120 :height 12))))))
+                 (false (string= text in-memory) "~a changes nothing" typed)
+                 (is string= in-memory mixed "~a with ~d octets in sight" typed reach)
+                 ;; the lines in sight are replaced at once only for a pattern kept within a line
+                 (when (= reach 60)
+                   (is eq sight (> in-sight before) "~a replaced in sight first" typed))))))
+      (sb-int:unencapsulate 'tuatara.defaults::mapper-after-sight 'counted))))
+
+(define-test (search-agreement text-end-anchors-match-at-the-end-alone)
+  ;; \z and \Z in one choice of several or in a lookahead match where the text ends, never at the end of
+  ;; a window or a line the scan tries the pattern on: every match, how many, the first and the last, held
+  ;; against answers written out
+  (dolist (final-newline '(t nil))
+    (let* ((lines 40000)
+           (text (let ((all (format nil "~{line ~d x~%~}" (loop for i below lines collect i))))
+                   (if final-newline all (subseq all 0 (1- (length all))))))
+           (rope (tuatara.text:string->rope text))
+           (size (tuatara.text:rope-octet-length rope))
+           ;; where the last x stands
+           (x (if final-newline (- size 2) (- size 1))))
+      (dolist (case (list (list "x\\Z|qqq" (list (list x (1+ x))))
+                          (list "\\d x(?=\\Z)" (list (list (- x 2) (1+ x))))
+                          (list "x(?=\\z)" (if final-newline '() (list (list x (1+ x)))))
+                          (list "x\\z|line 7 " (if final-newline '((63 70)) (list '(63 70) (list x (1+ x)))))
+                          (list "(?:qqq|x)\\n?\\z" (list (list x size)))
+                          (list "9 x(?!\\n?\\z)" (1- (/ lines 10)))
+                          (list "(?=line 3999\\d x\\n?(\\z|l))line" 10)))
+        (destructuring-bind (pattern wanted) case
+          (let ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex t)))
+            (dolist (sizes (agreement-sizes))
+              (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes))
+                    (found (matcher-matches rope matcher)))
+                (if (listp wanted)
+                    (is equal wanted found "every ~s~:[, no final newline~;~] at ~a" pattern final-newline sizes)
+                    (is = wanted (length found) "how many ~s~:[, no final newline~;~] at ~a"
+                        pattern final-newline sizes))
+                (is = (if (listp wanted) (length wanted) wanted)
+                    (tuatara.defaults::count-line-matches rope matcher 0 size)
+                    "~s counted~:[, no final newline~;~] at ~a" pattern final-newline sizes)
+                (when (listp wanted)
+                  (is equal (first wanted)
+                      (multiple-value-call #'found-span (tuatara.defaults::matcher-search rope matcher 0 size))
+                      "first ~s~:[, no final newline~;~] at ~a" pattern final-newline sizes)
+                  (is equal (car (last wanted))
+                      (multiple-value-call #'found-span
+                        (tuatara.defaults::matcher-search rope matcher size 0 :forward nil :bound size))
+                      "last ~s~:[, no final newline~;~] at ~a" pattern final-newline sizes))))))))))
+
+(define-test (search-agreement files-search-stops-inside-a-slow-pattern)
+  ;; a search of files is stopped in the middle of a pattern that takes for ever on a line, as a key
+  ;; typed stops it, and gives such a pattern up by itself after the seconds it is given
+  (let* ((line (format nil "~a!~%" (make-string 34 :initial-element #\a)))
+         (corpus (tuatara.defaults::make-corpus (list (cons "a.txt" (to-octets line))) (1+ (length line)) "/tmp/")))
+    (flet ((search-slowly (&rest keys)
+             (apply #'tuatara.defaults::start-gathering "test slow search of files"
+                    (lambda (give cancel)
+                      (declare (ignore give))
+                      (tuatara.defaults::corpus-lines corpus "^(a+)+$" :stop (lambda () (car cancel))))
+                    keys)))
+      (let ((gathering (search-slowly)))
+        (sleep 0.3)
+        (tuatara.defaults::stop-gathering gathering)
+        (true (tuatara.defaults::wait-for-gathering gathering 5) "stopped inside the pattern")
+        (false (tuatara.defaults::gathering-slow-p gathering)))
+      (let ((gathering (search-slowly :slow 0.2)))
+        (true (tuatara.defaults::wait-for-gathering gathering 5) "given up as slow")
+        (true (tuatara.defaults::gathering-slow-p gathering))))
+    ;; the question says so, beside what else it notes
+    (is string= "slow pattern: search stopped; 2 files not searched"
+        (tuatara.defaults::found-lines-note 3 2000 2 t))
+    (is string= "first 2,000 lines only; 1 file not searched" (tuatara.defaults::found-lines-note 2000 2000 1))
+    (false (tuatara.defaults::found-lines-note 3 2000 0))))
+
+(define-test (search-agreement files-searched-each-as-its-own-text)
+  ;; search-in-files finds in each file what a search of that file alone finds: the newline put after
+  ;; a file's text is never matched or looked at, \A, \z and \Z match where the file begins and ends,
+  ;; and a lookbehind sees nothing of the file before; held against answers written out, on one thread
+  ;; and with the text cut into chunks
+  (flet ((octets (control) (to-octets (format nil control))))
+    (let* ((texts (list (cons "a.txt" (octets "x~%foo")) (cons "b.txt" (octets "y~%z~%"))
+                        (cons "c.txt" (octets "q~%")) (cons "d.txt" (octets "foo~%")) (cons "e.txt" (octets ""))
+                        (cons "f.txt" (octets "bar foo"))))
+           (corpus (tuatara.defaults::make-corpus texts (loop for (nil . text) in texts sum (1+ (length text)))
+                                                  "/tmp/")))
+      (dolist (case '(("foo\\n" ((3 1 0 "foo")))
+                      ("foo\\n\\n" ())
+                      ("z\\n\\n" ())
+                      ("y\\nz\\n" ((1 1 0 "y") (1 2 0 "z")))
+                      ("x\\nfoo" ((0 1 0 "x") (0 2 0 "foo")))
+                      ("foo\\z" ((0 2 0 "foo") (5 1 4 "bar foo")))
+                      ("foo\\Z" ((0 2 0 "foo") (3 1 0 "foo") (5 1 4 "bar foo")))
+                      ("foo$" ((0 2 0 "foo") (3 1 0 "foo") (5 1 4 "bar foo")))
+                      ("^foo" ((0 2 0 "foo") (3 1 0 "foo")))
+                      ("o\\b" ((0 2 2 "foo") (3 1 2 "foo") (5 1 6 "bar foo")))
+                      ("\\A\\w" ((0 1 0 "x") (1 1 0 "y") (2 1 0 "q") (3 1 0 "foo") (5 1 0 "bar foo")))
+                      ("(?<=o\\n)y" ())
+                      ("(?<=\\n)z" ((1 2 0 "z")))
+                      ("(?<!\\n)bar" ((5 1 0 "bar foo")))
+                      ("(?<![\\s\\S])\\w+" ((0 1 0 "x") (1 1 0 "y") (2 1 0 "q") (3 1 0 "foo") (5 1 0 "bar foo")))
+                      ("foo(?!\\n)" ((0 2 0 "foo") (5 1 4 "bar foo")))
+                      ("foo(?=\\n)" ((3 1 0 "foo")))
+                      ("q\\s+foo" ())
+                      ("foo\\s+bar" ())
+                      ("[^a]+\\z" ((0 1 0 "x") (0 2 0 "foo") (1 1 0 "y") (1 2 0 "z") (2 1 0 "q") (3 1 0 "foo")
+                                   (5 1 2 "bar foo")))
+                      ;; the other words see their file's text too, each from the line asked of
+                      ("(?:foo) o\\z" ((0 2 0 "foo") (5 1 4 "bar foo")))
+                      ("(?:foo|y) \\A\\w" ((1 1 0 "y") (3 1 0 "foo") (5 1 4 "bar foo")))))
+        (destructuring-bind (input wanted) case
+          (dolist (parallel '(nil t))
+            (let ((tuatara.defaults::*search-chunk* (if parallel 3 tuatara.defaults::*search-chunk*)))
+              (is equal wanted (tuatara.defaults::corpus-lines corpus input :parallel parallel)
+                  "~s~:[~;, in chunks~]" input parallel))))))))
+
+(define-modal-test (search-agreement asked-each-replaces-what-at-once-replaces)
+  ;; a replacement asking at each match walks the matches of the text as it was: answered y at every
+  ;; one, or ! at the first, it leaves what the replacement made at once leaves, also where a
+  ;; replacement uncovers or writes text the pattern matches; and n leaves a match as it is
+  (dolist (case '(("%\\ba" "" "aab aab~%ab~%" "ab ab~%b~%" 3)
+                  ("%\\ba" "" "aaa a~%" "aa ~%" 2)
+                  ("%a" "aa" "a ba~%a~%" "aa baa~%aa~%" 3)
+                  ("%^" "> " "x~%~%y~%" "> x~%> ~%> y~%" 3)
+                  ("%(?<=a)b" "a" "abbb ab~%" "aabb aa~%" 2)
+                  ("%o\\n" "X" "o~%ab o~%cd~%" "Xab Xcd~%" 2)
+                  ("\\bo" "" "oo oo~%oo~%" "o oo~%o~%" 2)))
+    (destructuring-bind (typed replacement before after matches) case
+      (let* ((text (format nil before))
+             (wanted (format nil after))
+             (at-once (format nil "C-x h r r ~a RET" (key-string (format nil "~a/~a" typed replacement))))
+             (asked (format nil "C-x h r q ~a RET ~@[~a ~]RET" (key-string typed)
+                            (and (plusp (length replacement)) (key-string replacement)))))
+        (flet ((typed-on (keys) (session-text (nth-value 1 (run-keys keys :text text :width 120)))))
+          (is string= wanted (typed-on at-once) "~a at once" typed)
+          (is string= wanted (typed-on (format nil "~a~{ ~a~}" asked (loop repeat matches collect "y")))
+              "~a, y at each" typed)
+          (is string= wanted (typed-on (format nil "~a !" asked)) "~a, ! at the first" typed)
+          (is string= wanted (typed-on (format nil "~a y !" asked)) "~a, y then !" typed)))))
+  ;; n at the first, y at the rest: the first match stays, the others go as they stood
+  (is string= (format nil "aab ab~%b~%")
+      (session-text (nth-value 1 (run-keys (format nil "C-x h r q ~a RET RET n y y" (key-string "%\\ba"))
+                                           :text (format nil "aab aab~%ab~%") :width 120)))))
+
+(defun every-way-found (rope pattern regex)
+  "What each way of searching finds of PATTERN in ROPE, a regular expression
+with REGEX, as a list of lists of (START END): gathered for a replacement,
+stepped through forward and backward, and how many are counted, as one
+number last."
+  (let ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex regex)))
+    (list (matcher-matches rope matcher)
+          (stepped-matches rope matcher t)
+          (stepped-matches rope matcher nil)
+          (tuatara.defaults::count-line-matches rope matcher 0 (tuatara.text:rope-octet-length rope)))))
+
+(define-test (search-agreement case-ignored-as-unicode-folds)
+  ;; ignoring case, a letter finds every character Unicode simple case folding makes one with it: the long s
+  ;; with s, the Kelvin sign with k, the Angstrom sign with a with ring, the final sigma with sigma; as
+  ;; literal text and as a pattern, gathered, stepped both ways and counted, against answers written out
+  (flet ((text (control &rest codes) (apply #'format nil control (mapcar #'code-char codes))))
+    (dolist (case (list (list (text "~cs S" #x17F) "s" t '((0 2) (2 3) (4 5)))
+                        (list (text "~ck K" #x212A) "k" t '((0 3) (3 4) (5 6)))
+                        (list (text "~c ~c ~c" #x212B #xE5 #xC5) (text "~c" #xE5) t '((0 3) (4 6) (7 9)))
+                        (list "ΟΔΌΣ οδός Οδός ΟΔΟΣ οδος" "οδός" t '((0 8) (9 17) (18 26)))
+                        (list "ΟΔΌΣ οδός Οδός ΟΔΟΣ οδος" "οδόσ" t '((0 8) (9 17) (18 26)))
+                        (list "ΟΔΌΣ οδός Οδός ΟΔΟΣ οδος" "οδος" t '((27 35) (36 44)))
+                        (list (text "~celvin kelvin KELVIN" #x212A) "kelvin" t '((0 8) (9 15) (16 22)))
+                        (list (text "u~cer USER user" #x17F) "user" t '((0 5) (6 10) (11 15)))
+                        (list (text "~c ~c ~c" #xB5 #x3BC #x39C) (text "~c" #xB5) t '((0 2) (3 5) (6 8)))
+                        (list (text "~c ~c ~c" #xB5 #x3BC #x39C) (text "~c" #x3BC) t '((0 2) (3 5) (6 8)))
+                        ;; the capital I with dot above and the dotless i fold with nothing
+                        (list (text "~c i I ~c" #x130 #x131) "i" t '((3 4) (5 6)))
+                        (list (text "~c s S" #x17F) (text "~c" #x17F) t '((0 2) (3 4) (5 6)))
+                        (list (text "~c~c" #xDF #x1E9E) (text "~c" #xDF) t '((0 2) (2 5)))
+                        (list (text "~c ~c ~c" #x1C5 #x1C6 #x1C4) (text "~c" #x1C6) t '((0 2) (3 5) (6 8)))
+                        (list (text "~c ~c" #x2167 #x2177) (text "~c" #x2177) t '((0 3) (4 7)))
+                        ;; a capital in what is searched for keeps case: only that character
+                        (list (text "~cs S" #x17F) "S" t '((4 5)))
+                        (list (text "~ck K" #x212A) "K" t '((5 6)))
+                        ;; as patterns only: a set, a range, a set taken the other way round, flags
+                        (list (text "u~cer user" #x17F) "u[a-z]er" nil '((0 5) (6 10)))
+                        (list (text "USER=x u~cer=y" #x17F) "user=\\w+" nil '((0 6) (7 14)))
+                        (list (text "a~ck ask a-k" #x17F) "a[^s]k" nil '((9 12)))
+                        (list (text "~c s" #x17F) "(?i)S" nil '((0 2) (3 4)))
+                        (list (text "~c s S" #x17F) "(?-i)s" nil '((3 4)))
+                        (list (text "~c1 k1 K1" #x212A) "[jkl]\\d" nil '((0 4) (5 7) (8 10)))))
+      (destructuring-bind (text pattern literal-too wanted) case
+        (let ((rope (tuatara.text:string->rope text)))
+          (dolist (regex (if literal-too '(nil t) '(t)))
+            (is equal (list wanted wanted wanted (length wanted)) (every-way-found rope pattern regex)
+                "~s in ~s~:[~;, a pattern~]" pattern text regex)))))
+    ;; a letter written the other way at each place around a chunk's edge, where the octets are searched
+    ;; a chunk at a time: found by the octets' search, by a pattern with its fixed text, and from afar
+    (dotimes (back 8)
+      (let* ((at (- 65536 back))
+             (text (concatenate 'string (make-string at :initial-element #\a) (text "u~cer tail user~%" #x17F)))
+             (rope (tuatara.text:string->rope text))
+             (both (list (list at (+ at 5)) (list (+ at 11) (+ at 15)))))
+        (dolist (sizes (agreement-sizes))
+          (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
+            (is equal (list both both both 2) (every-way-found rope "user" nil) "user, ~d before the edge" back)
+            (is equal (list both both both 2) (every-way-found rope "user\\b" t) "user\\b, ~d before the edge" back)
+            (is equal (list (list (list 0 (+ at 5))) (list (list 0 (+ at 5))) (list (list 0 (+ at 5))) 1)
+                (every-way-found rope "^a+user" t)
+                "^a+user, ~d before the edge" back)
+            (is equal (list at (+ at 5)) (multiple-value-list (tuatara.syntax:search-forward rope "user"))
+                "first user, ~d before the edge" back)
+            (is equal (list at (+ at 5))
+                (multiple-value-list (tuatara.syntax:search-backward rope "user" :start (+ at 8)))
+                "user before, ~d before the edge" back)))))))
+
+(define-test (search-agreement fold-classes-are-unicode-simple-folding)
+  ;; the characters written out as folding together are those the Unicode data folds together where
+  ;; comparing a letter's two cases does not: every such class, and no other
+  (let ((classes (make-hash-table)) (apart 0))
+    (loop for code from 0 below char-code-limit
+          for char = (code-char code)
+          ;; the capital I with dot above has only a full folding and the one for Turkic
+          unless (or (<= #xD800 code #xDFFF) (= code #x130))
+            do (let* ((full (sb-unicode:casefold (string char)))
+                      (folded (if (= (length full) 1) (char full 0) (char-downcase char))))
+                 (unless (and (char= folded char) (not (both-case-p char)))
+                   (pushnew char (gethash folded classes))
+                   (pushnew folded (gethash folded classes)))))
+    (maphash (lambda (folded members)
+               (declare (ignore folded))
+               (unless (loop for a in members always (loop for b in members always (char-equal a b)))
+                 (incf apart)
+                 (dolist (member members)
+                   (is equal (sort (copy-list members) #'char<)
+                       (sort (coerce (tuatara.syntax:fold-class member) 'list) #'char<)
+                       "what U+~4,'0x folds with" (char-code member)))))
+             classes)
+    (is = 69 apart)
+    ;; and the capital sharp s, which the Unicode data folds to the small one and this Lisp gives no other case
+    (is string= (format nil "~c~c" (code-char #xDF) (code-char #x1E9E)) (tuatara.syntax:fold-class (code-char #x1E9E)))
+    (is = (1+ apart)
+        (loop for class being the hash-values of tuatara.syntax::**fold-classes** sum (/ 1 (length class))))))
+
+(define-test (search-agreement case-ignored-where-the-text-is-all-ascii)
+  ;; a character past ASCII in what is searched for that folds with an ASCII letter, the long s with s and the
+  ;; Kelvin sign with k, finds that letter in text holding nothing past ASCII, and beside text that does: as
+  ;; literal text and as a pattern, gathered, stepped both ways and counted, against answers written out
+  (flet ((text (control &rest codes) (apply #'format nil control (mapcar #'code-char codes))))
+    (dolist (case (list (list "s S x" (text "~c" #x17F) t '((0 1) (2 3)))
+                        (list "mass MASS mast" (text "ma~c~c" #x17F #x17F) t '((0 4) (5 9)))
+                        (list "user USER usher" (text "u~cer" #x17F) t '((0 4) (5 9)))
+                        (list "xs5 xS5 x55" (text "x~c\\d" #x17F) nil '((0 3) (4 7)))
+                        (list (text "x~c5 xs5 xS5" #x17F) (text "x~c\\d" #x17F) nil '((0 4) (5 8) (9 12)))
+                        (list "ask a-k" (text "a[^~c]k" #x17F) nil '((4 7)))
+                        (list "as ax" (text "a[~cx]" #x17F) nil '((0 2) (3 5)))
+                        (list "s S x" (text "(?i)~c" #x17F) nil '((0 1) (2 3)))
+                        (list "k K x" (text "(?i)~c" #x212A) nil '((0 1) (2 3)))
+                        (list "k1 K1 x1" (text "(?i)~c\\d" #x212A) nil '((0 2) (3 5)))
+                        (list "kelvin KELVIN" (text "(?i)~celvin" #x212A) nil '((0 6) (7 13)))
+                        ;; case kept: only the character itself, which text that is all ASCII has none of
+                        (list "s S x" (text "(?-i)~c" #x17F) nil '())))
+      (destructuring-bind (text pattern literal-too wanted) case
+        (let ((rope (tuatara.text:string->rope text)))
+          (dolist (regex (if literal-too '(nil t) '(t)))
+            (is equal (list wanted wanted wanted (length wanted)) (every-way-found rope pattern regex)
+                "~s in ~s~:[~;, a pattern~]" pattern text regex)))))
+    ;; far into text read a chunk at a time, where the octets every match holds are looked for first
+    (let* ((at 70000)
+           (rope (tuatara.text:string->rope (concatenate 'string (make-string at :initial-element #\a) " xs5 mass")))
+           (digit (list (list (1+ at) (+ at 4))))
+           (mass (list (list (+ at 5) (+ at 9)))))
+      (is equal (list digit digit digit 1) (every-way-found rope (text "x~c\\d" #x17F) t))
+      (is equal (list mass mass mass 1) (every-way-found rope (text "ma~c~c" #x17F #x17F) nil))
+      (is equal (list mass mass mass 1) (every-way-found rope (text "ma~c~c\\b" #x17F #x17F) t)))))
+
+(define-modal-test (search-agreement replacements-and-counts-reach-long-matches)
+  ;; a match that runs over more lines than a search reaches (some 100 KB here, 4 KB past the stretch it
+  ;; starts in) is replaced and counted all the same: a line with a replacement is read thoroughly
+  (let* ((filler (with-output-to-string (o) (loop repeat 4000 do (format o "filler line of text here~%"))))
+         (text (format nil "~{~a~}" (loop for i below 10 collect (format nil "BEGIN ~d~%~aEND~%" i filler))))
+         (rope (tuatara.text:string->rope text))
+         (size (tuatara.text:rope-octet-length rope)))
+    (flet ((counted (typed)
+             (tuatara.defaults::count-line-matches
+              rope (tuatara.defaults::search-line-matcher (tuatara.defaults::parse-search-line typed t) t) 0 size)))
+      (is = 10 (counted "%BEGIN[\\s\\S]*?END/X"))
+      (is = 10 (counted "%BEGIN[\\s\\S]*?END/X/gn")))
+    (is string= (format nil "~{~a~}" (loop repeat 10 collect (format nil "X~%")))
+        (session-text (nth-value 1 (run-keys (format nil "C-x h r r ~a RET" (key-string "%BEGIN[\\s\\S]*?END/X"))
+                                             :text text :width 120))))))
+
+(define-test (search-agreement texts-of-many-windows-agree)
+  :time-limit 900
+  ;; texts several times the octets a scan reads at once (TUATARA.SYNTAX::+SEARCH-CHUNK+), so that
+  ;; matches, their fixed text and the lines around them fall across those edges as they stand, not
+  ;; only across windows made small: every match, how many, the next and the one before
+  (with-evidence-seed
+    (dolist (crlf '(nil t :mixed))
+      (let* ((text (evidence-text 3000 :crlf (eq crlf t) :mixed (eq crlf :mixed)))
+             (scanned (make-scanned text))
+             (rope (tuatara.text:string->rope text))
+             (size (tuatara.text:rope-octet-length rope)))
+        (true (> size (* 4 tuatara.syntax::+search-chunk+)))
+        (dolist (pattern '("login" "kōrero" "user=Hemi" "\\w+@\\w+\\.(?:org|nz|com)" "\\bfailed\\b" "^2026-0[1-6]"
+                           "\\d$" "a{100,}" "(error|warn)" "(?<=user=)\\w+" "^(?!.*ERROR).*kia" "[[:ipv4:]]"
+                           "[[:base64:]]" "sum [0-9a-f]{32}" "ora\\nfailed" "\\d\\n2026" "\\A\\S+" "\\S+\\s*\\z"
+                           "(?<=\\d\\n)\\S+" "\\d(?=\\n2026)" "$\\n^\\d" "[\\r\\n]+" "(?<=a{80})a" "(\\w+) \\1"
+                           "x\\Z|ERROR \\w+"))
+          (let* ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex t))
+                 (scanner (tuatara.syntax:compile-regex pattern))
+                 (oracle (mapcar (lambda (m) (subseq m 0 2)) (regex-oracle text scanner))))
+            (false (mismatch oracle (matcher-matches rope matcher) :test #'equal) "every ~s, ~a" pattern crlf)
+            (is = (length oracle) (tuatara.defaults::count-line-matches rope matcher 0 size)
+                "how many ~s, ~a" pattern crlf)
+            (loop repeat 3
+                  for start = (tuatara.text:rope-char-start rope (random size))
+                  do (is eql (next-match-at scanner scanned start)
+                         (tuatara.syntax:regex-search-forward rope pattern :start start :threads 3)
+                         "next ~s from ~a, ~a" pattern start crlf)
+                     (is eql (first (car (last (remove-if-not (lambda (m) (< (first m) start)) oracle))))
+                         (tuatara.syntax:regex-search-backward rope pattern :start start :threads 3)
+                         "before ~s from ~a, ~a" pattern start crlf))))))))
+
+(defun plain-engine-matches (text pattern fold)
+  "Every match of PATTERN in TEXT, non-empty ones only, as (START END) octet
+offsets, by the regular-expression library as it comes: the pattern given to
+it as written, none of the editor's reading of patterns, lines or case in
+between. A reference for texts whose lines end with a newline alone."
+  (let ((scanned (make-scanned text)) (out '()))
+    (cl-ppcre:do-matches (s e (cl-ppcre:create-scanner pattern :multi-line-mode t :case-insensitive-mode fold) text)
+      (when (< s e)
+        (push (list (aref (scanned-offsets scanned) s) (aref (scanned-offsets scanned) e)) out)))
+    (nreverse out)))
+
+(define-test (search-agreement second-references-agree)
+  ;; references that share nothing with how the editor compiles a pattern: the library given the
+  ;; pattern as written, and for a few patterns what plain loops over the text find
+  (with-evidence-seed
+    (let* ((text (evidence-text 3000))
+           (rope (tuatara.text:string->rope text))
+           (size (tuatara.text:rope-octet-length rope)))
+      (dolist (case '(("login" t) ("LOGIN" nil) ("user=Hemi" nil) ("[0-9]+" t) ("\\d+\\.\\d+" t) ("\\bfailed\\b" t)
+                      ("^2026-0[1-6]" t) ("\\d$" t) ("a{100,}" t) ("(error|warn)" t) ("(\\w)\\1" t) ("(?<=user=)\\w+" t)
+                      ("\\w+(?=@)" t) ("(?<!\\d)\\d{2}(?!\\d)" t) ("\\d\\n2026" t) ("(\\w+) \\1" t)
+                      ("$\\n^\\d" t) ("\\S+\\s*\\z" t) ("\\A\\S+" t) ("x\\Z|ERROR \\w+" nil)))
+        (destructuring-bind (pattern fold) case
+          (let ((wanted (plain-engine-matches text pattern fold))
+                (matcher (tuatara.defaults::make-pattern-matcher pattern :regex t)))
+            (true wanted "~s matches" pattern)
+            (false (mismatch wanted (matcher-matches rope matcher) :test #'equal) "every ~s" pattern)
+            (is = (length wanted) (tuatara.defaults::count-line-matches rope matcher 0 size) "how many ~s" pattern))))
+      ;; by plain loops: the runs of digits, the lines beginning 2026-0, the places login stands in any case
+      (let ((octets (to-octets text)) (digits '()) (lines '()) (logins '()))
+        (loop with i = 0
+              while (< i (length octets))
+              do (if (<= 48 (aref octets i) 57)
+                     (let ((end (or (position-if-not (lambda (o) (<= 48 o 57)) octets :start i) (length octets))))
+                       (push (list i end) digits)
+                       (setf i end))
+                     (incf i)))
+        (loop for start = 0 then (1+ newline)
+              for newline = (position 10 octets :start start)
+              do (when (and (<= (+ start 6) (length octets))
+                            (equalp (subseq octets start (+ start 6)) (to-octets "2026-0")))
+                   (push (list start (+ start 6)) lines))
+              while newline)
+        (let ((lower (to-octets (string-downcase text))))
+          (loop for at = (search (to-octets "login") lower) then (search (to-octets "login") lower :start2 (+ at 5))
+                while at do (push (list at (+ at 5)) logins)))
+        (loop for (pattern found regex) in (list (list "[0-9]+" digits t) (list "^2026-0" lines t)
+                                                 (list "login" logins t) (list "login" logins nil))
+              do (is equal (reverse found)
+                     (matcher-matches rope (tuatara.defaults::make-pattern-matcher pattern :regex regex))
+                     "~s~:[, as text~;~]" pattern regex))))))
+
+(define-test (search-agreement invalid-utf-8-searched-as-it-stands)
+  :time-limit 600
+  ;; octets that are no UTF-8, drawn at random among letters, digits and line ends: plain text and
+  ;; patterns of ASCII are found where plain loops over the octets find them, at every window size
+  (let* ((*random-state* (sb-ext:seed-random-state 2027))
+         (octets (let ((all (make-array 20000 :element-type '(unsigned-byte 8))))
+                   (dotimes (i (length all) all)
+                     (setf (aref all i)
+                           (let ((r (random 12)))
+                             (cond ((< r 3) (+ 97 (random 2)))       ; a or b
+                                   ((< r 5) (+ 48 (random 10)))      ; a digit
+                                   ((= r 5) 32)
+                                   ((= r 6) 10)
+                                   ((= r 7) (+ #xC2 (random 3)))     ; a lead octet, of a character or of none
+                                   (t (+ #x80 (random 128)))))))))   ; an octet past ASCII, alone or going on
+         (rope (tuatara.text:octets->rope octets))
+         (ab '()) (digits '()) (runs '()))
+    (loop for at = (search #(97 98) octets) then (search #(97 98) octets :start2 (+ at 2))
+          while at do (push (list at (+ at 2)) ab))
+    (loop with i = 0
+          while (< i (length octets))
+          do (cond ((<= 48 (aref octets i) 57)
+                    (let ((end (or (position-if-not (lambda (o) (<= 48 o 57)) octets :start i) (length octets))))
+                      (push (list i end) digits)
+                      (setf i end)))
+                   ((= (aref octets i) 97)
+                    ;; a run of a and the b after it
+                    (let ((end (or (position 97 octets :start i :test #'/=) (length octets))))
+                      (when (and (< end (length octets)) (= (aref octets end) 98))
+                        (push (list i (1+ end)) runs))
+                      (setf i (if (and (< end (length octets)) (= (aref octets end) 98)) (1+ end) end))))
+                   (t (incf i))))
+    (dolist (sizes (agreement-sizes))
+      (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
+        (loop for (pattern found regex) in (list (list "ab" ab nil) (list "ab" ab t) (list "[0-9]+" digits t)
+                                                 (list "\\d+" digits t) (list "a+b" runs t))
+              do (true found "~s matches" pattern)
+                 (is equal (list (reverse found) (reverse found) (reverse found) (length found))
+                     (every-way-found rope pattern regex)
+                     "~s~:[, as text~;~] at ~a" pattern regex sizes))))))
+
+(define-test (search-agreement literal-newlines-on-crlf-agree)
+  ;; plain text holding a line break finds it where the lines end with a carriage return and a
+  ;; newline, the two taken together: where the text with both written out stands in the octets
+  (with-evidence-seed
+    (let* ((text (evidence-text 1500 :crlf t))
+           (rope (tuatara.text:string->rope text))
+           (size (tuatara.text:rope-octet-length rope)))
+      (dolist (needle (list (format nil "~%2026-0") (format nil "x~%2026") (format nil "login~%") (format nil "~%~%")))
+        ;; none of them has a capital: case is ignored
+        (let ((wanted (oracle-positions
+                       text (cl-ppcre:regex-replace-all "\\n" needle (format nil "~c~c" #\Return #\Newline))
+                       :case-fold t)))
+          (true wanted "~s stands there" needle)
+          (dolist (sizes (agreement-sizes))
+            (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
+              (is equal wanted
+                  (mapcar #'first (matcher-matches rope (tuatara.defaults::make-pattern-matcher needle :regex nil)))
+                  "every ~s at ~a" needle sizes)
+              (is = (length wanted)
+                  (tuatara.defaults::count-line-matches rope (tuatara.defaults::make-pattern-matcher needle :regex nil)
+                                                        0 size)
+                  "how many ~s at ~a" needle sizes)
+              (is eql (first wanted) (tuatara.syntax:search-forward rope needle) "first ~s" needle)
+              (is eql (car (last wanted)) (tuatara.syntax:search-backward rope needle) "last ~s" needle))))))))

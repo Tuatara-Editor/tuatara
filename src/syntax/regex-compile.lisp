@@ -30,7 +30,9 @@ soon after, as a prompt is drawn again, is not compiled anew.")
 (defun compile-regex (regex &key (case-fold (regex-case-fold-p regex)) (thorough *regex-thorough*))
   "A cl-ppcre scanner for REGEX (PCRE-style syntax) in which ^ and $ match at
 line boundaries. CASE-FOLD ignores case; by default when REGEX has no upper-case
-letter outside an escape. What cl-ppcre lacks is put in first (ENGINE-PATTERN):
+letter outside an escape. Case is ignored as Unicode simple case folding has
+it: s matches the long s too, k the Kelvin sign, sigma the final sigma
+\(FOLD-TREE). What cl-ppcre lacks is put in first (ENGINE-PATTERN):
 named patterns ([[:ipv4:]], [[:creditcard:]], whose card numbers must pass the
 Luhn check), POSIX classes in a set, \\Q...\\E, \\h, \\v, \\R, \\xNN from 80 to
 FF the octet NN standing on its own; named groups and character properties
@@ -58,7 +60,11 @@ syntax error, for a pattern that cannot be used (REGEX-PROBLEM words why)."
   "COMPILE-REGEX's work on REGEX, as ENGINE-PATTERN gives it."
   (let* ((tree (handler-case (cl-ppcre:parse-string regex) (cl-ppcre:ppcre-syntax-error () nil)))
          (filtered (and tree (search *filter-mark* regex)))
-         (lines (and tree (line-tree tree)))
+         ;; case ignored as Unicode folds it: s the long s too, sigma the final sigma
+         (folded (and tree (multiple-value-list (fold-tree tree case-fold))))
+         ;; \z and \Z at the text's end, not at each window's
+         (ends (and tree (text-end-tree (first folded))))
+         (lines (and tree (line-tree ends)))
          (scanner (let ((cl-ppcre:*use-bmh-matchers* t))
                     ;; constant text found by skipping (Boyer-Moore-Horspool): three times faster
                     ;; where matches are many and case is folded
@@ -70,10 +76,21 @@ syntax error, for a pattern that cannot be used (REGEX-PROBLEM words why)."
                                              :case-insensitive-mode case-fold :multi-line-mode t)))
          ;; for text without a carriage return, where its lines end at newlines alone, the
          ;; pattern as written does the same, and quicker
-         (plain (and tree (not (equal (if (stringp tree) (list :sequence tree) tree) lines))
+         (plain (and tree (not (equal (if (stringp ends) (list :sequence ends) ends) lines))
                      (let ((cl-ppcre:*use-bmh-matchers* t))
-                       (cl-ppcre:create-scanner (if filtered (filter-tree tree) tree)
-                                                :case-insensitive-mode case-fold :multi-line-mode t)))))
+                       (cl-ppcre:create-scanner (if filtered (filter-tree ends) ends)
+                                                :case-insensitive-mode case-fold :multi-line-mode t))))
+         ;; the pattern as it was before its letters took in what they fold with past ASCII: it finds
+         ;; the same in text that is all ASCII, and quicker; not when a character of it past ASCII
+         ;; folds with an ASCII letter, which only the pattern folded finds there
+         (narrow (and tree (second folded) (notany #'folds-with-ascii-p (second folded))
+                      (let* ((ends (text-end-tree tree)) (lines (line-tree ends)) (cl-ppcre:*use-bmh-matchers* t))
+                        (flet ((scanner-of (tree)
+                                 (cl-ppcre:create-scanner (if filtered (filter-tree tree) tree)
+                                                          :case-insensitive-mode case-fold :multi-line-mode t)))
+                          (cons (scanner-of lines)
+                                (and (not (equal (if (stringp ends) (list :sequence ends) ends) lines))
+                                     (scanner-of ends))))))))
     (when tree
       ;; (?i) and the like, and a group's own, (?i:a): what a match must hold, and
       ;; whether it stays within a line, cannot be read from the text then
@@ -82,7 +99,8 @@ syntax error, for a pattern that cannot be used (REGEX-PROBLEM words why)."
         (multiple-value-bind (literal prefix-p) (and (not flags) (required-literal tree))
           ;; octet folding knows ASCII only: letters beyond it keep the full scan
           (unless (or (not case-fold)
-                      (every (lambda (c) (or (< (char-code c) 128) (not (both-case-p c)))) (or literal "")))
+                      (every (lambda (c) (or (< (char-code c) 128) (not (or (both-case-p c) (fold-class c)))))
+                             (or literal "")))
             (setf literal nil))
           (multiple-value-bind (shape shape-prefix-p) (and (not flags) (required-shape tree case-fold))
             ;; a shape where the text is none or too short to skip by, telling more than
@@ -97,8 +115,12 @@ syntax error, for a pattern that cannot be used (REGEX-PROBLEM words why)."
                 (let ((line-bound (and (not flags) (not (crosses-lines-p tree)))))
                   (make-regex-traits :needle (and literal (needle-octets literal case-fold)) :fold case-fold
                                      :shape shape :plain plain
+                                     :variants (and (or literal shape) (fold-variants (second folded)))
+                                     :narrow narrow
                                      :prefix (and (or literal shape) prefix-p)
                                      :line-bound line-bound
+                                     ;; a filter may read the lines around its own
+                                     :alone (and line-bound (not filtered) (line-alone-p tree))
                                      :end-anchored (end-anchored-p tree)
                                      :context (max +regex-context+ (lookbehind-octets lines))
                                      :reach (let ((most (and thorough (not line-bound) (tree-max-octets tree))))

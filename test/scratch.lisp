@@ -43,12 +43,28 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
            (b (tuatara.defaults::make-scratch-buffer name))
            (lines (remove "" (cl-ppcre:split "\\n" (tuatara.buffer:buffer-string b)) :test #'string=)))
       (true (rest lines))
+      ;; the words are all there, the comment marker's characters at a line's start too
+      (is equal (remove-if (lambda (w) (member w '("" ";;" "#") :test #'string=))
+                           (cl-ppcre:split "\\s+" (tuatara.defaults::substitute-command-keys
+                                                     (third (assoc name tuatara.defaults::*scratch-buffers*
+                                                                   :test #'string=)))))
+          (remove-if (lambda (w) (member w '("" ";;" "#") :test #'string=))
+                     (cl-ppcre:split "\\s+" (tuatara.buffer:buffer-string b))))
       (loop for (line next) on lines
             do (true (<= (length line) tuatara-user:*fill-column*))
                (when next
                  (let ((word (first (cl-ppcre:split "\\s+" (string-left-trim ";# " next)))))
                    (true (> (+ (length line) 1 (length word)) tuatara-user:*fill-column*)))))
       (tuatara.buffer:kill-buffer b))))
+
+(define-test (scratch headers-of-one-height)
+  ;; the two headers take the same number of rows, so either buffer starts alike
+  (flet ((rows (name)
+           (count #\Newline (string-right-trim '(#\Newline)
+                                                (tuatara.defaults::filled-scratch-header
+                                                 (third (assoc name tuatara.defaults::*scratch-buffers*
+                                                               :test #'string=)))))))
+    (is = (rows "*lisp-scratch*") (rows "*org-scratch*"))))
 
 (define-test (scratch auto-made)
   ;; *auto-scratch-buffers* says which are made by themselves: *org-scratch* alone
@@ -126,8 +142,8 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
     (true (typep (tuatara.modes:buffer-major-mode (tuatara.buffer:find-buffer "*org-scratch*"))
                  'tuatara.defaults::org-mode))
     ;; the header comment, word for word, with the keys bound now: its text is not kept, and how to keep it
-    (is string= (format nil "# Notes in Org that are not kept: they go when Tuatara quits, unless~%~
-                             # *scratch-text-kept* is on. C-x C-s saves them to a file; C-x C-f opens one.~%~%")
+    (is string= (format nil "# Org-mode notes for quick jottings: TAB on a heading folds it. This text goes~%~
+                             # when Tuatara quits, unless *scratch-text-kept* is on; C-x C-s saves it.~%~%")
         (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*org-scratch*"))))
   ;; there already: shown as it is, what was typed in it kept, nothing said
   (multiple-value-bind (f editor)

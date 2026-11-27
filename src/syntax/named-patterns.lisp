@@ -635,6 +635,12 @@ which the pattern sees nothing. A filter may read the rope before the window
 and, when the window says it may go on (*WINDOW-OPEN*), after it
 \(CALL-WITH-TEXT-READER).")
 
+(defvar *window-cut* nil
+  "While a pattern is tried on a part of a rope that ends before the text the
+pattern may see does, the octet of the rope that part ends at; NIL when it
+ends where that text does, and when a pattern is tried on a text whole. \\z
+and \\Z match at the text's end, never at such a part's (TEXT-END-TREE).")
+
 (defvar *window-reached* nil
   "The octet a filter's match reached, read on past the window's end
 (WINDOW-INDEX); NIL while none did.")

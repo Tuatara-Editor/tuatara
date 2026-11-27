@@ -236,7 +236,7 @@ an error saying why when there is none to VERB. Elsewhere, or with
                                        buffer verb :files-only t
                                        :none "No file here: mark files, or put the cursor on one")))))
           (multiple-value-bind (words details)
-              (rimu-question nil paths :here (tuatara.buffer:buffer-local buffer 'rimu-directory))
+              (rimu-question nil paths :here (rimu-list-directory buffer))
             (values paths words details)))
         (let ((path (shown-file-argument prompt)))
           (values (list path) (tuatara.io:native-file-name path))))))
