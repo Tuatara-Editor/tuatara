@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -315,7 +315,7 @@ while it is on.</p>
 <tr><td>none</td><td><kbd>C-x 8 RET</kbd></td><td><code>insert-char</code></td><td>Asks for a Unicode name, such as <code>em dash</code>, or a code in hex such as <code>e9</code>, <code>U+00E9</code> or <code>#xe9</code>. The names that fit are listed as you type. A number first puts the character in that many times.</td></tr>
 <tr><td>none</td><td><kbd>C-x 8 &amp;</kbd></td><td><code>insert-digraph</code></td><td>Asks for the two keys of a digraph, <code>e'</code> for é, <code>-&gt;</code> for an arrow, <code>&lt;&lt;</code> for a guillemet. With a selection, the character wraps it in a pair, such as « ». It works from NORMAL state too.</td></tr>
 <tr><td>none</td><td><kbd>M-x list-digraphs</kbd></td><td><code>list-digraphs</code></td><td>Lists every digraph, the common ones first.</td></tr>
-<tr><td>none</td><td><kbd>C-x 8 .</kbd></td><td><code>digraph-input-mode</code></td><td>Turns digraphs on as you type: <kbd>&amp;</kbd> and the digraph's keys give the character, so <code>&amp;e'</code> types é.</td></tr>
+<tr><td>none</td><td><kbd>C-x 8 .</kbd></td><td><code>digraph-input-mode</code></td><td>Turns digraphs on as you type: <kbd>&amp;</kbd> and the digraph's keys give the character, so <code>&amp;e'</code> types é. Pressed again, it turns them off.</td></tr>
 <tr><td>none</td><td><kbd>C-x 8 -</kbd></td><td><code>deactivate-input-method</code></td><td>Turns off whichever input method is on in this buffer.</td></tr>
 <tr><td>none</td><td><kbd>C-\</kbd></td><td><code>toggle-input-method</code></td><td>Turns this buffer's input method off, or on again. The first time it uses <code>*default-input-method*</code>, or asks.</td></tr>
 <tr><td>none</td><td><kbd>C-x RET C-\</kbd></td><td><code>set-input-method</code></td><td>Asks for an input method, turns it on, and makes it the one <kbd>C-\</kbd> switches.</td></tr>
@@ -330,7 +330,6 @@ name, <code>SV&lt;</code> for Swedish.</p>
 </thead>
 <tbody>
 <tr><td><code>*default-input-method*</code></td><td><code>nil</code></td><td>The method <kbd>C-\</kbd> turns on in a buffer that has had none, such as <code>&quot;swedish-postfix&quot;</code>. <code>nil</code> asks.</td></tr>
-<tr><td><code>*input-method-keys*</code></td><td>none</td><td>Methods of your own, each a key, a label and a method's name. <code>(setf *input-method-keys* '((&quot;s&quot; &quot;swedish&quot; &quot;swedish-postfix&quot;)))</code> makes <code>SPC i s</code> turn it on.</td></tr>
 </tbody></table></div>
 <h2 id="indentation-and-filling-in-plain-text"><span class="num">3.8</span> Indentation and filling in plain text</h2>
 <p><kbd>TAB</kbd> in plain text goes on to the next tab stop, which is every four columns
@@ -354,7 +353,7 @@ past the mark and any check box: <code>- [ ] a task</code> continues six columns
 <tr><td>none</td><td><kbd>C-M-\</kbd></td><td><code>indent-region</code></td><td>Indents the selected lines as the mode indents them.</td></tr>
 <tr><td><kbd>&gt;</kbd></td><td><kbd>C-z &gt;</kbd></td><td><code>indent-selection-or-line</code></td><td>In NORMAL state. Indents the selected lines, or this line, as the mode does.</td></tr>
 <tr><td>none</td><td><kbd>M-m</kbd></td><td><code>back-to-indentation</code></td><td>Moves to the first character of the line that is not a space or tab.</td></tr>
-<tr><td>none</td><td><kbd>M-x indent-tabs-mode</kbd></td><td><code>indent-tabs-mode</code></td><td>Switches this buffer between spaces and tab characters. A positive number turns tabs on, and zero or less turns them off.</td></tr>
+<tr><td>none</td><td><kbd>M-x indent-with-tabs-mode</kbd></td><td><code>indent-with-tabs-mode</code></td><td>Switches this buffer between spaces and tab characters. A positive number turns tabs on, and zero or less turns them off.</td></tr>
 <tr><td>none</td><td><kbd>M-=</kbd></td><td><code>count-words</code></td><td>Counts the lines, sentences, words and characters of the selection, or of the whole buffer.</td></tr>
 </tbody></table></div>
 <p>Filling takes prose only. In an Org file, headlines, tables, property drawers,
@@ -367,11 +366,12 @@ does.</p>
 so, so filling never holds the editor up. A sentence ends at <kbd>.</kbd>, <kbd>?</kbd>, <kbd>!</kbd> or
 <kbd>…</kbd> followed by a space or a line end, or at a blank line. Short forms such as
 <code>Dr.</code> end no sentence.</p>
-<p>In your init file two functions set the tab habits for one kind of file.
-<code>(set-tab-width 'c-mode 8)</code> makes tab stops 8 columns apart in C files, and
-<code>(set-indent-tabs-mode 'bash t)</code> puts tab characters in shell scripts. Their
-first argument is a major mode, and <code>prog</code> stands for every programming
-language.</p>
+<p>In your init file two settings hold the tab habits of some kinds of file, a
+list of major modes each with its value.
+<code>(setf *tab-width-modes* '((c-mode . 8)))</code> makes tab stops 8 columns apart in
+C files, and <code>(setf *indent-with-tabs-modes* '((bash . t)))</code> puts tab
+characters in shell scripts. A mode counts for the modes made from it, and
+<code>prog-mode</code> stands for every programming language.</p>
 <h3 id="settings-4"><span class="num">3.8.2</span> Settings</h3>
 <div class="tablewrap"><table>
 <thead>
@@ -379,8 +379,10 @@ language.</p>
 </thead>
 <tbody>
 <tr><td><code>*tab-width*</code></td><td><code>4</code></td><td>The columns from one tab stop to the next, a whole number from 1 to 64.</td></tr>
-<tr><td><code>*indent-tabs-mode*</code></td><td><code>nil</code></td><td><code>t</code> puts tab characters in where <kbd>TAB</kbd> goes on to a tab stop. <code>nil</code> puts spaces in.</td></tr>
-<tr><td><code>*tab-always-indent*</code></td><td><code>:complete</code></td><td>What <kbd>TAB</kbd> does in code. <code>:complete</code> indents the line and, when that changes nothing, completes the name. <code>t</code> only indents. <code>nil</code> indents when the cursor is in the leading blanks and otherwise goes to the next stop.</td></tr>
+<tr><td><code>*indent-with-tabs*</code></td><td><code>nil</code></td><td><code>t</code> puts tab characters in where <kbd>TAB</kbd> goes on to a tab stop. <code>nil</code> puts spaces in.</td></tr>
+<tr><td><code>*tab-width-modes*</code></td><td><code>nil</code></td><td>Tab widths for major modes and the modes made from them, a list of <code>(MODE . COLUMNS)</code>.</td></tr>
+<tr><td><code>*indent-with-tabs-modes*</code></td><td><code>nil</code></td><td>Tabs or spaces for major modes and the modes made from them, a list of <code>(MODE . T-OR-NIL)</code>. <code>tsv-mode</code> has tabs unless it says otherwise.</td></tr>
+<tr><td><code>*tab-key-action*</code></td><td><code>:complete</code></td><td>What <kbd>TAB</kbd> does in code. <code>:complete</code> indents the line and, when that changes nothing, completes the name. <code>t</code> only indents. <code>nil</code> indents when the cursor is in the leading blanks and otherwise goes to the next stop.</td></tr>
 <tr><td><code>*tuatara-normal-tab-modes*</code></td><td><code>(org-mode)</code></td><td>The modes where <kbd>TAB</kbd> works in NORMAL state, and the modes made from them.</td></tr>
 <tr><td><code>*fill-column*</code></td><td><code>80</code></td><td>The column filled lines end by.</td></tr>
 <tr><td><code>*fill-ask-column*</code></td><td><code>t</code></td><td><code>nil</code> fills at once, without asking for the column.</td></tr>
@@ -462,7 +464,7 @@ Tuatara never waits on it. With a number, a sort runs in descending order.</p>
 <tr><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>sort-lines</code></td><td>Sorts the lines by their text. Capital and small letters compare by their codes unless <code>*sort-fold-case*</code> is on.</td></tr>
+<tr><td><code>sort-lines</code></td><td>Sorts the lines by their text. Capital and small letters compare by their codes unless <code>*sort-ignores-case*</code> is on.</td></tr>
 <tr><td><code>sort-fields</code></td><td>Sorts the lines by one field. Fields are apart by spaces. A number names the field, and a negative one counts from the end of the line. In a CSV file or a log it asks for a column and moves each record whole, the header staying first.</td></tr>
 <tr><td><code>sort-numeric-fields</code></td><td>Sorts by the number at the start of a field. <code>0x</code> starts a hexadecimal number. A field with no number counts as 0.</td></tr>
 <tr><td><code>sort-columns</code></td><td>Sorts by the text between the columns where the selection starts and ends.</td></tr>
@@ -491,7 +493,7 @@ they say so and change nothing.</p>
 <tr><th>Setting</th><th>Default</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*sort-fold-case*</code></td><td><code>nil</code></td><td><code>t</code> ignores the case of ASCII letters, so <code>b</code> sorts before <code>C</code>.</td></tr>
+<tr><td><code>*sort-ignores-case*</code></td><td><code>nil</code></td><td><code>t</code> ignores the case of ASCII letters, so <code>b</code> sorts before <code>C</code>.</td></tr>
 </tbody></table></div>
 <h2 id="recording-keys"><span class="num">3.11</span> Recording keys</h2>
 <p>When you want the same few keys on line after line, record them once and play

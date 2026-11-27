@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -104,7 +104,9 @@ three levels:</p>
 <pre class="ex">(setf *org-bullets* '(&quot;•&quot; &quot;◦&quot; &quot;▪&quot;))
 </pre>
 <p>Lines like <code>#+STARTUP:</code> are read when the file is opened. After you change
-one, kill the buffer with <kbd>C-x k</kbd> and open the file again.</p>
+one, kill the buffer with <kbd>C-x k</kbd> and open the file again. Such a line inside a
+block, between <code>#+begin_example</code> and <code>#+end_example</code> say, is only shown, and
+so is a <code>#+TODO:</code> line there.</p>
 <p>With the indented view or <code>*org-bullets*</code>, the stars before the last one of
 a heading are hidden, and that is <code>*org-hide-leading-stars*</code>, <code>t</code> as
 standard. Set it to <code>nil</code> and they are shown, faint, in front of the sign:</p>
@@ -276,18 +278,14 @@ plain text file, and an item is folded only as part of its heading.</p>
 <tr><td>none</td><td><kbd>S-TAB</kbd></td><td><code>org-global-cycle</code></td><td>Cycle the whole buffer: its overview (the headlines of the first level), then its contents (every headline), then everything, and the overview again.</td></tr>
 <tr><td>none</td><td><kbd>M-RET</kbd></td><td><code>org-meta-return</code></td><td>A new item or headline after what point is in and all under it: in a list, an item of the same kind after the one point is in and all under it (its bullet, the next number, [ ] when it has a checkbox).</td></tr>
 <tr><td>none</td><td><kbd>M-S-RET</kbd></td><td><code>org-insert-todo-heading</code></td><td>A new TODO headline of this level after this subtree.</td></tr>
-<tr><td>none</td><td><kbd>M-j</kbd>, <kbd>M-&lt;down&gt;</kbd></td><td><code>org-metadown</code></td><td>In an Org table, move the row down; on a list item, move it with its sub-items below the item after it; else move the subtree down (M-j).</td></tr>
-<tr><td>none</td><td><kbd>M-k</kbd>, <kbd>M-&lt;up&gt;</kbd></td><td><code>org-metaup</code></td><td>In an Org table, move the row up; on a list item, move it with its sub-items above the item before it; else move the subtree up (M-k).</td></tr>
-<tr><td>none</td><td><kbd>M-h</kbd>, <kbd>M-&lt;left&gt;</kbd></td><td><code>org-metaleft</code></td><td>In an Org table, move the column left; on a list item, set it out a level, or every item the selection's lines begin; else promote the headline (M-h).</td></tr>
-<tr><td>none</td><td><kbd>M-l</kbd>, <kbd>M-&lt;right&gt;</kbd></td><td><code>org-metaright</code></td><td>In an Org table, move the column right; on a list item, set it in a level under the item before it, or every item the selection's lines begin; else demote the headline (M-l).</td></tr>
-<tr><td>none</td><td><kbd>M-H</kbd>, <kbd>M-S-&lt;left&gt;</kbd></td><td><code>org-shiftmetaleft</code></td><td>In an Org table, delete the column; on a list item, set it out a level with the items under it; else promote the subtree (M-H).</td></tr>
-<tr><td>none</td><td><kbd>M-L</kbd>, <kbd>M-S-&lt;right&gt;</kbd></td><td><code>org-shiftmetaright</code></td><td>In an Org table, put an empty column before this one; on a list item, set it in a level with the items under it; else demote the subtree (M-L).</td></tr>
+<tr><td>none</td><td><kbd>M-j</kbd>, <kbd>M-&lt;down&gt;</kbd></td><td><code>org-move-down</code></td><td>In an Org table, move the row down; on a list item, move it with its sub-items below the item after it; else move the subtree down (M-j).</td></tr>
+<tr><td>none</td><td><kbd>M-k</kbd>, <kbd>M-&lt;up&gt;</kbd></td><td><code>org-move-up</code></td><td>In an Org table, move the row up; on a list item, move it with its sub-items above the item before it; else move the subtree up (M-k).</td></tr>
+<tr><td>none</td><td><kbd>M-h</kbd>, <kbd>M-&lt;left&gt;</kbd></td><td><code>org-promote</code></td><td>In an Org table, move the column left; on a list item, set it out a level, or every item the selection's lines begin; else promote the headline (M-h).</td></tr>
+<tr><td>none</td><td><kbd>M-l</kbd>, <kbd>M-&lt;right&gt;</kbd></td><td><code>org-demote</code></td><td>In an Org table, move the column right; on a list item, set it in a level under the item before it, or every item the selection's lines begin; else demote the headline (M-l).</td></tr>
+<tr><td>none</td><td><kbd>M-H</kbd>, <kbd>M-S-&lt;left&gt;</kbd></td><td><code>org-promote-subtree</code></td><td>In an Org table, delete the column; on a list item, set it out a level with the items under it; else promote the subtree (M-H).</td></tr>
+<tr><td>none</td><td><kbd>M-L</kbd>, <kbd>M-S-&lt;right&gt;</kbd></td><td><code>org-demote-subtree</code></td><td>In an Org table, put an empty column before this one; on a list item, set it in a level with the items under it; else demote the subtree (M-L).</td></tr>
 <tr><td>none</td><td><kbd>M-x org-move-subtree-down</kbd></td><td><code>org-move-subtree-down</code></td><td>Move the subtree point is in down, past its next sibling.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-move-subtree-up</kbd></td><td><code>org-move-subtree-up</code></td><td>Move the subtree point is in up, before its sibling above.</td></tr>
-<tr><td>none</td><td><kbd>M-x org-do-promote</kbd></td><td><code>org-do-promote</code></td><td>Promote the headline point is in a level, its subtree's other headlines as they are.</td></tr>
-<tr><td>none</td><td><kbd>M-x org-do-demote</kbd></td><td><code>org-do-demote</code></td><td>Demote the headline point is in a level, its subtree's other headlines as they are.</td></tr>
-<tr><td>none</td><td><kbd>M-x org-promote-subtree</kbd></td><td><code>org-promote-subtree</code></td><td>Promote the headline point is in a level, and every headline under it.</td></tr>
-<tr><td>none</td><td><kbd>M-x org-demote-subtree</kbd></td><td><code>org-demote-subtree</code></td><td>Demote the headline point is in a level, and every headline under it.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -440,8 +438,8 @@ shown with a space after it, so that one drawn wider than a column is not cut.
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-c C-c</kbd></td><td><code>org-ctrl-c-ctrl-c</code></td><td>Do what Org's C-c C-c does where point is: on a dynamic block's #+BEGIN: line, make the block again (M-x org-dblock-update).</td></tr>
-<tr><td>none</td><td><kbd>C-c -</kbd></td><td><code>org-ctrl-c-minus</code></td><td>Do what Org's C-c - does where point is: in a table, a rule line below the row (org-table-insert-hline); in a list, the next kind of bullet (org-cycle-list-bullet).</td></tr>
+<tr><td>none</td><td><kbd>C-c C-c</kbd></td><td><code>org-act-here</code></td><td>Do what Org's C-c C-c does where point is: on a dynamic block's #+BEGIN: line, make the block again (M-x org-dblock-update).</td></tr>
+<tr><td>none</td><td><kbd>C-c -</kbd></td><td><code>org-rule-or-bullet</code></td><td>Do what Org's C-c - does where point is: in a table, a rule line below the row (org-table-insert-hline); in a list, the next kind of bullet (org-cycle-list-bullet).</td></tr>
 <tr><td>none</td><td><kbd>M-x org-cycle-list-bullet</kbd></td><td><code>org-cycle-list-bullet</code></td><td>Give the list point is in its next kind of bullet (C-c -): - to + to * to 1.</td></tr>
 <tr><td>none</td><td><kbd>RET</kbd></td><td><code>org-return</code></td><td>RET in Org: on a link, follow it (<strong>org-return-follows-link</strong>); in a table, go to the row below, aligned; else a new line, as RET does in text.</td></tr>
 </tbody></table></div>
@@ -570,8 +568,8 @@ that the important tasks stand out.</p>
 </thead>
 <tbody>
 <tr><td>none</td><td><kbd>C-c C-t</kbd></td><td><code>org-todo</code></td><td>Change the TODO keyword of the headline point is in to the next of the document's (#+TODO:, else TODO, WAIT and DONE), none after the last, those of <strong>org-todo-keywords-not-cycled</strong> passed over (CANCELLED, which M-x org-cancel-task sets); a task done is noted with CLOSED: and when.</td></tr>
-<tr><td>none</td><td><kbd>S-&lt;right&gt;</kbd></td><td><code>org-shiftright</code></td><td>On a headline, its next TODO keyword, as M-x org-todo does.</td></tr>
-<tr><td>none</td><td><kbd>S-&lt;left&gt;</kbd></td><td><code>org-shiftleft</code></td><td>On a headline, its TODO keyword before, none before the first.</td></tr>
+<tr><td>none</td><td><kbd>S-&lt;right&gt;</kbd></td><td><code>org-next-state</code></td><td>On a headline, its next TODO keyword, as M-x org-todo does.</td></tr>
+<tr><td>none</td><td><kbd>S-&lt;left&gt;</kbd></td><td><code>org-previous-state</code></td><td>On a headline, its TODO keyword before, none before the first.</td></tr>
 <tr><td>none</td><td><kbd>C-c X</kbd></td><td><code>org-cancel-task</code></td><td>Cancel the task of the headline point is in: its keyword made CANCELLED, a done keyword that M-x org-todo and the other keys that go round the keywords pass over, noted with CLOSED: and when as a task done is.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-z</kbd></td><td><code>org-add-note</code></td><td>Add a note to the entry point is under (C-c C-z): the note is asked for, and logged where Org logs notes, at the top of its :LOGBOOK: drawer with <strong>ORG-LOG-INTO-DRAWER</strong>, else after its planning line and properties, in the form - Note taken on <span class="timestamp">[2026-10-01 Thu 18:00]</span> \\ and the note under it.</td></tr>
 </tbody></table></div>
@@ -675,6 +673,22 @@ you by surprise.</p>
 <p>A date in the text is for an event such as a flight, a birthday or a meeting.
 <kbd>C-c .</kbd> puts one where the cursor is. The agenda shows it on its day and
 nowhere else.</p>
+<p><kbd>C-c C-s</kbd> and <kbd>C-c C-d</kbd> start their question from the date the entry
+already has: its <code>SCHEDULED:</code> or <code>DEADLINE:</code>, and for a reminder with no
+<code>SCHEDULED:</code> the date in its text. The calendar opens on that day, <kbd>RET</kbd> with
+nothing typed keeps it, and a day typed with no time keeps the time: <code>fri</code>
+turns <code>&lt;2026-11-25 Wed 18:00&gt;</code> into <code>&lt;2026-11-27 Fri 18:00&gt;</code>. <kbd>C-c .</kbd> on a
+date starts from that date.</p>
+<p>A reminder has one time, so scheduling it moves the date in its text into
+<code>SCHEDULED:</code>. With <code>* Ring the plumber :reminder:notify:</code> and <code>&lt;2026-11-25 Wed
+18:00&gt;</code> in its text, <kbd>C-c C-s</kbd> and <code>sun</code> give <code>SCHEDULED: &lt;2026-11-29 Sun
+18:00&gt;</code>, and the date leaves the text. Only the first date of the text moves,
+a range <code>&lt;a&gt;--&lt;b&gt;</code> as one; other dates in the text stay, and a reminder
+scheduled already keeps its text as it is. A task keeps the date in its text,
+since an event's time is not a plan. <kbd>C-c C-s</kbd> on an event (no keyword, not a
+reminder, nothing scheduled, a date in its text) schedules nothing and
+says <code>An event, at &lt;...&gt;: C-c . on that time changes it or makes it
+repeat</code>.</p>
 <p><kbd>C-c !</kbd> writes a date in square brackets, as <code>[2026-12-24 Thu]</code>. Such a date
 is only a record. The agenda leaves it out. Use it to note when something
 happened.</p>
@@ -713,18 +727,28 @@ is shown as you type, so you can see that it is right before you press
 <tr><td><code>24</code></td><td>The 24th of this month, or of the next once it is past</td></tr>
 <tr><td><code>dec 24</code>, <code>2026-12-24</code></td><td>That date</td></tr>
 <tr><td><code>fri 9am</code>, <code>+2d 14:00</code></td><td>A day with a time</td></tr>
+<tr><td><code>50m</code>, <code>1h3m</code>, <code>2h</code>, <code>10s</code></td><td>A time from now, as the timestamp it comes to</td></tr>
 <tr><td><code>10:00-11:30</code></td><td>Today, from then until then</td></tr>
 <tr><td><code>every week 10:00</code></td><td>Each week at that time, starting today</td></tr>
 <tr><td><code>every second day</code></td><td>Every other day</td></tr>
 <tr><td><code>first monday every month</code></td><td>That day of each month</td></tr>
 </tbody></table></div>
+<p>A time from now is a number with a unit: <code>50m</code>, <code>1h3m</code>, <code>90m</code>, <code>2h</code>, <code>10s</code>
+or <code>1d</code>. It is written as the timestamp it comes to, rounded up to the next
+minute: at 22:37, <code>50m</code> gives <code>&lt;2026-11-25 Wed 23:28&gt;</code>. Here <code>m</code> is minutes,
+while <code>+1m</code> is still a month on. Org timestamps hold minutes, so seconds round
+up to the minute. Every date question takes it: <kbd>C-c C-s</kbd>, <kbd>C-c C-d</kbd>,
+<kbd>C-c .</kbd>, the <code>%^T</code> of a capture template and the date prompt of the calendar.
+For a reminder, press <kbd>C-x a c r</kbd>, type a title, then <code>50m</code>.</p>
 <h3 id="things-that-come-round-again"><span class="num">14.6.2</span> Things that come round again</h3>
 <p>The last rows of the table make a date that repeats. A repeating date is
 written with a mark after it, as in <code>&lt;2026-10-13 Tue +1w&gt;</code> for every week.
 When you mark a repeating task <code>DONE</code>, it is not closed. Its date moves on to
 the next time, it becomes <code>TODO</code> again, and a note of when you last did it is
 kept under it. This is the way to keep track of the rubbish day, the rent
-and watering the lemon tree.</p>
+and watering the lemon tree. A task done late goes on to its first date still
+to come; the weeks missed are not owed. <code>++1w</code> is read as <code>+1w</code>, and <code>.+1w</code>
+counts the week from the day you mark it done.</p>
 <p>Tuatara can also keep a record of each time a task is moved on. These
 settings take <code>:time</code> or <code>nil</code>. <code>*org-log-repeat*</code> is <code>:time</code> as it comes: a
 repeating task marked <code>DONE</code> gets a note of the change and a <code>LAST_REPEAT</code>
@@ -751,7 +775,12 @@ heading's planning line and properties, in plain sight.</p>
 prompt; the lines shown under the prompt say so. A menu opens
 where you choose the start, the time, how often and when it ends, and it
 shows in plain words what your choices come to. <kbd>RET</kbd> writes it. The menu
-opens only from a date prompt, so <kbd>M-x</kbd> does not offer it.</p>
+opens only from a date prompt, so <kbd>M-x</kbd> does not offer it. With nothing
+typed, <kbd>C-r</kbd> opens the menu on the entry's own day and time, so that
+<code>Weekly on</code> names that day. In the agenda, <kbd>C-c C-s C-r</kbd> writes the entry on
+the line: the file is saved at once when it is one of
+<code>*org-agenda-autosave-files*</code>, the agenda is drawn again, and <kbd>u</kbd> in the
+agenda undoes the change.</p>
 <h3 id="being-told-on-the-desktop"><span class="num">14.6.3</span> Being told on the desktop</h3>
 <p>Give a heading the tag <code>notify</code> and Tuatara shows a notification on your
 desktop as its time comes, for as long as Tuatara is running. It tells you
@@ -766,6 +795,29 @@ and no time is never announced. The tag itself is
 <code>*org-notify-tag*</code>: with <code>(setf *org-notify-tag* &quot;remind&quot;)</code> it is the tag
 <code>remind</code> that Tuatara watches for, and <code>nil</code> turns the notifications off. The notification is shown by the program
 <code>notify-send</code>, which chapter 8 mentions with the other notifications.</p>
+<p>Alarms are off as standard. <code>*org-notify-alarms*</code> is a list of the ones you
+want; they sound for entries with the <code>notify</code> tag as they are told, and for
+no other notification:</p>
+<ul>
+<li><code>:flash</code> is for people who cannot hear a sound. It flashes every mode line
+  in the face <code>:mode-line-alarm</code> twice, then keeps it lit until you press a
+  key. A flash is a quarter second lit and a quarter dark. The face takes the
+  theme's error colour unless you set it.</li>
+<li><code>:bell</code> rings the bell of every screen Tuatara shows on: the terminal's, also
+  over ssh (the terminal may show it as a flash or a mark on the tab; set that
+  in the terminal), the desktop's error bell for the GTK window (the <code>visual
+  alerts</code> of GNOME can turn it into a flash of the screen), and the bell of
+  each client of the daemon. A daemon with no client has no screen and so no
+  bell.</li>
+<li>A sound file is played on the computer Tuatara runs on, apart from the
+  editor, by the first of <code>pw-play</code> (PipeWire), <code>paplay</code> and <code>aplay</code> found on
+  the <code>PATH</code>. A missing player or file is said once in a session. <kbd>M-x
+  check-health</kbd> says how the sound plays when one is set.</li>
+</ul>
+<pre class="ex">(setf *org-notify-alarms*
+      (list :flash :bell &quot;/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga&quot;))
+(set-face :mode-line-alarm :bg &quot;#d70000&quot; :fg &quot;#ffffff&quot;)
+</pre>
 <div class="try">
 <h3>Try it, with a holiday plan</h3>
 <ol>
@@ -835,6 +887,7 @@ call them by name, but they are what the keys above run.</p>
 <tr><td><code>*org-notify-tag*</code></td><td><code>&quot;notify&quot;</code></td><td>nil, or text</td><td>The tag of the agenda's entries told on the desktop as their time comes.</td></tr>
 <tr><td><code>*org-notify-before*</code></td><td><code>10</code></td><td>nil, or a whole number of minutes, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How many minutes before its time an entry tagged :notify: is told.</td></tr>
 <tr><td><code>*org-notify-day-time*</code></td><td><code>&quot;08:00&quot;</code></td><td>nil, or text</td><td>When an entry tagged :notify: with a date and no time of day is told.</td></tr>
+<tr><td><code>*org-notify-alarms*</code></td><td><code>nil</code></td><td>a list, each :flash, :bell, or text</td><td>The alarms that go with an agenda entry told as its time comes.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -845,6 +898,7 @@ call them by name, but they are what the keys above run.</p>
 <tr><td><code>:org-scheduled-keyword</code></td><td>Org's SCHEDULED:, in the colour the agenda gives a task scheduled.</td></tr>
 <tr><td><code>:org-deadline-keyword</code></td><td>Org's DEADLINE:, in the colour the agenda gives a deadline.</td></tr>
 <tr><td><code>:calendar-chosen</code></td><td>Days chosen in the calendar for a date asked for, as Org's date question has them chosen (M-x org-schedule, M-x org-time-stamp).</td></tr>
+<tr><td><code>:mode-line-alarm</code></td><td>Every mode line while an agenda entry's alarm is on (:flash of <strong>ORG-NOTIFY-ALARMS</strong>): it flashes, then stays so until a key is pressed, so that it is seen on coming back to the screen; in the theme's error colour unless set, as (set-face :mode-line-alarm :bg &quot;#d70000&quot; :fg &quot;#ffffff&quot;) in the init file.</td></tr>
 </tbody></table></div>
 <h2 id="the-agenda"><span class="num">14.7</span> The agenda</h2>
 <p>Dates scattered over a dozen files are of little use unless something
@@ -1066,7 +1120,7 @@ entry in the setting is a pattern to copy.</p>
 <tr><td>none</td><td><kbd>C-c C</kbd></td><td><code>org-agenda-clock-cancel</code></td><td>Cancel the clock, as C-c C-x C does, from the agenda: the clock's file saved at once when it is one of <strong>ORG-AGENDA-AUTOSAVE-FILES</strong>.</td></tr>
 <tr><td>none</td><td><kbd>C-c J</kbd>, <kbd>C-x a j</kbd>, <kbd>C-c C-x J</kbd></td><td><code>org-clock-goto</code></td><td>Go to the task the clock runs on (C-c C-x J, in the agenda C-c J, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-/</kbd>, <kbd>C-_</kbd></td><td><code>org-agenda-undo</code></td><td>Undo the last change made from this agenda, in the file it was made in, and draw the agenda again; when the file was changed there since, nothing is undone and you are told to undo in the file first.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>org-agenda-save-all-buffers</code></td><td>Save the buffers of the agenda files (<strong>org-agenda-files</strong>, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>org-agenda-save-all-buffers</code></td><td>Save the buffers of the agenda files (<strong>ORG-AGENDA-FILES</strong>, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).</td></tr>
 <tr><td>none</td><td><kbd>M-x org-save-all-org-buffers</kbd></td><td><code>org-save-all-org-buffers</code></td><td>Save every Org buffer with changes not saved: those the agenda changed among them, and any other.</td></tr>
 <tr><td>none</td><td><kbd>i</kbd>, <kbd>C-c i</kbd></td><td><code>org-capture-on-day</code></td><td>Capture, as C-x a c does, for the day at point in the calendar or on the agenda (the day of its line, or of the date above it), so that the agenda lists the entry that day: the template's %t and %T are that day's date, and a template with neither gets that date on the line after its heading.</td></tr>
 </tbody></table></div>
@@ -1448,7 +1502,8 @@ column the table does not have.</p>
    The total becomes 745. Save with <kbd>C-x C-s</kbd>.</li>
 </ol>
 </div>
-<p>A formula can contain brackets inside brackets, signs and powers.
+<p>A formula can contain brackets inside brackets, signs and powers, and each
+operator of a chain such as <code>1+2+3</code> nests the part before it one deeper.
 <code>*org-formula-depth-limit*</code> is how deep they may nest, 200 as standard. A
 formula nested deeper is refused and its field shows <code>#ERROR</code>, rather than
 the editor following it down without end. You will not meet it in a budget;
@@ -1461,8 +1516,8 @@ from people you do not trust.</p>
 <tbody>
 <tr><td>none</td><td><kbd>M-x org-table-align</kbd></td><td><code>org-table-align</code></td><td>Align the Org table point is in: each column as wide as its widest field, numbers to the right, rules as wide as the table.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-table-insert-hline</kbd></td><td><code>org-table-insert-hline</code></td><td>Put a rule below the row point is in, in an Org table (C-c -).</td></tr>
-<tr><td>none</td><td><kbd>M-S-&lt;down&gt;</kbd></td><td><code>org-shiftmetadown</code></td><td>In an Org table, put an empty row above this one (M-S-&lt;down&gt;).</td></tr>
-<tr><td>none</td><td><kbd>M-S-&lt;up&gt;</kbd></td><td><code>org-shiftmetaup</code></td><td>In an Org table, delete the row point is in (M-S-&lt;up&gt;).</td></tr>
+<tr><td>none</td><td><kbd>M-S-&lt;down&gt;</kbd></td><td><code>org-insert-row</code></td><td>In an Org table, put an empty row above this one (M-S-&lt;down&gt;).</td></tr>
+<tr><td>none</td><td><kbd>M-S-&lt;up&gt;</kbd></td><td><code>org-delete-row</code></td><td>In an Org table, delete the row point is in (M-S-&lt;up&gt;).</td></tr>
 <tr><td>none</td><td><kbd>C-c *</kbd></td><td><code>org-table-recalculate</code></td><td>Work out the formulas of the Org table point is in, its #+TBLFM: line (C-c *): column formulas ($3=$1+$2) below the first rule (in every row when it has none), field formulas (@4$2=vsum(@2..@3)) and range formulas (@2$2..@3$3=$1*10), worked out with the table arithmetic.</td></tr>
 <tr><td>none</td><td><kbd>C-c =</kbd></td><td><code>org-table-eval-formula</code></td><td>Ask for the formula of the column point is in, the one it has offered, and work it out (C-c =); with C-u, the formula of the field point is in.</td></tr>
 </tbody></table></div>
@@ -2025,7 +2080,7 @@ same name, <code>letter.pdf</code> for <code>letter.org</code>. If you change th
 again, the PDF on the screen is read again at the page you were on.</p>
 <p>Two more commands do the same and differ only in what happens afterwards.
 <kbd>M-x org-export-latex-pdf-enhanced</kbd> makes the PDF and shows nothing. <kbd>M-x
-org-export-latex-pdf-enhanced-xdg</kbd> opens it in your desktop's PDF reader.</p>
+org-export-latex-pdf-enhanced-externally</kbd> opens it in your desktop's PDF reader.</p>
 <p>The export takes the note as the buffer has it, saved or not. To export only
 part of a note, select the lines first.</p>
 <p>If LaTeX fails, the echo area names the line of your note where it went
@@ -2076,8 +2131,8 @@ trusted note by its path, so that they can read it. What they leave in that work
 back only when it is a file of its own: a symbolic link there, which a
 document could make to lead to any file of yours, is never followed.</p>
 <h3 id="making-a-word-document"><span class="num">14.14.4</span> Making a Word document</h3>
-<p><kbd>M-x org-export-docx</kbd> writes the note as a Word document beside it, and
-<kbd>M-x org-export-docx-xdg</kbd> also opens it in your desktop's word processor. The
+<p><kbd>M-x org-export-docx</kbd> writes the note as a Word document beside it, and <kbd>M-x
+org-export-docx-externally</kbd> also opens it in your desktop's word processor. The
 document is laid out as the enhanced PDF is, with the same numbering and the
 same tables, so you can send whichever the other person prefers.</p>
 <div class="try">
@@ -2127,10 +2182,10 @@ templates that give a document your own look, and a way to black out names.</p>
 <p>Each family also has a command that stops at the LaTeX file and makes no
 PDF, <kbd>M-x org-export-latex</kbd> and <kbd>M-x org-export-latex-enhanced</kbd>, for people
 who want to work on the LaTeX themselves. If you have a LaTeX file of your
-own, <kbd>M-x export-latex-compile-pdf</kbd> and its two companions make a PDF from
+own, <kbd>M-x latex-export-pdf</kbd> and its two companions make a PDF from
 it in the same three ways.</p>
 <h3 id="from-a-line-to-the-pdf-and-back"><span class="num">14.14.6</span> From a line to the PDF and back</h3>
-<p>A PDF made by <kbd>M-x export-latex-compile-pdf-buffer</kbd> or one of its companions
+<p>A PDF made by <kbd>M-x latex-export-pdf-buffer</kbd> or one of its companions
 comes with a note of where each line of the LaTeX went on the pages. In the
 LaTeX file, <kbd>C-c C-v</kbd> shows the line the cursor is on in the PDF: the PDF
 opens beside the file if it is not shown, turns to the page the line is on,
@@ -2180,7 +2235,7 @@ as you type it.</p>
 <p>A template gives a document its look: the fonts, the margins, a header with
 a logo. A note chooses one with a line at the top, <code>#+template:</code> and the
 template's name. Templates are kept in your configuration directory.</p>
-<p>The simplest start is <kbd>M-x export-latex-template-copy</kbd>. It copies one of the
+<p>The simplest start is <kbd>M-x export-template-copy-latex</kbd>. It copies one of the
 built-in templates to your directory and opens it for you to change. If someone
 gives you a Word or LaTeX document and asks for reports that look like it,
 <kbd>M-x export-template-from-docx</kbd> and <kbd>M-x export-template-from-latex</kbd> make a
@@ -2229,13 +2284,17 @@ a black box stands where the name was, and the name is nowhere in the file.
 <p>The mark is <code>R</code> for a name. In your own LaTeX files the commands that hide
 their argument are those in <code>*latex-redaction-commands*</code>, <code>&quot;R&quot;</code>, <code>&quot;D&quot;</code> and
 <code>&quot;redact&quot;</code> as standard, written without the backslash, so that <code>\R{John
-Otago}</code> is hidden text. <code>export-check-redactions</code> and the PDF export look
-for them in a LaTeX file just as they do for the marks of a note. If your
+Otago}</code> is hidden text. An argument with braces of its own, such as
+<code>\R{John \textbf{Otago}}</code>, is hidden text as a whole, looked for as the
+words it shows, <code>John Otago</code>. A call never closed hides the rest of its
+paragraph. <code>export-check-redactions</code> and the PDF export look for them in a
+LaTeX file just as they do for the marks of a note. If your
 templates call it <code>\hide{...}</code>, add it:
 <code>(setf *latex-redaction-commands* '(&quot;R&quot; &quot;D&quot; &quot;redact&quot; &quot;hide&quot;))</code>.</p>
 <p>A box is of little use if the same name stands in plain text two pages
 later. <kbd>M-x export-check-redactions</kbd> looks for every hidden text that also
-appears unhidden and lists the places. The export runs the same check in
+appears unhidden and lists the places. It looks in the background, so you can
+go on writing; the list comes when it is done. The export runs the same check in
 the background before it writes anything, and when it finds such a place
 it lists them and asks whether to go on. Only the enhanced export hides
 text. The plain export refuses a note that asks for it.</p>
@@ -2265,11 +2324,12 @@ for it.</p>
 <tbody>
 <tr><td>none</td><td><kbd>M-x org-export-latex-pdf-enhanced</kbd></td><td><code>org-export-latex-pdf-enhanced</code></td><td>Make the Org file of the current buffer into a PDF beside it, as M-x org-export-latex-pdf does, with Tuatara's own improvements: its #+template, tables that fit and redaction (M-x org-export-latex-enhanced).</td></tr>
 <tr><td>none</td><td><kbd>M-x org-export-latex-pdf-enhanced-buffer</kbd></td><td><code>org-export-latex-pdf-enhanced-buffer</code></td><td>Make the Org file of the current buffer into a PDF as M-x org-export-latex-pdf-enhanced does, and show it as M-x org-export-latex-pdf-buffer shows its PDF.</td></tr>
-<tr><td>none</td><td><kbd>M-x org-export-latex-pdf-enhanced-xdg</kbd></td><td><code>org-export-latex-pdf-enhanced-xdg</code></td><td>Make the Org file of the current buffer into a PDF as M-x org-export-latex-pdf-enhanced does, and open it in the desktop's program as M-x org-export-latex-pdf-xdg opens its PDF.</td></tr>
+<tr><td>none</td><td><kbd>M-x org-export-latex-pdf-enhanced-externally</kbd></td><td><code>org-export-latex-pdf-enhanced-externally</code></td><td>Make the Org file of the current buffer into a PDF as M-x org-export-latex-pdf-enhanced does, and open it in the desktop's program as M-x org-export-latex-pdf-externally opens its PDF.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-export-latex-enhanced</kbd></td><td><code>org-export-latex-enhanced</code></td><td>Write the Org file of the current buffer as LaTeX as M-x org-export-latex does, with Tuatara's own improvements (its #+template, tables that fit, redaction): the LaTeX file M-x org-export-latex-pdf-enhanced makes its PDF from.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-export-docx</kbd></td><td><code>org-export-docx</code></td><td>Write the Org note of this buffer as a Word document (.docx) beside it, or where #+EXPORT_FILE_NAME says (its .docx): read as the enhanced PDF export reads it, its :EXPORT: drawers' settings and all, what redact and protect hide a black bar, never its text, in the file; in the background.</td></tr>
-<tr><td>none</td><td><kbd>M-x org-export-docx-xdg</kbd></td><td><code>org-export-docx-xdg</code></td><td>Write the Org note of this buffer as a Word document, as M-x org-export-docx does, and open it in the desktop's program for Word documents.</td></tr>
+<tr><td>none</td><td><kbd>M-x org-export-docx-externally</kbd></td><td><code>org-export-docx-externally</code></td><td>Write the Org note of this buffer as a Word document, as M-x org-export-docx does, and open it in the desktop's program for Word documents.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-export-html</kbd></td><td><code>org-export-html</code></td><td>Write the Org note of this buffer as a web page (.html) beside it, or where #+EXPORT_FILE_NAME says (its .html), one file with its stylesheet inside, in the Ao theme's colours, light or dark as the reader's system prefers: read as the enhanced PDF export reads it, what redact and protect hide a black bar, never its text.</td></tr>
+<tr><td>none</td><td><kbd>M-x org-export-html-externally</kbd></td><td><code>org-export-html-externally</code></td><td>Write the Org note of this buffer as a web page, as M-x org-export-html does, and open it in the desktop's program for web pages, after asking when the file is not trusted (<strong>untrusted-directories</strong>).</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -2278,11 +2338,11 @@ for it.</p>
 <tbody>
 <tr><td>none</td><td><kbd>M-x org-export-latex-pdf</kbd></td><td><code>org-export-latex-pdf</code></td><td>Make the Org file of the current buffer into a PDF beside it, in the background: the plain export, the note set as standard LaTeX sets it, with no template or layout of Tuatara's own.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-export-latex-pdf-buffer</kbd></td><td><code>org-export-latex-pdf-buffer</code></td><td>Make the Org file of the current buffer into a PDF beside it, as M-x org-export-latex-pdf does, and show the PDF: down the right side of the screen when it is wide enough (<strong>split-width-threshold</strong> columns), else alone on it.</td></tr>
-<tr><td>none</td><td><kbd>M-x org-export-latex-pdf-xdg</kbd></td><td><code>org-export-latex-pdf-xdg</code></td><td>Make the Org file of the current buffer into a PDF beside it, as M-x org-export-latex-pdf does, and open the PDF in the desktop's program for PDFs (xdg-open), or the one <strong>open-externally-programs</strong> gives &quot;application/pdf&quot;, as M-x open-externally opens a file: the PDF itself when it is trusted, else after asking (<strong>untrusted-directories</strong>).</td></tr>
+<tr><td>none</td><td><kbd>M-x org-export-latex-pdf-externally</kbd></td><td><code>org-export-latex-pdf-externally</code></td><td>Make the Org file of the current buffer into a PDF beside it, as M-x org-export-latex-pdf does, and open the PDF in the desktop's program for PDFs (xdg-open), or the one <strong>open-externally-programs</strong> gives &quot;application/pdf&quot;, as M-x open-externally opens a file: the PDF itself when it is trusted, else after asking (<strong>untrusted-directories</strong>).</td></tr>
 <tr><td>none</td><td><kbd>M-x org-export-latex</kbd></td><td><code>org-export-latex</code></td><td>Write the Org file of the current buffer as LaTeX beside it (or where its #+export_file_name says), the plain export with no template or layout of Tuatara's own, in the background, without making a PDF: the LaTeX file M-x org-export-latex-pdf makes its PDF from.</td></tr>
-<tr><td>none</td><td><kbd>M-x export-latex-compile-pdf</kbd></td><td><code>export-latex-compile-pdf</code></td><td>Make the LaTeX file of the current buffer into a PDF beside it, in the background, saving it first when it has changes, by xelatex, or by lualatex when xelatex fails (<strong>latex-engines</strong>), or first by the one its first lines name (&quot;% Intended LaTeX compiler: lualatex&quot;, &quot;%!TEX program = lualatex&quot;), run as often as its cross-references need.</td></tr>
-<tr><td>none</td><td><kbd>M-x export-latex-compile-pdf-buffer</kbd></td><td><code>export-latex-compile-pdf-buffer</code></td><td>Make the LaTeX file of the current buffer into a PDF beside it, as M-x export-latex-compile-pdf does, and show the PDF where and as M-x org-export-latex-pdf-buffer shows an Org file's.</td></tr>
-<tr><td>none</td><td><kbd>M-x export-latex-compile-pdf-xdg</kbd></td><td><code>export-latex-compile-pdf-xdg</code></td><td>Make the LaTeX file of the current buffer into a PDF beside it, as M-x export-latex-compile-pdf does, and open the PDF in the desktop's program as M-x org-export-latex-pdf-xdg opens an Org file's.</td></tr>
+<tr><td>none</td><td><kbd>M-x latex-export-pdf</kbd></td><td><code>latex-export-pdf</code></td><td>Make the LaTeX file of the current buffer into a PDF beside it, in the background, saving it first when it has changes, by xelatex, or by lualatex when xelatex fails (<strong>latex-engines</strong>), or first by the one its first lines name (&quot;% Intended LaTeX compiler: lualatex&quot;, &quot;%!TEX program = lualatex&quot;), run as often as its cross-references need.</td></tr>
+<tr><td>none</td><td><kbd>M-x latex-export-pdf-buffer</kbd></td><td><code>latex-export-pdf-buffer</code></td><td>Make the LaTeX file of the current buffer into a PDF beside it, as M-x latex-export-pdf does, and show the PDF where and as M-x org-export-latex-pdf-buffer shows an Org file's.</td></tr>
+<tr><td>none</td><td><kbd>M-x latex-export-pdf-externally</kbd></td><td><code>latex-export-pdf-externally</code></td><td>Make the LaTeX file of the current buffer into a PDF beside it, as M-x latex-export-pdf does, and open the PDF in the desktop's program as M-x org-export-latex-pdf-externally opens an Org file's.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -2301,7 +2361,7 @@ for it.</p>
 <tr><td>none</td><td><kbd>M-x org-insert-export-drawer</kbd></td><td><code>org-insert-export-drawer</code></td><td>Write an :EXPORT: drawer for the table, list, block or picture point is on, or else for the heading it is under, holding the settings that fit it, each auto to change (M-x describe-export-settings says what each takes).</td></tr>
 <tr><td>none</td><td><kbd>M-x describe-export-settings</kbd></td><td><code>describe-export-settings</code></td><td>Show the settings an :EXPORT: drawer may hold in an Org note, what each sets and what it takes: how the enhanced export sets a heading, a table, a list, a block or a picture, in words rather than LaTeX.</td></tr>
 <tr><td>none</td><td><kbd>M-x describe-org-keyword-settings</kbd></td><td><code>describe-org-keyword-settings</code></td><td>Show every #+KEYWORD line an Org note may hold that Tuatara reads, and the words of #+OPTIONS: and #+STARTUP: lines: what each does, what holds when a note does not give it, and which are Tuatara's own, which other programs that read Org notes ignore.</td></tr>
-<tr><td>none</td><td><kbd>M-x export-latex-template-copy</kbd></td><td><code>export-latex-template-copy</code></td><td>Copy a built-in template of the enhanced export, asked for with completion (article, its own look, or org, the plain export's document), into your own templates, ~/.config/tuatara/latex-templates/NAME.tex, and visit it there to change: from then on #+template: NAME takes your copy.</td></tr>
+<tr><td>none</td><td><kbd>M-x export-template-copy-latex</kbd></td><td><code>export-template-copy-latex</code></td><td>Copy a built-in template of the enhanced export, asked for with completion (article, its own look, or org, the plain export's document), into your own templates, ~/.config/tuatara/latex-templates/NAME.tex, and visit it there to change: from then on #+template: NAME takes your copy.</td></tr>
 <tr><td>none</td><td><kbd>M-x export-template-from-docx</kbd></td><td><code>export-template-from-docx</code></td><td>Make a Word document given to you a template to write reports in.</td></tr>
 <tr><td>none</td><td><kbd>M-x export-template-from-latex</kbd></td><td><code>export-template-from-latex</code></td><td>Make a LaTeX document given to you a template to write reports in.</td></tr>
 <tr><td>none</td><td><kbd>C-x i</kbd></td><td><code>insert-formatted-note-template</code></td><td>Read a note template, or any file, into the current buffer at point: one of your templates (blank, and each file in your note templates' directory, NOTE-TEMPLATES-DIRECTORY), %date% and %author% filled in, or with &quot;Another file…&quot; any file, as it is.</td></tr>

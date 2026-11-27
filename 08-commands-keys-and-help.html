@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -447,7 +447,7 @@ how you find out which of two letters that look alike you have.</p>
 <p>Tuatara says short things in the echo area, one at a time, and they are gone
 after a moment. <kbd>C-h e</kbd> shows them all in <code>*Messages*</code>, the latest at the end,
 with repeats counted. It is the first place to look when something went by too
-fast to read. The buffer keeps the last <code>*message-log-max*</code> lines.</p>
+fast to read. The buffer keeps the last <code>*messages-kept*</code> lines.</p>
 <p><kbd>C-h N</kbd> shows <code>*Notifications*</code>: what was told to you during this session by
 the agenda, when an entry marked for a reminder came due, and by packages.
 Each one is a line with the date and time. Each notification is also sent to the
@@ -466,7 +466,7 @@ comes. Set it to <code>nil</code> to keep them in the buffer only.</p>
 <tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*message-log-max*</code></td><td><code>1000</code></td><td>nil, or a whole number, 0 or more</td><td>The lines the <strong>Messages</strong> buffer keeps of the messages shown.</td></tr>
+<tr><td><code>*messages-kept*</code></td><td><code>1000</code></td><td>nil, or a whole number, 0 or more</td><td>The lines the <strong>Messages</strong> buffer keeps of the messages shown.</td></tr>
 <tr><td><code>*notify-program*</code></td><td><code>&quot;notify-send&quot;</code></td><td>nil, or text</td><td>The program that shows a notification on the desktop.</td></tr>
 </tbody></table></div>
 <h2 id="the-tutor-and-manual-pages"><span class="num">8.13</span> The tutor and manual pages</h2>
@@ -512,14 +512,13 @@ buttons for the ways in: the tutor, the help keys of this chapter, your init
 file and the health check. <kbd>TAB</kbd> and <kbd>S-TAB</kbd> go from one button to the next,
 <kbd>RET</kbd> presses one, and a click does too. Opening a web address from it asks
 first and uses your desktop's browser.</p>
-<p><kbd>C-h C-c</kbd> shows the licence, the GNU General Public License, version 3 or
-later, and <kbd>C-h C-w</kbd> the part of it that says there is no warranty.
-<kbd>M-x credits</kbd> shows the projects that Tuatara owes its ideas to and what it
+<p><kbd>C-h C-c</kbd> shows the licence, the GNU General Public License, version 3 or later,
+and <kbd>C-h C-w</kbd> the part of it that says there is no warranty. <kbd>M-x
+describe-credits</kbd> shows the projects that Tuatara owes its ideas to and what it
 took from each. <kbd>M-x tuatara-version</kbd> says which Tuatara this is: the version,
-the commit and date it was built from, the Steel Bank Common Lisp (SBCL) it
-runs on and whether it shows in a window or a terminal. With <kbd>C-u</kbd> it writes
-the line at the cursor instead of saying it, which is useful in a report of a
-fault.</p>
+the commit and date it was built from, the Steel Bank Common Lisp (SBCL) it runs
+on and whether it shows in a window or a terminal. With <kbd>C-u</kbd> it writes the line
+at the cursor instead of saying it, which is useful in a report of a fault.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
@@ -528,7 +527,7 @@ fault.</p>
 <tr><td>none</td><td><kbd>C-h C-a</kbd></td><td><code>about-tuatara</code></td><td>Show <strong>About Tuatara</strong>, the page that introduces Tuatara.</td></tr>
 <tr><td>none</td><td><kbd>C-h C-c</kbd></td><td><code>describe-copying</code></td><td>Show the licence Tuatara comes under.</td></tr>
 <tr><td>none</td><td><kbd>C-h C-w</kbd></td><td><code>describe-no-warranty</code></td><td>Show the part of the licence that says Tuatara comes with no warranty.</td></tr>
-<tr><td>none</td><td><kbd>M-x credits</kbd></td><td><code>credits</code></td><td>Show where Tuatara's ideas come from: the projects it owes, and what it took from each.</td></tr>
+<tr><td>none</td><td><kbd>M-x describe-credits</kbd></td><td><code>describe-credits</code></td><td>Show where Tuatara's ideas come from: the projects it owes, and what it took from each.</td></tr>
 <tr><td>none</td><td><kbd>M-x tuatara-version</kbd></td><td><code>tuatara-version</code></td><td>Say which Tuatara this is: its version, the commit it was built from and when, the Steel Bank Common Lisp (SBCL) it runs on, and where it shows (a window, the terminal).</td></tr>
 </tbody></table></div>
 <h2 id="checking-what-your-system-has"><span class="num">8.15</span> Checking what your system has</h2>
@@ -586,23 +585,23 @@ and <kbd>C-M-x</kbd> runs the whole top-level form the cursor is in. <kbd>M-x ev
 runs the selection, and <kbd>M-x eval-buffer</kbd> runs the whole buffer. They run only
 in Lisp buffers, and run nothing in a file opened with care because you do
 not trust it.</p>
-<p><kbd>M-x ielm</kbd> opens <code>*ielm*</code>, a buffer with a prompt where you type Lisp and
-read the answer below. <kbd>RET</kbd> runs the input when it is whole expressions and
+<p><kbd>M-x lisp-repl</kbd> opens <code>*Lisp REPL*</code>, a buffer with a prompt where you type Lisp
+and read the answer below. <kbd>RET</kbd> runs the input when it is whole expressions and
 starts a new line when it is not. <kbd>M-p</kbd> and <kbd>M-n</kbd> bring back earlier inputs, and
 <kbd>C-c C-u</kbd> clears what you typed. The modal keys are off in it, so you type at
 once without <kbd>i</kbd>.</p>
 <p>If Lisp meets an error, the echo area says what it was. <kbd>M-x
-toggle-debug-on-error</kbd> makes it show the calls under way too, in
+toggle-backtrace-on-error</kbd> makes it show the calls under way too, in
 <code>*Backtrace*</code>. That is for people who write Lisp, and is easy to leave off.</p>
 <div class="try">
 <h3>Try it, with a sum</h3>
 <ol>
 <li>Press <kbd>M-:</kbd>, type <code>(* 12 7)</code> and press <kbd>RET</kbd>. The echo area shows
    <code>(* 12 7) =&gt; 84</code>, then the same number in other bases.</li>
-<li>Press <kbd>M-x</kbd>, type <code>ielm</code> and press <kbd>RET</kbd>. After the prompt type
+<li>Press <kbd>M-x</kbd>, type <code>lisp-repl</code> and press <kbd>RET</kbd>. After the prompt type
    <code>(reverse &quot;kiwi&quot;)</code> and press <kbd>RET</kbd>. The answer is <code>&quot;iwik&quot;</code>.</li>
 <li>Press <kbd>M-p</kbd>. The input comes back. Press <kbd>C-c C-u</kbd> to take it away.</li>
-<li>Press <kbd>C-x k</kbd> and <kbd>RET</kbd> to close <code>*ielm*</code>. It has changed, so it asks;
+<li>Press <kbd>C-x k</kbd> and <kbd>RET</kbd> to close <code>*Lisp REPL*</code>. It has changed, so it asks;
    type <code>y</code> and press <kbd>RET</kbd>.</li>
 </ol>
 </div>
@@ -617,22 +616,22 @@ toggle-debug-on-error</kbd> makes it show the calls under way too, in
 <tr><td>none</td><td><kbd>C-M-x</kbd></td><td><code>eval-top-level-form</code></td><td>Evaluate the top-level form around point (the one starting with an open bracket at the start of a line) in the running editor and show its value.</td></tr>
 <tr><td>none</td><td><kbd>M-x eval-region</kbd></td><td><code>eval-region</code></td><td>Evaluate the Lisp forms in the selection one after another, as a file's are (IN-PACKAGE carries on to the next), and show the last one's value.</td></tr>
 <tr><td>none</td><td><kbd>M-x eval-buffer</kbd></td><td><code>eval-buffer</code></td><td>Evaluate every Lisp form in the current buffer one after another, as a file's are, and show the last one's value; not a buffer of more than 32 MB.</td></tr>
-<tr><td>none</td><td><kbd>M-x ielm</kbd></td><td><code>ielm</code></td><td>Show <strong>ielm</strong>, where Lisp typed after the prompt is evaluated in the running editor: made with a prompt the first time, as it was after.</td></tr>
-<tr><td>none</td><td><kbd>RET</kbd></td><td><code>ielm-return</code></td><td>RET in <strong>ielm</strong>: after the last prompt, evaluate the input when it is whole expressions, else begin a new line of it; on an earlier input, evaluate that again.</td></tr>
-<tr><td>none</td><td><kbd>C-j</kbd></td><td><code>ielm-send-input</code></td><td>Evaluate the input after <strong>ielm</strong>'s last prompt as it is, whole or not.</td></tr>
-<tr><td>none</td><td><kbd>M-p</kbd></td><td><code>ielm-previous-input</code></td><td>Put the input before the one shown in <strong>ielm</strong>'s history in place of the input.</td></tr>
-<tr><td>none</td><td><kbd>M-n</kbd></td><td><code>ielm-next-input</code></td><td>Put the input after the one shown in <strong>ielm</strong>'s history in place of the input.</td></tr>
-<tr><td>none</td><td><kbd>C-c C-u</kbd></td><td><code>ielm-kill-input</code></td><td>Take away the input after <strong>ielm</strong>'s last prompt.</td></tr>
-<tr><td>none</td><td><kbd>C-c C-b</kbd></td><td><code>ielm-change-working-buffer</code></td><td>Choose the working buffer of <strong>ielm</strong>: the one the Lisp typed there sees as current, (insert &quot;x&quot;) putting text in it.</td></tr>
-<tr><td>none</td><td><kbd>TAB</kbd></td><td><code>ielm-tab</code></td><td>TAB in <strong>ielm</strong>: where only blanks come before point on its line of the input, indent the line as Lisp (never the prompt's line); else complete the name at point from a list beside it, as C-M-i does.</td></tr>
-<tr><td>none</td><td><kbd>M-x toggle-debug-on-error</kbd></td><td><code>toggle-debug-on-error</code></td><td>Switch debug-on-error on or off: while it is on, an error in a command, or in Lisp evaluated in the editor (C-x C-e, C-M-x, M-:, C-j), shows the calls under way when it was signalled in <strong>Backtrace</strong>, innermost first, besides the message.</td></tr>
+<tr><td>none</td><td><kbd>M-x lisp-repl</kbd></td><td><code>lisp-repl</code></td><td>Show <strong>Lisp REPL</strong>, where Lisp typed after the prompt is evaluated in the running editor: made with a prompt the first time, as it was after.</td></tr>
+<tr><td>none</td><td><kbd>RET</kbd></td><td><code>lisp-repl-return</code></td><td>RET in <strong>Lisp REPL</strong>: after the last prompt, evaluate the input when it is whole expressions, else begin a new line of it; on an earlier input, evaluate that again.</td></tr>
+<tr><td>none</td><td><kbd>C-j</kbd></td><td><code>lisp-repl-send-input</code></td><td>Evaluate the input after <strong>Lisp REPL</strong>'s last prompt as it is, whole or not.</td></tr>
+<tr><td>none</td><td><kbd>M-p</kbd></td><td><code>lisp-repl-previous-input</code></td><td>Put the input before the one shown in <strong>Lisp REPL</strong>'s history in place of the input.</td></tr>
+<tr><td>none</td><td><kbd>M-n</kbd></td><td><code>lisp-repl-next-input</code></td><td>Put the input after the one shown in <strong>Lisp REPL</strong>'s history in place of the input.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-u</kbd></td><td><code>lisp-repl-kill-input</code></td><td>Take away the input after <strong>Lisp REPL</strong>'s last prompt.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-b</kbd></td><td><code>lisp-repl-change-working-buffer</code></td><td>Choose the working buffer of <strong>Lisp REPL</strong>: the one the Lisp typed there sees as current, (insert &quot;x&quot;) putting text in it.</td></tr>
+<tr><td>none</td><td><kbd>TAB</kbd></td><td><code>lisp-repl-tab</code></td><td>TAB in <strong>Lisp REPL</strong>: where only blanks come before point on its line of the input, indent the line as Lisp (never the prompt's line); else complete the name at point from a list beside it, as C-M-i does.</td></tr>
+<tr><td>none</td><td><kbd>M-x toggle-backtrace-on-error</kbd></td><td><code>toggle-backtrace-on-error</code></td><td>Switch <strong>backtrace-on-error</strong> on or off: while it is on, an error in a command, or in Lisp evaluated in the editor (C-x C-e, C-M-x, M-:, C-j), shows the calls under way when it was signalled in <strong>Backtrace</strong>, innermost first, besides the message.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*debug-on-error*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether a command or an evaluation that meets an error shows the calls under way, in <strong>Backtrace</strong>.</td></tr>
+<tr><td><code>*backtrace-on-error*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether a command or an evaluation that meets an error shows the calls under way, in <strong>Backtrace</strong>.</td></tr>
 </tbody></table></div>
 <h2 id="binding-keys-yourself"><span class="num">8.17</span> Binding keys yourself</h2>
 <p>The prefixes, the leader and the labels that the key hints show are yours to

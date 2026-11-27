@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -176,7 +176,7 @@ that already holds a buffer is never split into pieces smaller than
 <tr><td>none</td><td><kbd>q</kbd></td><td><code>quit-window</code></td><td>Closes a window that was opened for a help buffer, a list or a log, or shows the buffer it had before. <kbd>h</kbd> closes only a git log.</td></tr>
 <tr><td>none</td><td><kbd>C-x 4 0</kbd></td><td><code>kill-buffer-and-window</code></td><td>Kills this buffer, asking first if it has unsaved changes, and closes its window.</td></tr>
 <tr><td>none</td><td><kbd>C-x 4 b</kbd></td><td><code>switch-to-buffer-other-window</code></td><td>Asks for a buffer and shows it in another window.</td></tr>
-<tr><td>none</td><td><kbd>C-x 4 f</kbd>, <kbd>C-x 4 C-f</kbd></td><td><code>find-file-other-window</code></td><td>Opens a file in another window.</td></tr>
+<tr><td>none</td><td><kbd>C-x 4 f</kbd></td><td><code>find-file-other-window</code></td><td>Opens a file in another window.</td></tr>
 </tbody></table></div>
 <h3 id="moving-windows-and-changing-their-size"><span class="num">1.3.2</span> Moving windows and changing their size</h3>
 <div class="tablewrap"><table>
@@ -354,7 +354,7 @@ the buffer's name in the middle, with a mark for what is left out.</p>
 <code>TUATARA[I]</code> is INSERT state. <code>TUATARA[S]</code> is a support buffer, one that holds
 a list, help or the <code>*Messages*</code> log. There you can read, move and select but
 not type. <code>TUATARA[E]</code> is a buffer that holds no modal keys, such as the Lisp
-prompt (IELM). With <code>*modal-editing*</code> set to <code>nil</code> there is no
+prompt (the Lisp REPL). With <code>*modal-editing*</code> set to <code>nil</code> there is no
 modal part at all.</p>
 <p>With <code>*mode-line-tuatara*</code> set to <code>nil</code> the word TUATARA is left out and only
 <code>[N]</code> remains. <kbd>C-x T t</kbd> switches it while Tuatara runs.</p>
@@ -448,7 +448,7 @@ follow the mode name, each when it applies.</p>
 <h3 id="the-directory"><span class="num">1.5.7</span> The directory</h3>
 <p>The last part is the directory the buffer lives in, written with <code>~</code> for your
 home directory: <code>~/letters/</code>. A buffer with no file, such as a scratch buffer,
-shows the directory named by <code>*default-directory*</code>. Files on another machine
+shows the directory named by <code>*no-file-directory*</code>. Files on another machine
 show their <code>/ssh:pinetree:</code> path.</p>
 <div class="try">
 <h3>Try it, with a letter</h3>
@@ -491,7 +491,7 @@ show their <code>/ssh:pinetree:</code> path.</p>
 <tr><td><code>*indexing-indicator*</code></td><td><code>&quot;U&quot;</code></td><td>The sign for directories being read.</td></tr>
 <tr><td><code>*searching-indicator*</code></td><td><code>&quot;S&quot;</code></td><td>The sign for searches over those directories.</td></tr>
 <tr><td><code>*daemon-indicator*</code></td><td><code>&quot;D&quot;</code></td><td>The sign for a daemon.</td></tr>
-<tr><td><code>*default-directory*</code></td><td><code>&quot;~/&quot;</code></td><td>The directory of a buffer with no file. <code>nil</code> is the directory Tuatara started in.</td></tr>
+<tr><td><code>*no-file-directory*</code></td><td><code>&quot;~/&quot;</code></td><td>The directory of a buffer with no file. <code>nil</code> is the directory Tuatara started in.</td></tr>
 <tr><td><code>*terminal-title-limit*</code></td><td><code>40</code></td><td>The most columns of the title a program in a terminal buffer gave itself, shown in the mode line.</td></tr>
 </tbody></table></div>
 <h3 id="faces"><span class="num">1.5.10</span> Faces</h3>
@@ -557,7 +557,7 @@ is the place to look when a message went by too fast.</p>
 <tr><th>Setting</th><th>Default</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*message-log-max*</code></td><td><code>1000</code></td><td>Lines <code>*Messages*</code> keeps. The oldest go first. <code>nil</code> keeps none.</td></tr>
+<tr><td><code>*messages-kept*</code></td><td><code>1000</code></td><td>Lines <code>*Messages*</code> keeps. The oldest go first. <code>nil</code> keeps none.</td></tr>
 <tr><td><code>*lsp-hover-echo*</code></td><td><code>t</code></td><td>Shows in the echo area what the thing under the cursor is, as a language server knows it.</td></tr>
 <tr><td><code>*escape-quits*</code></td><td><code>nil</code></td><td>Set to <code>t</code> to have <kbd>ESC</kbd> do what <kbd>C-g</kbd> does everywhere.</td></tr>
 <tr><td><code>*help-window-select*</code></td><td><code>nil</code></td><td>See the settings for windows.</td></tr>

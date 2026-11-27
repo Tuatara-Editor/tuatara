@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -322,7 +322,7 @@ asks which package, forgets who signed its source, and fetches it again. The
 question names the new signer, and your <kbd>y</kbd> makes it the one remembered. Think
 before you press it. If you do not know why the key changed, ask the author.</p>
 <p>A version signed with a GPG key your keyring lacks is refused, and Tuatara
-remembers the key's fingerprint. Import the key with <kbd>M-x gpg-import-keys</kbd> and
+remembers the key's fingerprint. Import the key with <kbd>M-x gpg-keys-import</kbd> and
 run <kbd>M-x package-update</kbd>. Versions signed by that key, or by the key it
 belongs to, are then taken.</p>
 <p>A version whose signature has expired, or that was made by a key that has
@@ -336,7 +336,7 @@ Naming the key in <code>:signers</code> (below) does not change this.</p>
 </thead>
 <tbody>
 <tr><td>none</td><td><kbd>M-x package-trust-again</kbd></td><td><code>package-trust-again</code></td><td>Trust the source of a package asked for anew, as the first time: who signed the versions taken from it is forgotten, and the package is fetched again (M-x package-update); the version found is asked about with who signed it (<strong>PACKAGE-ASK-BEFORE-LOADING</strong>), and once it is let load, that signer is the one remembered.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-import-keys</kbd></td><td><code>gpg-import-keys</code></td><td>Import the keys in a file asked for (armoured or not) into your keyring; say what was imported.</td></tr>
+<tr><td>none</td><td><kbd>M-x gpg-keys-import</kbd></td><td><code>gpg-keys-import</code></td><td>Import the keys in a file asked for (armoured or not) into your keyring; say what was imported.</td></tr>
 </tbody></table></div>
 <h3 id="naming-the-signers-yourself"><span class="num">19.5.1</span> Naming the signers yourself</h3>
 <p>If you know whose keys you want, say so, and only versions signed by them are
@@ -672,6 +672,19 @@ table of every line of a file, asks <code>heap-budget</code> first. Called with 
 argument it gives the octets the work may use now, a quarter of the memory
 free; given a number, such as a setting of the package's own, it gives that
 number. Keep within it, or work in smaller parts.</p>
+<p>A package that reads a file with its own reader, not shut in by the sandbox,
+asks <code>read-here-p</code> first. It answers no for a file from outside, for evidence,
+and for a file shown in a list or view opened safely. A package that reads a
+photograph's EXIF uses <code>exif-tags</code>, which reads it within the bounds given, with
+<code>exif-tag</code>, <code>exif-thumbnail-place</code> and <code>exif-resolution</code> for the values most
+often wanted. A question a package asks before acting on entries of its list
+takes the two values of <code>list-question</code>: the short question, and the counts and
+places to show beside it; <code>names-shown</code> gives the first names of a long list and
+how many more, for those details. A question of one key from a set is
+<code>read-key-choice</code>; it takes other keys that answer as one of them, and can take
+a capital letter as its small one. A package that writes into a file's buffer
+and saves it asks <code>buffer-modified-p</code> first, and leaves unsaved changes of yours
+unsaved.</p>
 <div class="node end"><span>Previous: <a href="18-the-daemon-and-other-machines.html">The daemon and other machines</a></span><span>Next: <a href="20-making-it-your-own.html">Making it your own</a></span><span>Up: <a href="index.html">Contents</a></span></div>
 </article>
 </main>

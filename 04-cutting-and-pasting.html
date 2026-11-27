@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -48,7 +48,7 @@ ring after three cuts.</p>
 </pre>
 <figcaption>Figure 4.1. The kill ring after three cuts. A paste uses the first.</figcaption>
 </figure>
-<p>The ring keeps <code>*kill-ring-max*</code> cuts. When it is full, the oldest is
+<p>The ring keeps <code>*kill-ring-length*</code> cuts. When it is full, the oldest is
 forgotten. Tuatara has no command that steps back through the older cuts, so
 a paste always gives you the newest. To keep a piece of text while you go on
 cutting and copying other things, put it in a register, described below.</p>
@@ -141,6 +141,13 @@ cursor, or on as many characters as the number you gave first.</p>
 cut or copy in Tuatara goes there as well, so you can paste it in another
 program. When another program has copied something since, <kbd>C-y</kbd> and <kbd>p</kbd> paste
 that instead and put it first on the kill ring.</p>
+<p>In a terminal, Tuatara reaches the clipboard through <code>wl-copy</code> and <code>wl-paste</code>
+under Wayland, or <code>xclip</code> or <code>xsel</code> under X. A copy hands the text to them in
+the background and never waits; copies made faster than they take it keep only
+the newest. Quitting waits up to a second for a copy still being written. A
+paste that has to wait for a program owning the clipboard says
+<code>Waiting for the clipboard...</code> after a moment, and <kbd>C-g</kbd> gives up on it. The
+window frontend waits the same way.</p>
 <p>The primary selection is a second place that many Linux programs have. It
 holds whatever text was selected last, with no copy command. In Tuatara, a
 selection you make by dragging with the mouse becomes the primary selection
@@ -171,8 +178,8 @@ not sent, and neither is any text from an encrypted file, and with
 <tbody>
 <tr><td><code>*use-system-clipboard*</code></td><td><code>t</code></td><td>Whether cuts and copies go on the system clipboard, and whether a paste takes in what another program copied. <code>nil</code> keeps them in Tuatara.</td></tr>
 <tr><td><code>*clipboard-size-limit*</code></td><td><code>8388608</code></td><td>The most characters a cut may have and still go on the clipboard and the primary selection. That is 8 MB. A larger cut stays in the buffer's own text.</td></tr>
-<tr><td><code>*kill-ring-max*</code></td><td><code>120</code></td><td>How many cuts the kill ring keeps. The oldest go first.</td></tr>
-<tr><td><code>*kill-ring-max-size*</code></td><td><code>67108864</code></td><td>The most characters the cuts on the kill ring may hold together, 64 MB. Past it the oldest go first; the latest is always kept, however large. <code>nil</code> sets no such limit.</td></tr>
+<tr><td><code>*kill-ring-length*</code></td><td><code>120</code></td><td>How many cuts the kill ring keeps. The oldest go first.</td></tr>
+<tr><td><code>*kill-ring-octets*</code></td><td><code>67108864</code></td><td>The most characters the cuts on the kill ring may hold together, 64 MB. Past it the oldest go first; the latest is always kept, however large. <code>nil</code> sets no such limit.</td></tr>
 </tbody></table></div>
 <h2 id="registers"><span class="num">4.5</span> Registers</h2>
 <p>A register keeps one thing under one character, for as long as Tuatara runs.

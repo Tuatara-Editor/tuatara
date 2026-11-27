@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -101,16 +101,33 @@ chapter 2, with a few more for the places a list has.</p>
 <tr><td><kbd>g g</kbd>, <kbd>g e</kbd></td><td><kbd>M-&lt;</kbd>, <kbd>M-&gt;</kbd></td><td>To the top of the list, to the end</td></tr>
 <tr><td>none</td><td><kbd>&gt;</kbd>, <kbd>&lt;</kbd></td><td>To the next directory in the list, to the previous</td></tr>
 <tr><td>none</td><td><kbd>g f</kbd></td><td>To an entry, by name, with completion</td></tr>
-<tr><td>none</td><td><kbd>g h</kbd></td><td>To your home directory</td></tr>
+<tr><td>none</td><td><kbd>g h</kbd></td><td>To your home directory, or the one on the server</td></tr>
+<tr><td>none</td><td><kbd>g p</kbd>, <kbd>C-c p</kbd></td><td>To a path you type, as <kbd>C-x C-f</kbd> asks for it</td></tr>
 <tr><td>none</td><td><kbd>g l</kbd></td><td>Back to the directory listed before</td></tr>
 <tr><td>none</td><td><kbd>q</kbd></td><td>Leave the list</td></tr>
 </tbody></table></div>
 <p>When you go up with <kbd>h</kbd>, the cursor lands on the directory you came from. So you
 can walk down into a directory and back out again without losing your place.
 <kbd>g l</kbd> swaps between the last two directories, so pressing it twice returns to
-where you started. This helps when you are working in two places.</p>
+where you started. This helps when you are working in two places. Each list
+keeps its own. In a list of a directory on another machine
+(<code>/ssh:HOST:/directory/</code>), <kbd>g h</kbd> lists your home directory there, as the server
+names it, and <kbd>g l</kbd> goes back and forth between directories there. Both are
+read over the list's own connection in the background, and a server that does
+not answer is said in the list in place of its entries.</p>
 <p><kbd>g f</kbd> is the quickest way to a name in a long list. Type a few letters of the
 name, and <kbd>RET</kbd> puts the cursor on it.</p>
+<p><kbd>g p</kbd> or <kbd>C-c p</kbd> (<code>rimu-goto-path</code>) asks for a path in the minibuffer. The
+question opens empty, for a path pasted or typed whole; <code>~</code> is your home
+directory, and a name typed alone is taken from the directory of the list.
+Otherwise it is the question <kbd>C-x C-f</kbd> asks: the entries of the directory are
+listed as you type, <kbd>DEL</kbd> deletes back by the branches of the path, and <code>/</code> or
+<code>~/</code> starts the path again. A directory is listed. A file is listed in its
+directory with the cursor on it, not opened. A path on another machine
+(<code>/ssh:HOST:/directory/</code>) is listed there, and so is a name typed alone in a
+list of a directory there. A path that names nothing is said in the echo area
+(<code>... nothing is there</code>), and the list stays. A list opened safely opens the
+next one safely too.</p>
 <p><kbd>h j k l</kbd> only move in a list. The keys that move by word or select text do
 nothing here, and the echo area says so. Each line is one whole entry, so
 there is nothing to select inside it.</p>
@@ -136,13 +153,13 @@ any file that way. Chapter 12 explains what a safe view is.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>l</kbd>, <kbd>C-f</kbd>, <kbd>RET</kbd></td><td><code>rimu-open</code></td><td>Open the entry on the current line: a directory is listed in its place in this list; a file is visited as C-x C-f visits it, safely where that would be, and with a prefix argument (C-u) safely always.</td></tr>
+<tr><td>none</td><td><kbd>l</kbd>, <kbd>RET</kbd>, <kbd>C-c l</kbd></td><td><code>rimu-open</code></td><td>Open the entry on the current line: a directory is listed in its place in this list; a file is visited as C-x C-f visits it, safely where that would be, and with a prefix argument (C-u) safely always.</td></tr>
 <tr><td>none</td><td><kbd>C-o</kbd></td><td><code>rimu-display</code></td><td>Show the entry on the current line in another window, staying in the list: a directory in a list of its own, a file as l opens it.</td></tr>
-<tr><td>none</td><td><kbd>h</kbd>, <kbd>C-b</kbd>, <kbd>C-c h</kbd></td><td><code>rimu-up</code></td><td>List the directory holding this one, in this list, point on the one left; in a list of files found, list the directory they were found in.</td></tr>
+<tr><td>none</td><td><kbd>h</kbd>, <kbd>C-c h</kbd></td><td><code>rimu-up</code></td><td>List the directory holding this one, in this list, point on the one left; in a list of files found, list the directory they were found in.</td></tr>
 <tr><td>none</td><td><kbd>&gt;</kbd>, <kbd>C-c &gt;</kbd></td><td><code>rimu-next-directory</code></td><td>Go to the next directory of this list.</td></tr>
 <tr><td>none</td><td><kbd>&lt;</kbd>, <kbd>C-c &lt;</kbd></td><td><code>rimu-previous-directory</code></td><td>Go to the previous directory of this list.</td></tr>
 <tr><td>none</td><td><kbd>g f</kbd></td><td><code>rimu-goto-file</code></td><td>Go to an entry of this list, its name asked for with completion; among those the search filters leave, while they narrow the list.</td></tr>
-<tr><td>none</td><td><kbd>g h</kbd></td><td><code>rimu-home</code></td><td>List your home directory in this list's place.</td></tr>
+<tr><td>none</td><td><kbd>g h</kbd></td><td><code>rimu-home</code></td><td>List your home directory in this list's place, or the remote one in a list of another machine, as its server names it, asked in the background.</td></tr>
 <tr><td>none</td><td><kbd>g l</kbd></td><td><code>rimu-last-directory</code></td><td>List again the directory this list listed before, point on the entry it was on; again, back to this one, as cd - goes back and forth.</td></tr>
 </tbody></table></div>
 <h2 id="what-a-list-shows"><span class="num">10.3</span> What a list shows</h2>
@@ -176,7 +193,13 @@ rather read them as numbers, as the <code>chmod</code> command does, set
 name and by time, with the most recently changed first. The mode line says
 which one is in force. <kbd>S</kbd> shows a size before each name. For a directory it is
 the size of everything inside, and it is worked out in the background, so the
-column fills in after a moment while you carry on. <kbd>G</kbd> shows, after each
+column fills in after a moment while you carry on. In a list of a directory on
+another machine, each directory below is read over the list's connection, one
+at a time, and nothing is run on the server. The server does not say which
+names are one file, nor where another drive is mounted, so a file with several
+names is counted once for each, and a drive mounted below is counted in. A
+connection that is lost or too slow ends the sizes, and those not yet found
+stay empty. <kbd>G</kbd> shows, after each
 name, when the file was last committed to git and the first line of what the
 commit said. Chapter 15 describes git.</p>
 <p>The standard for each of these is off, with directories first and the order by
@@ -396,7 +419,10 @@ only the lines with <code>jpg</code> in them remain, and a line at the top says 
 many of the entries are shown. A second <kbd>C-x / s</kbd> narrows it further.
 <kbd>C-x / r</kbd> takes every filter away. <kbd>C-x / l</kbd> lists the filters in force.
 Marks stay on entries that a filter hides, and a question that counts the
-entries says how many are hidden, so nothing goes without your knowing.</p>
+entries says beside it how many are hidden, so nothing goes without your
+knowing. The questions of touching, deleting, replacing, copying out of
+evidence and the gpg commands show that count, and where the files are,
+beside the short question.</p>
 <p>With the details shown, <kbd>C-x / f</kbd> and <kbd>C-x / h</kbd> ask for a column first, such
 as the owner or the size, and then keep or hide the entries whose value in
 that column matches. Chapter 6 describes the pattern language.</p>
@@ -866,10 +892,10 @@ the background, saying each as it is done; stopping one stops the rest.</p>
 <tr><td>none</td><td><kbd>M-x rimu-find</kbd></td><td><code>rimu-find</code></td><td>List in a rimu list the files and directories under a directory asked for whose names match a pattern: * stands for any characters, ? for one (<strong>.pdf, report-202?.</strong>); upper and lower case alike unless the pattern has an upper-case letter.</td></tr>
 <tr><td>none</td><td><kbd>M-x rimu-find-text</kbd></td><td><code>rimu-find-text</code></td><td>List in a rimu list the files under a directory asked for whose text matches what you type, as M-s g matches a line: each word a regular expression or its own characters, all on one line.</td></tr>
 <tr><td>none</td><td><kbd>M-x rimu-duplicates</kbd></td><td><code>rimu-duplicates</code></td><td>List in a rimu list the files that are the same as another, in groups: in the directories marked in this rimu list, or else under a directory asked for.</td></tr>
-<tr><td>none</td><td><kbd>: e</kbd></td><td><code>rimu-encrypt-files</code></td><td>Encrypt the files marked (or the one on the line), each into FILE.gpg, to the keys or with a passphrase chosen in the minibuffer, asked once; and, when you say so, asked once too, wipe each file once it is encrypted (M-x wipe-file): with a passphrase, only after it, asked again, opens what was made.</td></tr>
-<tr><td>none</td><td><kbd>: d</kbd></td><td><code>rimu-decrypt-files</code></td><td>Decrypt the files marked (or the one on the line), each into its name without .gpg, for you alone, after asking once: their text is then on disk.</td></tr>
-<tr><td>none</td><td><kbd>: s</kbd></td><td><code>rimu-sign-files</code></td><td>Sign the files marked (or the one on the line) with your key, the kind of signature asked once.</td></tr>
-<tr><td>none</td><td><kbd>: v</kbd></td><td><code>rimu-verify-files</code></td><td>Check the signatures of the files marked (or the one on the line), each said in turn and kept in <strong>Messages</strong>.</td></tr>
+<tr><td>none</td><td><kbd>: e</kbd></td><td><code>gpg-encrypt-file</code></td><td>Encrypt the file shown (in a list of a directory, the files marked, or the one on the line; with C-u, or where there is none, one asked for) each into FILE.gpg, to the keys or with a passphrase chosen in the minibuffer, commas between several, asked once.</td></tr>
+<tr><td>none</td><td><kbd>: d</kbd></td><td><code>gpg-decrypt-file</code></td><td>Decrypt the file shown (in a list of a directory, the files marked, or the one on the line; with C-u, or where there is none, one asked for) into its name without .gpg, for you alone, after asking once: the text is then on disk where it can be read.</td></tr>
+<tr><td>none</td><td><kbd>: s</kbd></td><td><code>gpg-sign-file</code></td><td>Sign the file shown (in a list of a directory, the files marked, or the one on the line; with C-u, or where there is none, one asked for) with your key: a detached signature (FILE.sig, the file left as it is), clear-signed text (FILE.asc) or a signed file (FILE.gpg), asked which, once.</td></tr>
+<tr><td>none</td><td><kbd>: v</kbd></td><td><code>gpg-verify-file</code></td><td>Check the signature of the file shown (in a list of a directory, the files marked, or the one on the line; with C-u, or where there is none, one asked for): a detached signature (FILE.sig, FILE.asc) against its file, else the signature within the file; say, in turn, who signed it, when, and how far that key is trusted.</td></tr>
 </tbody></table></div>
 <h2 id="colours-of-a-list"><span class="num">10.13</span> Colours of a list</h2>
 <p>A list uses faces to tell its parts apart: marked entries, entries marked for

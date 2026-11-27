@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -283,6 +283,9 @@ match, with <code>Query replacing ... with ...:</code> and the keys <code>y n ! 
 <tr><td>none</td><td><kbd>.</kbd></td><td>Replace this one and stop</td></tr>
 <tr><td>none</td><td><kbd>q</kbd></td><td>Stop</td></tr>
 </tbody></table></div>
+<p><kbd>SPC</kbd> answers as <kbd>y</kbd> does, <kbd>DEL</kbd> as <kbd>n</kbd> and <kbd>RET</kbd> as <kbd>q</kbd>. The words for each
+key are shown below the question, and a long pattern or replacement is
+shortened on the question's line.</p>
 <p><kbd>M-%</kbd> is the same for plain text, with no special characters to think about.
 <kbd>C-z r q</kbd> is the key for <kbd>r q</kbd> in every state.</p>
 <p>When you want to be sure of each change, use the question form. When a
@@ -417,11 +420,18 @@ directory, and with a prefix argument (<kbd>C-u</kbd> first) it asks for a direc
 <p>Type words and Tuatara lists every line that holds all of them, in any order,
 each as <code>path:line: text</code>. Nothing is listed before the third character
 (<code>*search-files-min-input*</code>). The files are read in the background while you
-type, and Tuatara skips hidden files, backups, binary files and whatever the
-project's <code>.gitignore</code> leaves out. Each word is a regex, as for <kbd>C-s</kbd>, and <kbd>M-r</kbd>
-switches to plain text, where the whole line you typed is found as it stands,
-spaces and all. At most <code>*search-files-lines-limit*</code> lines are listed. If the
-search stops there, the first line of the list says so.</p>
+type, and Tuatara skips hidden files, backups, symbolic links, binary files
+and whatever the project's <code>.gitignore</code> leaves out. A link to a file is never
+followed, so a link in the tree to a file elsewhere is not searched as part of
+it. Each word is a regex, as for <kbd>C-s</kbd>, and <kbd>M-r</kbd> switches to plain text, where
+the whole line you typed is found as it stands, spaces and all.</p>
+<p>Files that are not text are not searched: binary files, UTF-16 text (it holds
+zero bytes), pictures, archives and encrypted files, and files you may not
+read. The question counts them in brackets, as in <code>[3 files not searched]</code>,
+and so does the first line of the list. At most <code>*search-files-lines-limit*</code>
+lines are listed. When the search stops there, the question says
+<code>[first 2,000 lines only]</code>, the first line of the list says so too, and
+<kbd>M-g n</kbd> says <code>Line 5 of the first 2,000 found</code>.</p>
 <p>Move down the list with <kbd>C-n</kbd> (modal: <kbd>j</kbd>) and <kbd>RET</kbd> opens the file at that
 line. With <code>*preview-file-search*</code> set to true, the file of the selected line is
 shown meanwhile in your window, so you can read around a match without leaving
@@ -491,7 +501,7 @@ is left out.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>M-s g</kbd></td><td><code>search-in-files</code></td><td>Find text in the files of the project the current buffer's file is in (see <strong>PROJECT-ROOT-MARKERS</strong>), or under its directory when it is in none, or under the directory it lists (C-x d), or <strong>DEFAULT-DIRECTORY</strong> for another buffer with no file; with a prefix argument, in a directory asked for.</td></tr>
+<tr><td>none</td><td><kbd>M-s g</kbd></td><td><code>search-in-files</code></td><td>Find text in the files of the project the current buffer's file is in (see <strong>PROJECT-ROOT-MARKERS</strong>), or under its directory when it is in none, or under the directory it lists (C-x d), or <strong>NO-FILE-DIRECTORY</strong> for another buffer with no file; with a prefix argument, in a directory asked for.</td></tr>
 <tr><td>none</td><td><kbd>C-x n g</kbd></td><td><code>search-in-formatted</code></td><td>Find text in <strong>FORMATTED-FILE-DIRECTORY</strong>, where your files with formatted names are: every file under it, as search-in-files finds text in a directory; the lines with the words typed are listed as you type, the files read in the background meanwhile, M-r switching to literal text and back, and M-x minibuffer-finish visits one.</td></tr>
 <tr><td>none</td><td><kbd>M-x search-files-list</kbd></td><td><code>search-files-list</code></td><td>While searching files (M-s g), list the lines found so far in a buffer of their own, one each as path:line: text, to go through with RET or to change at once, with C-x C-q, and write back into their files.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-q</kbd></td><td><code>search-results-edit</code></td><td>Make the text after the path and line number of the lines found changeable, with the keys that change text: the path and line number stay as they are, and a line is not split or joined.</td></tr>
@@ -506,7 +516,7 @@ is left out.</p>
 </thead>
 <tbody>
 <tr><td><code>*project-root-markers*</code></td><td><code>(&quot;.git&quot; &quot;.project&quot;)</code></td><td>a list, each text</td><td>The names of the files or directories that mark the root of a project.</td></tr>
-<tr><td><code>*default-directory*</code></td><td><code>&quot;~/&quot;</code></td><td>nil, or a directory's name</td><td>The directory of a buffer with no file (<strong>scratch</strong>, the lists).</td></tr>
+<tr><td><code>*no-file-directory*</code></td><td><code>&quot;~/&quot;</code></td><td>nil, or a directory's name</td><td>The directory of a buffer with no file (<strong>scratch</strong>, the lists).</td></tr>
 <tr><td><code>*search-files-min-input*</code></td><td><code>3</code></td><td>a whole number, 0 or more</td><td>How many characters search-in-files and search-in-formatted wait for before searching.</td></tr>
 <tr><td><code>*search-files-lines-limit*</code></td><td><code>2000</code></td><td>a whole number, 1 or more</td><td>The most matching lines search-in-files and search-in-formatted list.</td></tr>
 <tr><td><code>*search-files-limit*</code></td><td><code>134217728</code></td><td>a whole number of octets, 0 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The most octets of text kept in memory for a search of many files.</td></tr>

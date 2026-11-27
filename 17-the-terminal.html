@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -495,6 +495,11 @@ or <code>24bit</code>, your theme's colours show exactly. Otherwise Tuatara uses
 <code>TERM</code> allows, and none where <code>NO_COLOR</code> is set. Setting it to <code>:24-bit</code>, <code>256</code>,
 <code>16</code> or <code>8</code> overrides that, which helps when a terminal is wrong about itself,
 for instance over a remote connection that does not pass <code>COLORTERM</code> on.</p>
+<p>Under tmux, or in any terminal whose own description differs from
+<code>xterm-direct256</code> (the description Tuatara asks for when it starts for 24-bit
+colour), the keys the terminal sends for <code>Home</code>, <code>End</code> and the others are read
+from the terminal's own description at the start, so they work as they do in
+other programs.</p>
 <p>Pictures (chapter 16) need a terminal that speaks the kitty graphics protocol.
 Under tmux or screen they stay off. The setting <code>*tui-pictures*</code> is described
 in chapter 16.</p>

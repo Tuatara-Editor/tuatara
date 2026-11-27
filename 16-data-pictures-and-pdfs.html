@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -490,7 +490,9 @@ group's own entry, is listed but skipped.</p>
 file keeps when it opens: it reads it when you first press <kbd>n</kbd> or <kbd>p</kbd>, or
 follow a link to one of its pictures. A file whose other pictures cannot be
 read, because it is damaged or made to trip the reader, says so on the line
-above the picture and under <code>Pictures inside</code>.</p>
+above the picture and under <code>Pictures inside</code>. A file you open as usual after
+<kbd>M-x end-safe-visit</kbd> is no longer from outside, and its pictures are read when
+it opens.</p>
 <p><kbd>M-x show-file-metadata</kbd> lists them all under <code>Pictures inside</code>, as the
 section &quot;What a file says of itself&quot; below describes.</p>
 <div class="tablewrap"><table>
@@ -700,7 +702,7 @@ A double click on the page goes to the line of the point you clicked. Chapter
 <tr><td>none</td><td><kbd>T</kbd>, <kbd>C-c T</kbd></td><td><code>pdf-view-toggle-text</code></td><td>Switch the PDF's view between its pages and its text, to read, search and copy; the text opens at the page shown, and the pages at the page point is on.</td></tr>
 <tr><td>none</td><td><kbd>i</kbd>, <kbd>C-c i</kbd></td><td><code>pdf-view-facts</code></td><td>Show what the PDF says of itself, as help: title, subject, author, the programs that made it (creator and producer), when it was made and changed, its version, encryption and what it allows, JavaScript, forms, pages and their size, as its program reads them in the sandbox; the file's own name and size first.</td></tr>
 <tr><td>none</td><td><kbd>a</kbd>, <kbd>C-c a</kbd></td><td><code>pdf-view-attachments</code></td><td>List the files embedded in the PDF, in a buffer beside it, as its program reads them in the sandbox; there, s saves one.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>pdf-attachment-save</code></td><td>Save the embedded file on the current line where you say, a new file, or one there after asking: taken out of the PDF in the sandbox, as its program reads it, and written as it is, never opened.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>pdf-view-attachment-save</code></td><td>Save the embedded file on the current line where you say, a new file, or one there after asking: taken out of the PDF in the sandbox, as its program reads it, and written as it is, never opened.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-v</kbd></td><td><code>pdf-view-show-source</code></td><td>Show the line of the LaTeX file that made the part of the page shown, in the other window: the spot M-x show-line-in-pdf marked or a double click chose when it is on the page in sight, else the middle of the window; in the PDF's text, the place of point.</td></tr>
 <tr><td>none</td><td><kbd>&lt;double-mouse-1&gt;</kbd></td><td><code>pdf-view-show-source-at-click</code></td><td>Show the line of the LaTeX file that made the point of the page double clicked, in the other window, as M-x pdf-view-show-source does for the part shown.</td></tr>
 </tbody></table></div>

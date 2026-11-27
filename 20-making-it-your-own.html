@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -192,7 +192,7 @@ holds:</p>
 </code></pre>
 <p>A few settings are better said with a function than with <code>setf</code>, because
 they take a mode and a value. The starter file has these written out, for
-example <code>(set-tab-width 'c-mode 8)</code>. Keep to the form the starter file shows.</p>
+example <code>(set-indentation 'c 2)</code>. Keep to the form the starter file shows.</p>
 <h3 id="sizes-and-times-in-words"><span class="num">20.3.1</span> Sizes and times in words</h3>
 <p>A setting that holds a size in bytes, such as <code>*sandbox-memory*</code>, takes a
 whole number of bytes, or the size in words, in quotes:</p>
@@ -207,7 +207,8 @@ and 1G is 1024 times 1024 times 1024. A number without a unit is bytes.</p>
 <p>A setting that holds seconds or minutes, such as <code>*sandbox-seconds*</code> or
 <code>*org-agenda-refresh-minutes*</code>, takes a number in its own unit, or a time in
 words: <code>&quot;500ms&quot;</code>, <code>&quot;90s&quot;</code>, <code>&quot;30m&quot;</code>, <code>&quot;1.5h&quot;</code> or <code>&quot;14d&quot;</code>, for milliseconds,
-seconds, minutes, hours and days. The words are turned into the setting's own
+seconds, minutes, hours and days. Several amounts may follow each other, as
+in <code>&quot;1h30m&quot;</code> or <code>&quot;1h 3m 10s&quot;</code>. The words are turned into the setting's own
 unit: <code>&quot;90s&quot;</code> given to a setting in minutes is 1.5. A setting that takes only
 whole numbers refuses a time that is not a whole number of its unit, as <code>&quot;90s&quot;</code>
 for <code>*org-notify-before*</code>, which counts whole minutes. A number without a unit
@@ -215,17 +216,17 @@ counts in the setting's own unit.</p>
 <p>The words are turned into the number where a value is looked at (see below), so
 <kbd>C-h v</kbd> shows the number. Words that give no size or time, or one the setting
 does not take, are refused as any other value is. A setting that counts things,
-such as <code>*kill-ring-max*</code> or <code>*wipe-passes*</code>, takes a plain number. The help of
+such as <code>*kill-ring-length*</code> or <code>*wipe-passes*</code>, takes a plain number. The help of
 each setting says which values it takes.</p>
 <h3 id="a-value-a-setting-does-not-take"><span class="num">20.3.2</span> A value a setting does not take</h3>
-<p>Each setting says which values it takes, and Tuatara refuses any other where
-you set it: by <code>setf</code> in the init file, at <kbd>M-:</kbd> or in IELM, in a package's
+<p>Each setting says which values it takes, and Tuatara refuses any other where you
+set it: by <code>setf</code> in the init file, at <kbd>M-:</kbd> or in the Lisp REPL, in a package's
 <code>:init</code> or <code>:config</code>, or with a command such as a display toggle turned on in
 every buffer. The setting keeps the value it had, and the refusal names the
-setting and says what it takes. In the init file it is said as an error on
-the line of the form that gave it; the other settings that form gives stand,
-and the forms after it are read as usual. A value set by Lisp a package runs
-on its own, or bound with <code>let</code> in Lisp of your own, is not looked at then.</p>
+setting and says what it takes. In the init file it is said as an error on the
+line of the form that gave it; the other settings that form gives stand, and the
+forms after it are read as usual. A value set by Lisp a package runs on its own,
+or bound with <code>let</code> in Lisp of your own, is not looked at then.</p>
 <p>For example, <code>(setf *gui-padding* 'x)</code> at <kbd>M-:</kbd> is refused with
 <code>*gui-padding* is x, but it takes a whole number, 0 or more, or a list, each a
 whole number, 0 or more: it keeps 8</code>.</p>
@@ -322,7 +323,7 @@ want, or write your own with <code>:map :leader</code>.</p>
 <pre class="ex"><code class="language-lisp">(bind-key &quot;o&quot; 'find-file :map :leader)
 (bind-key &quot;t&quot; nil :map :leader :label &quot;toggles&quot;)
 (bind-key &quot;t l&quot; 'soft-wrap-mode :map :leader)
-(bind-key &quot;t h&quot; 'hl-line-mode :map :leader)
+(bind-key &quot;t h&quot; 'current-line-mode :map :leader)
 </code></pre>
 <p>The four lines make <kbd>SPC o</kbd> open a file. They also make <kbd>SPC t</kbd> a prefix with
 the label &quot;toggles&quot;, with <kbd>SPC t l</kbd> to wrap long lines and <kbd>SPC t h</kbd> to
@@ -407,8 +408,8 @@ put it in the init file:</p>
 <p>In a window of its own, Tuatara follows the desktop. If the desktop turns
 dark in the evening, Tuatara switches to its dark theme, and back again in
 the morning. GTK tells it the desktop's style from GTK 4.20, as the AppImage
-and the packages of newer systems have it; with an older GTK, as the legacy
-AppImage's, the theme stays the one it started with. A theme named in the
+and the packages of newer systems have it; with an older GTK, the theme stays
+the one it started with. A theme named in the
 init file stays too. <code>*follow-desktop-style*</code> set to <code>nil</code> stops that and
 keeps one theme. <kbd>M-x toggle-light-dark-theme</kbd> switches between the dark and the light
 theme by hand. <code>*light-theme*</code> and <code>*dark-theme*</code> say which two themes it,
@@ -435,7 +436,7 @@ set for it. Both are covered in chapter 8.</p>
 <p><kbd>set-face</kbd> changes a face. It takes the face's name and then pairs of an
 attribute and a value:</p>
 <pre class="ex"><code class="language-lisp">(set-face :comment :fg :cyan :italic t)
-(set-face :hl-line :bg &quot;#1a2a3a&quot;)
+(set-face :current-line :bg &quot;#1a2a3a&quot;)
 </code></pre>
 <p>The first line draws comments in cyan italics. The second gives the line you are
 on a dark blue ground. A colour is a name such as <code>:red</code>, a number from 0 to
@@ -469,18 +470,10 @@ the daemon (chapter 18), or in an editor of its own when no daemon runs.
 <code>tuatara --remove-desktop</code> takes both away. <code>tuatara --generate-autostart</code> has
 the desktop start the daemon as you log in. Nothing starts it unless you do.</p>
 <p>The window's title bar follows the desktop's light or dark style, as GTK 4.20
-and later do. The AppImage brings such a GTK. Moving to it from the legacy
-AppImage, run <code>--install-desktop</code> again, so that the desktop's entry starts
-the new one without <code>--dark</code> or <code>--light</code>.</p>
-<p>The legacy AppImage, for systems older than glibc 2.43, brings an older GTK
-that cannot learn the desktop's style, and shows the title bar in GTK's light
-style unless asked otherwise. Only it takes <code>--dark</code> and <code>--light</code>, and only
-its <code>--help</code> lists them. <code>--dark</code> before the rest shows the title bar dark, as
-in <code>./Tuatara-legacy-x86_64.AppImage --dark --gui FILE</code>, and <code>--install-desktop
---dark</code> starts it so from the desktop's applications. Programs started from
-Tuatara are shown dark too. The editor's own colours are its theme's.
-Tuatara 0.90.40 was the last release with a legacy AppImage; later
-releases build none.</p>
+and later do. The AppImage brings such a GTK. A desktop entry written by the
+legacy AppImage of 0.90.40 or before may still start Tuatara with <code>--dark</code> or
+<code>--light</code>, which it no longer takes: run <code>--install-desktop</code> again to write
+the entry afresh.</p>
 <p>A package puts Tuatara in <code>/usr/lib/tuatara/</code> and it uses the system's GTK and
 libraries. With a GTK older than 4.20, <code>GTK_THEME=Adwaita:dark tuatara --gui</code>
 shows the title bar dark.</p>
@@ -686,19 +679,19 @@ below. Some of them are shown in other chapters. Here they are together.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-x T h</kbd></td><td><code>hl-line-mode</code></td><td>Highlight the line point is on in the current buffer, or stop: every row of it, out to the window's edge, in the :hl-line face, under the syntax colours and the selection, in the selected window.</td></tr>
-<tr><td>none</td><td><kbd>C-x T c</kbd></td><td><code>cursor-column-mode</code></td><td>Highlight the column point is in, down the window, in the current buffer, or stop: in the :cursor-column face (the :hl-line face's colour unless set apart), over the backgrounds of the text (a source block's, the selection's) and under the line point is on, past the end of short lines too, in the selected window.</td></tr>
+<tr><td>none</td><td><kbd>C-x T h</kbd></td><td><code>current-line-mode</code></td><td>Highlight the line point is on in the current buffer, or stop: every row of it, out to the window's edge, in the :current-line face, under the syntax colours and the selection, in the selected window.</td></tr>
+<tr><td>none</td><td><kbd>C-x T c</kbd></td><td><code>current-column-mode</code></td><td>Highlight the column point is in, down the window, in the current buffer, or stop: in the :current-column face (the :current-line face's colour unless set apart), over the backgrounds of the text (a source block's, the selection's) and under the line point is on, past the end of short lines too, in the selected window.</td></tr>
 <tr><td>none</td><td><kbd>C-x T l</kbd></td><td><code>soft-wrap-mode</code></td><td>Wrap the long lines of the current buffer at a word's edge, or stop: a line longer than the window is shown on as many rows as it needs, at the fill column (C-x f), or the window's edge when that is nearer; the text is not changed.</td></tr>
 <tr><td>none</td><td><kbd>C-x T v</kbd></td><td><code>display-fill-column-mode</code></td><td>Mark the current buffer's fill column (C-x f) with a line down the window, or stop: the last column a filled line may reach, the 80th for a fill column of 80, painted in the :display-fill-column face over the text's backgrounds (a source block's, the selection's) and under the line point is on.</td></tr>
 <tr><td>none</td><td><kbd>C-x T o</kbd></td><td><code>centred-text-mode</code></td><td>Show the text of the current buffer in a column of <strong>CENTRED-TEXT-WIDTH</strong> columns in the middle of the window, blank margins either side, or as it was: for writing and reading with nothing else about.</td></tr>
 <tr><td>none</td><td><kbd>C-x T i</kbd></td><td><code>invisible-characters-mode</code></td><td>Show the characters that draw nothing in the current buffer as their codes, or stop: the byte-order mark as &lt;FEFF&gt;, a zero-width space as &lt;200B&gt;, the soft hyphen, the joiners, the word joiner, the marks that set the direction text is drawn in and the tags the same way, in the :invisible-character face, each taking the columns its code takes.</td></tr>
 <tr><td>none</td><td><kbd>M-x text-direction-mode</kbd></td><td><code>text-direction-mode</code></td><td>Show the lines of the current buffer that hold right-to-left text (Hebrew, Arabic and the others) in the order they are read, or each line's characters in the order they are stored.</td></tr>
 <tr><td>none</td><td><kbd>C-x T p</kbd></td><td><code>inline-pictures-mode</code></td><td>Show the pictures the current buffer links to among its lines, and its formulas as LaTeX sets them, or the text as written.</td></tr>
-<tr><td>none</td><td><kbd>M-x global-hl-line-mode</kbd></td><td><code>global-hl-line-mode</code></td><td>Highlight the line point is on, in every buffer, or stop, while the editor runs (<strong>GLOBAL-HL-LINE-MODE</strong> in the init file keeps it); a buffer that chose with C-x T h, and the modes <strong>HL-LINE-MODES</strong> names, keep theirs; with a count, on when it is positive, off when it is zero or less.</td></tr>
+<tr><td>none</td><td><kbd>M-x global-current-line-mode</kbd></td><td><code>global-current-line-mode</code></td><td>Highlight the line point is on, in every buffer, or stop, while the editor runs (<strong>GLOBAL-CURRENT-LINE-MODE</strong> in the init file keeps it); a buffer that chose with C-x T h, and the modes <strong>CURRENT-LINE-MODES</strong> names, keep theirs; with a count, on when it is positive, off when it is zero or less.</td></tr>
 <tr><td>none</td><td><kbd>M-x global-soft-wrap-mode</kbd></td><td><code>global-soft-wrap-mode</code></td><td>Wrap long lines at a word's edge, at the fill column, in every buffer, or stop, while the editor runs (<strong>GLOBAL-SOFT-WRAP-MODE</strong> in the init file keeps it); a buffer that chose with C-x T l, and the modes <strong>SOFT-WRAP-MODES</strong> names, keep theirs; with a count, on when it is positive, off when it is zero or less.</td></tr>
 <tr><td>none</td><td><kbd>M-x global-display-fill-column-mode</kbd></td><td><code>global-display-fill-column-mode</code></td><td>Mark the fill column with a line down the window, in every buffer, or stop, while the editor runs (<strong>GLOBAL-DISPLAY-FILL-COLUMN-MODE</strong> in the init file keeps it); a buffer that chose with C-x T v, and the modes <strong>DISPLAY-FILL-COLUMN-MODES</strong> names, keep theirs; with a count, on when it is positive, off when it is zero or less.</td></tr>
 <tr><td>none</td><td><kbd>M-x global-centred-text-mode</kbd></td><td><code>global-centred-text-mode</code></td><td>Show the text in a column in the middle of the window, in every buffer, or stop, while the editor runs (<strong>GLOBAL-CENTRED-TEXT-MODE</strong> in the init file keeps it); a buffer that chose with C-x T o, and the modes <strong>CENTRED-TEXT-MODES</strong> names, keep theirs; with a count, on when it is positive, off when it is zero or less.</td></tr>
-<tr><td>none</td><td><kbd>M-x global-cursor-column-mode</kbd></td><td><code>global-cursor-column-mode</code></td><td>Highlight the column point is in, down the window, in every buffer, or stop, while the editor runs (<strong>GLOBAL-CURSOR-COLUMN-MODE</strong> in the init file keeps it); a buffer that chose with C-x T c, and the modes <strong>CURSOR-COLUMN-MODES</strong> names, keep theirs; with a count, on when it is positive, off when it is zero or less.</td></tr>
+<tr><td>none</td><td><kbd>M-x global-current-column-mode</kbd></td><td><code>global-current-column-mode</code></td><td>Highlight the column point is in, down the window, in every buffer, or stop, while the editor runs (<strong>GLOBAL-CURRENT-COLUMN-MODE</strong> in the init file keeps it); a buffer that chose with C-x T c, and the modes <strong>CURRENT-COLUMN-MODES</strong> names, keep theirs; with a count, on when it is positive, off when it is zero or less.</td></tr>
 <tr><td>none</td><td><kbd>M-x global-invisible-characters-mode</kbd></td><td><code>global-invisible-characters-mode</code></td><td>Show the characters that draw nothing as their codes, &lt;FEFF&gt; for the byte-order mark, in every buffer, or stop, while the editor runs (<strong>GLOBAL-INVISIBLE-CHARACTERS-MODE</strong> in the init file keeps it); a buffer that chose with C-x T i, and the modes <strong>INVISIBLE-CHARACTERS-MODES</strong> names, keep theirs; with a count, on when it is positive, off when it is zero or less.</td></tr>
 <tr><td>none</td><td><kbd>M-x global-text-direction-mode</kbd></td><td><code>global-text-direction-mode</code></td><td>Show right-to-left text in the order it is read, in every buffer, or stop, while the editor runs (<strong>GLOBAL-TEXT-DIRECTION-MODE</strong> in the init file keeps it); a buffer that chose with M-x text-direction-mode, and the modes <strong>TEXT-DIRECTION-MODES</strong> names, keep theirs; with a count, on when it is positive, off when it is zero or less.</td></tr>
 <tr><td>none</td><td><kbd>M-x global-inline-pictures-mode</kbd></td><td><code>global-inline-pictures-mode</code></td><td>Show the pictures a buffer links to and its formulas among its lines, in every buffer, or stop, while the editor runs (<strong>GLOBAL-INLINE-PICTURES-MODE</strong> in the init file keeps it); a buffer that chose with C-x T p, and the modes <strong>INLINE-PICTURES-MODES</strong> names, keep theirs; with a count, on when it is positive, off when it is zero or less.</td></tr>
@@ -717,10 +710,10 @@ and plain text but not in CSV files, whatever the rest do:</p>
 </code></pre>
 <p>The pairs, each with what it shows:</p>
 <ul>
-<li><code>*global-hl-line-mode*</code> and <code>*hl-line-modes*</code> paint the line the cursor is
+<li><code>*global-current-line-mode*</code> and <code>*current-line-modes*</code> paint the line the cursor is
   on across the window. It is on for every buffer unless you set the first
   to <code>nil</code>. To keep it off in CSV files only:
-  <code>(setf *hl-line-modes* '((csv-mode . nil)))</code>.</li>
+  <code>(setf *current-line-modes* '((csv-mode . nil)))</code>.</li>
 <li><code>*global-soft-wrap-mode*</code> and <code>*soft-wrap-modes*</code> wrap long lines onto
   several rows. They are off unless set, except in help and the about
   buffer, which wrap. <code>(setf *global-soft-wrap-mode* t)</code> wraps everywhere.</li>
@@ -738,9 +731,9 @@ and plain text but not in CSV files, whatever the rest do:</p>
 <li><code>*centred-text-width*</code> is the width of that column, 80 by default. With
   <code>(setf *centred-text-width* 70)</code> the text takes 70 columns and the margins
   are blank.</li>
-<li><code>*global-cursor-column-mode*</code> and <code>*cursor-column-modes*</code> paint the column
+<li><code>*global-current-column-mode*</code> and <code>*current-column-modes*</code> paint the column
   the cursor is in down the window. Off unless set:
-  <code>(setf *cursor-column-modes* '((csv-mode . t)))</code> helps to read a table.</li>
+  <code>(setf *current-column-modes* '((csv-mode . t)))</code> helps to read a table.</li>
 <li><code>*global-invisible-characters-mode*</code> and <code>*invisible-characters-modes*</code>
   show characters that draw nothing as their codes, such as <code>&lt;FEFF&gt;</code> for a
   byte-order mark. Off unless set, but always on in a file opened safely.
@@ -763,8 +756,8 @@ and plain text but not in CSV files, whatever the rest do:</p>
 <tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*global-hl-line-mode*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether to highlight the line point is on, in every buffer (t unless set); a buffer's own M-x hl-line-mode, and the list for its major mode in <strong>HL-LINE-MODES</strong>, say otherwise for it.</td></tr>
-<tr><td><code>*hl-line-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B t, nil</td><td>Major modes whose buffers highlight the line point is on, or not: a list of (MODE .</td></tr>
+<tr><td><code>*global-current-line-mode*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether to highlight the line point is on, in every buffer (t unless set); a buffer's own M-x current-line-mode, and the list for its major mode in <strong>CURRENT-LINE-MODES</strong>, say otherwise for it.</td></tr>
+<tr><td><code>*current-line-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B t, nil</td><td>Major modes whose buffers highlight the line point is on, or not: a list of (MODE .</td></tr>
 <tr><td><code>*global-soft-wrap-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether to wrap long lines at a word's edge, at the fill column, in every buffer (nil unless set); a buffer's own M-x soft-wrap-mode, and the list for its major mode in <strong>SOFT-WRAP-MODES</strong>, say otherwise for it.</td></tr>
 <tr><td><code>*soft-wrap-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B t, nil</td><td>Major modes whose buffers wrap long lines at a word's edge, at the fill column, or not: a list of (MODE .</td></tr>
 <tr><td><code>*soft-wrap-at-fill-column*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether soft wrap wraps long lines at the buffer's fill column (M-x set-fill-column, <strong>FILL-COLUMN</strong>), or at the window's edge when that is nearer.</td></tr>
@@ -773,8 +766,8 @@ and plain text but not in CSV files, whatever the rest do:</p>
 <tr><td><code>*global-centred-text-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether to show the text in a column in the middle of the window, in every buffer (nil unless set); a buffer's own M-x centred-text-mode, and the list for its major mode in <strong>CENTRED-TEXT-MODES</strong>, say otherwise for it.</td></tr>
 <tr><td><code>*centred-text-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B t, nil</td><td>Major modes whose buffers show the text in a column in the middle of the window, or not: a list of (MODE .</td></tr>
 <tr><td><code>*centred-text-width*</code></td><td><code>80</code></td><td>a whole number, 1 or more</td><td>How many columns of text a buffer shows when its text is centred with M-x centred-text-mode.</td></tr>
-<tr><td><code>*global-cursor-column-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether to highlight the column point is in, down the window, in every buffer (nil unless set); a buffer's own M-x cursor-column-mode, and the list for its major mode in <strong>CURSOR-COLUMN-MODES</strong>, say otherwise for it.</td></tr>
-<tr><td><code>*cursor-column-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B t, nil</td><td>Major modes whose buffers highlight the column point is in, down the window, or not: a list of (MODE .</td></tr>
+<tr><td><code>*global-current-column-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether to highlight the column point is in, down the window, in every buffer (nil unless set); a buffer's own M-x current-column-mode, and the list for its major mode in <strong>CURRENT-COLUMN-MODES</strong>, say otherwise for it.</td></tr>
+<tr><td><code>*current-column-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B t, nil</td><td>Major modes whose buffers highlight the column point is in, down the window, or not: a list of (MODE .</td></tr>
 <tr><td><code>*global-invisible-characters-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether to show the characters that draw nothing as their codes, &lt;FEFF&gt; for the byte-order mark, in every buffer (nil unless set); a buffer's own M-x invisible-characters-mode, and the list for its major mode in <strong>INVISIBLE-CHARACTERS-MODES</strong>, say otherwise for it.</td></tr>
 <tr><td><code>*invisible-characters-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B t, nil</td><td>Major modes whose buffers show the characters that draw nothing as their codes, &lt;FEFF&gt; for the byte-order mark, or not: a list of (MODE .</td></tr>
 <tr><td><code>*global-text-direction-mode*</code></td><td><code>:auto</code></td><td>nil, :auto, :right-to-left, :left-to-right</td><td>How lines holding right-to-left text are shown in buffers that have not chosen, and whose major mode <strong>TEXT-DIRECTION-MODES</strong> says nothing of.</td></tr>
@@ -789,10 +782,10 @@ are the same colour unless you set them apart.</p>
 <tr><th>Face</th><th>What it paints</th></tr>
 </thead>
 <tbody>
-<tr><td><code>:hl-line</code></td><td>The line point is on, in the selected window, out to its edge (C-x T h, M-x global-hl-line-mode).</td></tr>
-<tr><td><code>:cursor-column</code></td><td>The column point is in, down the selected window (C-x T c, M-x global-cursor-column-mode): the same as :hl-line unless set apart, (set-face :cursor-column :bg …) in the init file.</td></tr>
-<tr><td><code>:soft-wrap-row</code></td><td>The row point is on, where long lines wrap (C-x T l), painted over the line's :hl-line: the same as it unless set apart, (set-face :soft-wrap-row :bg …) in the init file.</td></tr>
-<tr><td><code>:display-fill-column</code></td><td>The line down the window at the fill column (C-x T v): its background, over a source block's or the selection's, under the line point is on (:hl-line).</td></tr>
+<tr><td><code>:current-line</code></td><td>The line point is on, in the selected window, out to its edge (C-x T h, M-x global-current-line-mode).</td></tr>
+<tr><td><code>:current-column</code></td><td>The column point is in, down the selected window (C-x T c, M-x global-current-column-mode): the same as :current-line unless set apart, (set-face :current-column :bg …) in the init file.</td></tr>
+<tr><td><code>:soft-wrap-row</code></td><td>The row point is on, where long lines wrap (C-x T l), painted over the line's :current-line: the same as it unless set apart, (set-face :soft-wrap-row :bg …) in the init file.</td></tr>
+<tr><td><code>:display-fill-column</code></td><td>The line down the window at the fill column (C-x T v): its background, over a source block's or the selection's, under the line point is on (:current-line).</td></tr>
 <tr><td><code>:invisible-character</code></td><td>A character that draws nothing, shown as its code, &lt;FEFF&gt; for the byte-order mark, while its buffer shows such characters (C-x T i), and a character that sets the direction text is drawn in, shown as ? otherwise: as escape sequences are, unless set apart.</td></tr>
 <tr><td><code>:current-line-number</code></td><td>The current line's number in the gutter.</td></tr>
 <tr><td><code>:raw-byte</code></td><td>Octets that are not UTF-8, each shown as <code>\xNN</code>.</td></tr>
@@ -839,14 +832,14 @@ which is quicker if you have a large agenda:</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-f</kbd>, <kbd>&lt;right&gt;</kbd></td><td><code>calendar-forward-day</code></td><td>Move point a day on in the calendar; with a count, that many.</td></tr>
-<tr><td>none</td><td><kbd>C-b</kbd>, <kbd>&lt;left&gt;</kbd></td><td><code>calendar-backward-day</code></td><td>Move point a day back in the calendar; with a count, that many.</td></tr>
-<tr><td>none</td><td><kbd>C-n</kbd>, <kbd>&lt;down&gt;</kbd></td><td><code>calendar-forward-week</code></td><td>Move point a week on in the calendar; with a count, that many.</td></tr>
-<tr><td>none</td><td><kbd>C-p</kbd>, <kbd>&lt;up&gt;</kbd></td><td><code>calendar-backward-week</code></td><td>Move point a week back in the calendar; with a count, that many.</td></tr>
+<tr><td>none</td><td><kbd>&lt;right&gt;</kbd></td><td><code>calendar-forward-day</code></td><td>Move point a day on in the calendar; with a count, that many.</td></tr>
+<tr><td>none</td><td><kbd>&lt;left&gt;</kbd></td><td><code>calendar-backward-day</code></td><td>Move point a day back in the calendar; with a count, that many.</td></tr>
+<tr><td>none</td><td><kbd>&lt;down&gt;</kbd></td><td><code>calendar-forward-week</code></td><td>Move point a week on in the calendar; with a count, that many.</td></tr>
+<tr><td>none</td><td><kbd>&lt;up&gt;</kbd></td><td><code>calendar-backward-week</code></td><td>Move point a week back in the calendar; with a count, that many.</td></tr>
 <tr><td>none</td><td><kbd>M-}</kbd></td><td><code>calendar-forward-month</code></td><td>Move point a month on in the calendar, to the same day of the month (or its last); with a count, that many.</td></tr>
 <tr><td>none</td><td><kbd>M-{</kbd></td><td><code>calendar-backward-month</code></td><td>Move point a month back in the calendar, to the same day of the month (or its last); with a count, that many.</td></tr>
-<tr><td>none</td><td><kbd>C-x ]</kbd></td><td><code>calendar-forward-year</code></td><td>Move point a year on in the calendar; with a count, that many.</td></tr>
-<tr><td>none</td><td><kbd>C-x [</kbd></td><td><code>calendar-backward-year</code></td><td>Move point a year back in the calendar; with a count, that many.</td></tr>
+<tr><td>none</td><td><kbd>]</kbd>, <kbd>C-c ]</kbd></td><td><code>calendar-forward-year</code></td><td>Move point a year on in the calendar; with a count, that many.</td></tr>
+<tr><td>none</td><td><kbd>[</kbd>, <kbd>C-c [</kbd></td><td><code>calendar-backward-year</code></td><td>Move point a year back in the calendar; with a count, that many.</td></tr>
 <tr><td>none</td><td><kbd>.</kbd>, <kbd>C-c .</kbd></td><td><code>calendar-goto-today</code></td><td>Move point to today, the months around it shown.</td></tr>
 <tr><td>none</td><td><kbd>g d</kbd></td><td><code>calendar-goto-date</code></td><td>Move point to a date asked for: 2026-12-24, 2026-12, or as any date asked for is read (tomorrow, fri, +3d, dec 24).</td></tr>
 <tr><td>none</td><td><kbd>M-x calendar-jump-back</kbd></td><td><code>calendar-jump-back</code></td><td>Go back to the day point was on before it last moved; again, and back to the day after once more.</td></tr>
@@ -855,7 +848,7 @@ which is quicker if you have a large agenda:</p>
 <tr><td>none</td><td><kbd>n</kbd>, <kbd>C-c n</kbd></td><td><code>calendar-journal-entry</code></td><td>Open the journal's entry for the calendar's day at point, or make it: the calendar leaves its window, the entry shown where you were.</td></tr>
 <tr><td>none</td><td><kbd>m</kbd>, <kbd>C-c m</kbd></td><td><code>calendar-mark-days</code></td><td>Mark the days with agenda entries in the calendar (as standard, with <strong>CALENDAR-MARK-DAYS</strong>).</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>calendar-unmark</code></td><td>Take the marks off the calendar's days, until m puts them back.</td></tr>
-<tr><td>none</td><td><kbd>C-a</kbd></td><td><code>calendar-beginning-of-week</code></td><td>Move point to the start of the week it is in (<strong>CALENDAR-WEEK-START-DAY</strong>); on it, a week back.</td></tr>
+<tr><td>none</td><td><kbd>M-x calendar-beginning-of-week</kbd></td><td><code>calendar-beginning-of-week</code></td><td>Move point to the start of the week it is in (<strong>CALENDAR-WEEK-START-DAY</strong>); on it, a week back.</td></tr>
 <tr><td>none</td><td><kbd>C-e</kbd></td><td><code>calendar-end-of-week</code></td><td>Move point to the end of the week it is in; on it, a week on.</td></tr>
 <tr><td>none</td><td><kbd>M-a</kbd></td><td><code>calendar-beginning-of-month</code></td><td>Move point to the first day of its month.</td></tr>
 <tr><td>none</td><td><kbd>M-e</kbd></td><td><code>calendar-end-of-month</code></td><td>Move point to the last day of its month.</td></tr>
@@ -863,8 +856,8 @@ which is quicker if you have a large agenda:</p>
 <tr><td>none</td><td><kbd>M-&gt;</kbd></td><td><code>calendar-end-of-year</code></td><td>Move point to the last day of its year.</td></tr>
 <tr><td>none</td><td><kbd>&gt;</kbd>, <kbd>C-c &gt;</kbd></td><td><code>calendar-scroll-left</code></td><td>Show the next month, the months moving left; with a count, that many.</td></tr>
 <tr><td>none</td><td><kbd>&lt;</kbd>, <kbd>C-c &lt;</kbd></td><td><code>calendar-scroll-right</code></td><td>Show the month before, the months moving right; with a count, that many.</td></tr>
-<tr><td>none</td><td><kbd>C-v</kbd>, <kbd>&lt;next&gt;</kbd></td><td><code>calendar-scroll-left-three-months</code></td><td>Show the months after those shown, as many as are shown (<strong>CALENDAR-MONTHS</strong>, three as standard); with a count, that many times as many.</td></tr>
-<tr><td>none</td><td><kbd>M-v</kbd>, <kbd>&lt;prior&gt;</kbd></td><td><code>calendar-scroll-right-three-months</code></td><td>Show the months before those shown, as many as are shown (<strong>CALENDAR-MONTHS</strong>, three as standard); with a count, that many times as many.</td></tr>
+<tr><td>none</td><td><kbd>&lt;next&gt;</kbd></td><td><code>calendar-next-months</code></td><td>Show the months after those shown, as many as are shown (<strong>CALENDAR-MONTHS</strong>, three as standard); with a count, that many times as many.</td></tr>
+<tr><td>none</td><td><kbd>&lt;prior&gt;</kbd></td><td><code>calendar-previous-months</code></td><td>Show the months before those shown, as many as are shown (<strong>CALENDAR-MONTHS</strong>, three as standard); with a count, that many times as many.</td></tr>
 <tr><td>none</td><td><kbd>p d</kbd></td><td><code>calendar-print-day-of-year</code></td><td>Say which day of its year the day at point is.</td></tr>
 <tr><td>none</td><td><kbd>p c</kbd></td><td><code>calendar-iso-print-date</code></td><td>Say the ISO date of the day at point: its day of the week, its week and its year.</td></tr>
 <tr><td>none</td><td><kbd>C-x n A</kbd></td><td><code>calendar-here</code></td><td>Show the calendar in the window you are in, in place of its buffer, point on today; q brings that buffer back.</td></tr>
@@ -1110,7 +1103,7 @@ for the name of a field and for what cannot be changed:</p>
 <p>Four settings are limits that keep a mistake from filling your computer. Each
 has a sensible standard, and a reason to change it is rare.</p>
 <ul>
-<li><code>*insert-file-limit*</code> is how much of another file <kbd>M-x
+<li><code>*note-template-file-limit*</code> is how much of another file <kbd>M-x
   insert-formatted-note-template</kbd> reads. A larger file is refused.</li>
 <li><code>*program-output-limit*</code> is how much of what a program writes Tuatara
   takes. A program that writes more is stopped.</li>
@@ -1125,7 +1118,7 @@ has a sensible standard, and a reason to change it is rare.</p>
 <tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*insert-file-limit*</code></td><td><code>16777216</code></td><td>a whole number of octets, 0 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The most octets M-x insert-formatted-note-template reads from a file that is no note template.</td></tr>
+<tr><td><code>*note-template-file-limit*</code></td><td><code>16777216</code></td><td>a whole number of octets, 0 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The most octets M-x insert-formatted-note-template reads from a file that is no note template.</td></tr>
 <tr><td><code>*program-output-limit*</code></td><td><code>67108864</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The most octets PROGRAM-OUTPUT takes of what a program writes.</td></tr>
 <tr><td><code>*wipe-passes*</code></td><td><code>1</code></td><td>a whole number, 1 or more</td><td>How many times a file wiped is overwritten with random octets before it is deleted.</td></tr>
 <tr><td><code>*markdown-toc-on-save*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a Markdown file's table of contents is made again each time it is saved.</td></tr>
@@ -1153,7 +1146,7 @@ typed in a question that asks for a pattern, and says why when it cannot.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-c M-m</kbd></td><td><code>pp-macroexpand-all-last-expression</code></td><td>Show what the macro call at point expands to, every macro in it expanded too (SB-CLTL2:MACROEXPAND-ALL), pretty-printed in <strong>Pp Macroexpand Output</strong>; with a prefix argument (C-u), put it in after the call instead.</td></tr>
+<tr><td>none</td><td><kbd>C-c M-m</kbd></td><td><code>lisp-macroexpand-all</code></td><td>Show what the macro call at point expands to, every macro in it expanded too (SB-CLTL2:MACROEXPAND-ALL), pretty-printed in <strong>Macro expansion</strong>; with a prefix argument (C-u), put it in after the call instead.</td></tr>
 <tr><td>none</td><td><kbd>M-x pattern-finish</kbd></td><td><code>pattern-finish</code></td><td>In a question that takes a pattern: take what is typed, or when it cannot be used, say why in the prompt and wait for it to be mended (M-x minibuffer-cancel gives up).</td></tr>
 </tbody></table></div>
 <div class="node end"><span>Previous: <a href="19-packages.html">Packages</a></span><span>Next: <a href="21-every-setting.html">Every setting</a></span><span>Up: <a href="index.html">Contents</a></span></div>

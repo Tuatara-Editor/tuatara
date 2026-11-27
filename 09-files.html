@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -113,7 +113,7 @@ stand, which settings are taken and what is left alone.</p>
 </thead>
 <tbody>
 <tr><td>none</td><td><kbd>C-x C-f</kbd></td><td><code>find-file</code></td><td>Visit a file, completing its name against the directory being typed.</td></tr>
-<tr><td>none</td><td><kbd>C-x 4 f</kbd>, <kbd>C-x 4 C-f</kbd></td><td><code>find-file-other-window</code></td><td>Visit a file in another window and select it, completing its name as find-file does.</td></tr>
+<tr><td>none</td><td><kbd>C-x 4 f</kbd></td><td><code>find-file-other-window</code></td><td>Visit a file in another window and select it, completing its name as find-file does.</td></tr>
 <tr><td>none</td><td><kbd>C-x 5 f</kbd></td><td><code>find-file-other-frame</code></td><td>Visit a file in another frame and work in it, asking for its name as C-x C-f does; a directory is listed there.</td></tr>
 <tr><td>none</td><td><kbd>M-x find-file-safely</kbd></td><td><code>find-file-safely</code></td><td>Open a file safely, for looking at a file from a source you do not trust: read-only, with no major mode, no hooks and no version control, so that nothing in the file is acted on; its file system left exactly as it was (no copy beside it), and its access time too where the system allows.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-p</kbd></td><td><code>open-path-at-point</code></td><td>Open the file or directory whose path is at the cursor in the text, as C-x C-f opens it: a directory (<em>etc</em>, ~/notes/) in a list of it, a file \(~/notes/todo.org, ./README.org, or a file: link's) in its buffer.</td></tr>
@@ -312,6 +312,9 @@ of the same file, and you choose which to keep.</p>
 <h3 id="reading-it-again"><span class="num">9.6.1</span> Reading it again</h3>
 <p><kbd>M-x revert-buffer</kbd> reads the file again and replaces the text in the
 buffer. It asks first when the buffer has changes you have not saved. The
+file is read in the background, so a slow drive never holds you up, and the
+text comes in once it is read; if you edit the buffer meanwhile, your edit is
+kept and the file is not taken. The
 reading is one step in the undo history, so <kbd>C-/</kbd> (modal: <kbd>u</kbd>) takes it back if
 you made a mistake. Point and the window stay on the same text, so you do not
 lose your place. If the file only grew, only the new part is added.</p>
@@ -654,8 +657,11 @@ with a message that the question was not answered. Nothing is left running.</p>
 <p><kbd>C-x C-f /ssh:pinetree:/srv/notes/ RET</kbd>, or <kbd>C-x d</kbd> with that name, lists the
 directory as one is listed on your computer. Chapter 10 describes the list. What
 would read many files, or keep watching them, is left out on a server: there is
-no git column and no directory size, and the list is read again after each
-change you make, not as files change.</p>
+no git column, and the list is read again after each change you make, not as
+files change. <kbd>S</kbd> does show sizes there, read in the background a directory at
+a time over the same connection, with nothing run on the server; chapter 10
+says how they may differ from sizes on your computer. <kbd>g h</kbd> lists your home
+directory on the server, and <kbd>g l</kbd> the directory listed before.</p>
 <p>A preview shows each file beside the list as you move. On a server each file
 must come to your computer first, so the preview starts off. <kbd>P</kbd> in the list
 turns it on, and moving to another file stops the transfer under way. A file
@@ -736,7 +742,10 @@ keeps what came. The next time you open the file, the transfer goes on from
 where it stopped, after the same checks of what has come, by its small parts,
 as a sum of part of a file cannot be had; the echo area says how much was
 compared. If any differs, the file is fetched again whole, never joined from
-two versions. Copies of evidence are checked the same way.</p>
+two versions.</p>
+<p>A file you open safely (<kbd>C-u C-x C-f</kbd>), or one that is or may be evidence, is
+always fetched again over SFTP. A kept copy never stands in for it, and
+nothing else is run on the server for it, not even <code>sha256sum</code>.</p>
 <p>An entry in use is never cleared. It is in use while a buffer or list shows
 it, in any of your sessions. Its last use is the moment it stops being in use:
 the buffer or list is closed, or the session ends. An entry that is not in use
@@ -849,17 +858,20 @@ directory gpg takes its keys and options from (<code>~/.gnupg</code>, or the dir
 the check fails, gpg is not run, and the message says which directory is wrong
 and why.</p>
 <h3 id="encrypting-and-decrypting"><span class="num">9.10.3</span> Encrypting and decrypting</h3>
-<p><kbd>M-x gpg-encrypt-file</kbd> encrypts the file shown, or the one on the line of a
-directory list, into <code>FILE.gpg</code>. It asks whom to encrypt to in the minibuffer:
-your keys, or a passphrase, with commas between several. gpg lists the keys in
-the background first, so the question can come after a short wait, and the
-editor answers your keys meanwhile. Saving a new <code>.gpg</code> file asks the same way
-and saves once you have chosen. It then offers to wipe
-the original. Say no if you are not sure, since a wiped file cannot be recovered
-and a solid state disk may keep old copies anyway. <kbd>M-x wipe-file</kbd> does that
-wipe by itself. <kbd>M-x gpg-decrypt-file</kbd> writes a decrypted copy to a file you
-name, after warning you that its text is then on disk. To read an encrypted
-file, open the <code>.gpg</code> file instead.</p>
+<p><kbd>M-x gpg-encrypt-file</kbd> encrypts the file shown into <code>FILE.gpg</code>. In a directory
+list it takes the files marked, or the one on the line when none is marked; the
+same goes for <kbd>M-x gpg-decrypt-file</kbd>, <kbd>M-x gpg-sign-file</kbd> and <kbd>M-x
+gpg-verify-file</kbd>, which ask their questions once and then work on one file after
+another in the background. It asks whom to encrypt to in the minibuffer: your
+keys, or a passphrase, with commas between several. gpg lists the keys in the
+background first, so the question can come after a short wait, and the editor
+answers your keys meanwhile. Saving a new <code>.gpg</code> file asks the same way and
+saves once you have chosen. Encrypting also offers, once, to wipe the originals.
+Say no if you are not sure, since a wiped file cannot be recovered and a solid
+state disk may keep old copies anyway. <kbd>M-x wipe-file</kbd> does that wipe by itself.
+<kbd>M-x gpg-decrypt-file</kbd> writes a decrypted copy, after warning you that its text
+is then on disk: for one file to a name you give, for several to their names
+without <code>.gpg</code>. To read an encrypted file, open the <code>.gpg</code> file instead.</p>
 <p>You can also encrypt part of a buffer. Select some text and use
 <kbd>M-x gpg-encrypt-region</kbd>. The text becomes a block that starts with
 <code>-----BEGIN PGP MESSAGE-----</code>. This is useful for one paragraph of a note that
@@ -876,7 +888,12 @@ and clipboard managers, can read it and keep it.</p>
 signature, <code>FILE.sig</code>, which leaves the file as it is; clear-signed text,
 <code>FILE.asc</code>; or a signed file, <code>FILE.gpg</code>. <kbd>M-x gpg-sign-region</kbd> clear-signs the
 selected text in place. <kbd>M-x gpg-verify-file</kbd> and <kbd>M-x gpg-verify-region</kbd> check
-a signature. They say who signed, when, and how far that key is trusted.</p>
+a signature. They say who signed, when, and how far that key is trusted. Text
+with more than one signature gets each in turn, as in &quot;2 signatures: good
+signature by …; BAD signature by …&quot;. The answer begins &quot;Good signature&quot;
+only when there is one signature, it holds, and gpg ended without an error.
+When gpg fails after a good signature, as when a forged block follows a signed
+one, the answer begins &quot;Not verified&quot;.</p>
 <p>Read the answer for what it says. A good signature tells you the text has not
 changed since that key signed it. It does not tell you the text is safe, and it
 tells you who signed only as far as you trust the key.</p>
@@ -884,8 +901,8 @@ tells you who signed only as far as you trust the key.</p>
 <p><kbd>M-x gpg-keys-manager</kbd> opens a list of your keys and those you have of others,
 each in a section of its own. The list fills in as gpg answers. <kbd>RET</kbd> or <kbd>l</kbd>
 shows the fingerprint, names and expiry of the key on the line, and <kbd>h</kbd> folds
-a section. <kbd>M-x gpg-import-keys</kbd> and
-<kbd>M-x gpg-import-keys-region</kbd> add keys from a file or from selected text.
+a section. <kbd>M-x gpg-keys-import</kbd> and
+<kbd>M-x gpg-keys-import-region</kbd> add keys from a file or from selected text.
 <kbd>M-x gpg-keys-export</kbd> writes the public part of marked keys to a file, and
 <kbd>M-x gpg-keys-insert</kbd> puts it at the cursor in the buffer the list was opened
 from. The directory list (chapter 10) has keys for the same jobs on files.</p>
@@ -916,8 +933,8 @@ from. The directory list (chapter 10) has keys for the same jobs on files.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>M-x gpg-encrypt-file</kbd></td><td><code>gpg-encrypt-file</code></td><td>Encrypt the file shown (in a list of a directory, the one on the line; with C-u, or where there is none, asked for) into FILE.gpg, to the keys or with a passphrase chosen in the minibuffer, commas between several.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-decrypt-file</kbd></td><td><code>gpg-decrypt-file</code></td><td>Decrypt the file shown (in a list of a directory, the one on the line) into a file asked for, the name without .gpg offered; after asking, since its text is then on disk where it can be read (made for you alone).</td></tr>
+<tr><td>none</td><td><kbd>: e</kbd></td><td><code>gpg-encrypt-file</code></td><td>Encrypt the file shown (in a list of a directory, the files marked, or the one on the line; with C-u, or where there is none, one asked for) each into FILE.gpg, to the keys or with a passphrase chosen in the minibuffer, commas between several, asked once.</td></tr>
+<tr><td>none</td><td><kbd>: d</kbd></td><td><code>gpg-decrypt-file</code></td><td>Decrypt the file shown (in a list of a directory, the files marked, or the one on the line; with C-u, or where there is none, one asked for) into its name without .gpg, for you alone, after asking once: the text is then on disk where it can be read.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-encrypt-region</kbd></td><td><code>gpg-encrypt-region</code></td><td>Encrypt the text selected in place, as an armoured block (—–BEGIN PGP MESSAGE—–), to the keys or with a passphrase chosen in the minibuffer.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-decrypt-region</kbd></td><td><code>gpg-decrypt-region</code></td><td>Decrypt in place the armoured block (—–BEGIN PGP MESSAGE—–) in the text selected, or without a selection the one point is in, else the one nearest to point.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-decrypt-with-passphrase</kbd></td><td><code>gpg-decrypt-with-passphrase</code></td><td>Decrypt again the encrypted file this buffer waits for, its passphrase asked as <strong>GPG-PASSPHRASE-FROM</strong> says: in the minibuffer, shown as stars, or by gpg-agent's pinentry.</td></tr>
@@ -925,13 +942,13 @@ from. The directory list (chapter 10) has keys for the same jobs on files.</p>
 <tr><td>none</td><td><kbd>M-x gpg-copy-to-clipboard</kbd></td><td><code>gpg-copy-to-clipboard</code></td><td>Put the text copied last on the system clipboard, even text of an encrypted file, which is otherwise kept within Tuatara: other programs (clipboard managers among them) can then read it, and keep it.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-lock</kbd></td><td><code>gpg-lock</code></td><td>Make gpg-agent forget every passphrase it keeps for a while (ten minutes, as it comes, its default-cache-ttl), of encrypted files and of your keys: the next to open one asks again.</td></tr>
 <tr><td>none</td><td><kbd>M-x wipe-file</kbd></td><td><code>wipe-file</code></td><td>Wipe the file shown (in a list of a directory, the one on the line; with C-u, or where there is none, asked for) after asking: its contents overwritten with random octets, put on disk, then the file renamed and deleted, in the background, so that it is not found again where the disk writes in place.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-sign-file</kbd></td><td><code>gpg-sign-file</code></td><td>Sign the file shown (in a list of a directory, the one on the line) with your key: a detached signature (FILE.sig, the file left as it is), clear-signed text (FILE.asc) or a signed file (FILE.gpg), asked which.</td></tr>
+<tr><td>none</td><td><kbd>: s</kbd></td><td><code>gpg-sign-file</code></td><td>Sign the file shown (in a list of a directory, the files marked, or the one on the line; with C-u, or where there is none, one asked for) with your key: a detached signature (FILE.sig, the file left as it is), clear-signed text (FILE.asc) or a signed file (FILE.gpg), asked which, once.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-sign-region</kbd></td><td><code>gpg-sign-region</code></td><td>Clear-sign the text selected in place (—–BEGIN PGP SIGNED MESSAGE—–), with your key.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-verify-file</kbd></td><td><code>gpg-verify-file</code></td><td>Check the signature of the file shown (in a list of a directory, the one on the line): a detached signature (FILE.sig, FILE.asc) against its file, else the signature within the file; say who signed it, when, and how far that key is trusted.</td></tr>
+<tr><td>none</td><td><kbd>: v</kbd></td><td><code>gpg-verify-file</code></td><td>Check the signature of the file shown (in a list of a directory, the files marked, or the one on the line; with C-u, or where there is none, one asked for): a detached signature (FILE.sig, FILE.asc) against its file, else the signature within the file; say, in turn, who signed it, when, and how far that key is trusted.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-verify-region</kbd></td><td><code>gpg-verify-region</code></td><td>Check the signature of the clear-signed block (—–BEGIN PGP SIGNED MESSAGE—–) in the text selected, or without a selection the one point is in, else the one nearest to point: who signed it, when, and how far that key is trusted.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-import-keys</kbd></td><td><code>gpg-import-keys</code></td><td>Import the keys in a file asked for (armoured or not) into your keyring; say what was imported.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-import-keys-region</kbd></td><td><code>gpg-import-keys-region</code></td><td>Import the keys in the text selected (an armoured —–BEGIN PGP PUBLIC KEY BLOCK—–) into your keyring.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-keys-manager</kbd></td><td><code>gpg-keys-manager</code></td><td>List your GnuPG keys and those you have of others, in a section each: there m marks one, l shows its details, M-x gpg-import-keys imports keys from a file, M-x gpg-keys-export exports, M-x gpg-keys-insert inserts and D deletes those marked.</td></tr>
+<tr><td>none</td><td><kbd>M-x gpg-keys-import</kbd></td><td><code>gpg-keys-import</code></td><td>Import the keys in a file asked for (armoured or not) into your keyring; say what was imported.</td></tr>
+<tr><td>none</td><td><kbd>M-x gpg-keys-import-region</kbd></td><td><code>gpg-keys-import-region</code></td><td>Import the keys in the text selected (an armoured —–BEGIN PGP PUBLIC KEY BLOCK—–) into your keyring.</td></tr>
+<tr><td>none</td><td><kbd>M-x gpg-keys-manager</kbd></td><td><code>gpg-keys-manager</code></td><td>List your GnuPG keys and those you have of others, in a section each: there m marks one, l shows its details, M-x gpg-keys-import imports keys from a file, M-x gpg-keys-export exports, M-x gpg-keys-insert inserts and D deletes those marked.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-keys-export</kbd></td><td><code>gpg-keys-export</code></td><td>Export the public part of the keys marked (or the one at the cursor), armoured, to a file asked for.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-keys-insert</kbd></td><td><code>gpg-keys-insert</code></td><td>Put the public part of the keys marked (or the one at the cursor), armoured, at point in the buffer the list was opened from.</td></tr>
 </tbody></table></div>
@@ -1082,18 +1099,19 @@ them are explained in chapters 15 and 18.</p>
 <tr><td><code>--diff OLD NEW</code></td><td>Open the differences between the two files, or two directories, as M-x diff-files shows them, and exit when you quit; for git, as git config difftool.tuatara.cmd 'tuatara –diff &quot;$LOCAL&quot; &quot;$REMOTE&quot;'.</td></tr>
 <tr><td><code>--merge LOCAL BASE REMOTE MERGED</code></td><td>Merge the three files into MERGED, the conflicts marked there to resolve, then save it; exits 0 when MERGED is saved with no conflict left, else 1; for git, as git config mergetool.tuatara.cmd 'tuatara –merge &quot;$LOCAL&quot; &quot;$BASE&quot; &quot;$REMOTE&quot; &quot;$MERGED&quot;' and mergetool.tuatara.trustExitCode true.</td></tr>
 <tr><td><code>--safe, -R</code></td><td>Open the files safely, whatever directory they are in: read only, no mode or hook acting on them, nothing written. Use it to look at a file you do not trust or must not alter: a download, the contents of a disk image, evidence. Nothing in the directory acts on the file and nothing is written, so opening it leaves it as it was. What you give up is what the directory's own settings and tools would add, and saving changes.</td></tr>
-<tr><td><code>--hex</code></td><td>Open the files in the hex view, never first as text. Use it for a file that is not text (a program, an image, a database), or for text whose bytes you must read as stored, where the text view could hide a stray byte or a different line ending. A byte takes more room on the screen than a character. Measured once here, a 1 GB file showed its first screen in the same time as hex or as text (about 0.35 s).</td></tr>
+<tr><td><code>--hex</code></td><td>Open the files in the hex view, never first as text. Use it for a file that is not text (a program, an image, a database), or for text whose bytes you must read as stored, where the text view could hide a stray byte or a different line ending. A byte takes more room on the screen than a character. A large file shows its first screen in the same time as hex or as text.</td></tr>
 <tr><td><code>-</code></td><td>As a file: read standard input into a buffer, <strong>stdin</strong>, opened safely (tuatara - &lt; data, or … | tuatara -); the terminal stays the keyboard. Use it to look at what another program writes, in a pipe, before it goes on. The buffer is opened safely, as –safe does, so it is for reading and for taking parts of out.</td></tr>
 <tr><td><code>--tutor</code></td><td>Start in the tutor.</td></tr>
 <tr><td><code>--daemon[=NAME]</code></td><td>Run one editor in the background, with no screen, for tuatara –client to show in terminals, and return once it is ready; it reads the init file and loads the packages as Tuatara does, and runs until M-x daemon-quit or tuatara –stop, or until it is sent SIGTERM, as at logout, which keeps the changes not saved as auto-saved copies and asks nothing; NAME, default when none is given, tells several apart; its log is ~/.cache/tuatara/daemon-NAME.log, its session ~/.local/state/tuatara/session-daemon-NAME. Use it for an editor that is already there when you want one: a client (tuatara –client) shows a frame sooner than an editor of its own starts, as nothing is loaded or read for it, and the buffers stay open when a terminal closes. Several names keep several separate sessions. The cost is a process that stays in memory until it is stopped, with whatever it has open: a large file stays held. It needs XDG_RUNTIME_DIR, where its socket is.</td></tr>
 <tr><td><code>--client[=NAME]</code></td><td>Show the daemon NAME in this terminal, or with –gui in a window of its own (C-x 5 2 opens another), a frame of its own, the files named opened in it, with +LINE, –safe, –hex, - and –frames as for Tuatara itself; –diff and –merge as well, with their exit codes; C-x C-c closes this client alone, its buffers kept in the daemon, and the daemon goes on; as git's editor (GIT_EDITOR='tuatara –client') the commit is made when the message is finished; exits 1 when no daemon of that name runs, or when it ends. Use it for the quicker start a daemon gives and one set of buffers in every terminal. In return, a change to the init file or a package reaches the daemon only when it is stopped and started again, and every client works in the one editor. As git's editor, add –start so that it works when no daemon runs.</td></tr>
 <tr><td><code>--client=HOST[:NAME]</code></td><td>Show the daemon NAME running on the machine HOST, reached with the system's ssh, as –client shows one here: HOST as ssh takes it (build.example, me@build.example), a name from ~/.ssh/config written with a colon after it (build: or build:work); its host key must be known already; the files named are that machine's, a relative name from your home directory there; - is not taken, and pictures stay on each side, the clipboard, dropped files and your agents too unless HOST is trusted with them (M-x server-manager); with –start, the daemon there is started first when none runs; –stop=HOST[:NAME] stops it. Use it to work on the machine that has the files, a build server or a remote box, with your own screen and keys. Tuatara must be installed there, and the system's ssh is all it needs here. The editor runs there, so files are read at the speed of its disks, and each key crosses the network: a slow link shows as lag. The clipboard, dropped files and pictures stay on each side unless HOST is trusted with them, so a copy made there does not reach this machine's clipboard by itself.</td></tr>
+<tr><td><code>--daemons[=HOST]</code></td><td>List the daemons running on this machine, one line each: the name –client=NAME and –stop=NAME take, its process id, when it started, how many clients show it and how many buffers hold changes not saved; a daemon gone without taking its socket away is said as gone, and one that does not answer within 2 seconds as not answering; with =HOST, those on the machine HOST, asked over the system's ssh as –client=HOST reaches one there. Use it to find which daemons you left running, and whether one holds work not saved, before you stop it or log out. Each daemon is asked how it stands over the connection a client makes, which changes nothing in it; a hung one costs the listing 2 seconds at most.</td></tr>
 <tr><td><code>--daemon-socket[=NAME]</code></td><td>Say where the daemon NAME listens, which Tuatara this is and whether it runs, in lines a client on another machine reads over ssh, with where gpg here looks for its agent, and exit; with –start, start it first when none runs.</td></tr>
 <tr><td><code>--receive-file PATH</code></td><td>Write standard input, a file dropped on the window of a client on another machine, at PATH, from your home directory unless it begins with /, for you alone and under a name nothing has yet; say where, and exit.</td></tr>
 <tr><td><code>--start</code></td><td>With –client: start the daemon first when none runs. Use it in a script or as git's editor, where there may be no daemon yet: the first call starts one and later calls find it. Without it, a client with no daemon exits 1.</td></tr>
-<tr><td><code>--fallback</code></td><td>With –client: when no daemon runs, start Tuatara as it starts without –client instead, the files opened in an editor of its own; the desktop's Tuatara (client) starts it so. Use it where an editor must always open, as in a desktop entry. When no daemon runs it costs the ordinary start (about 0.32 s here) and gives an editor of its own, not shared with later clients.</td></tr>
+<tr><td><code>--fallback</code></td><td>With –client: when no daemon runs, start Tuatara as it starts without –client instead, the files opened in an editor of its own; the desktop's Tuatara (client) starts it so. Use it where an editor must always open, as in a desktop entry. When no daemon runs it costs the ordinary start and gives an editor of its own, not shared with later clients.</td></tr>
 <tr><td><code>--stop[=NAME]</code></td><td>Stop the daemon NAME, asking in this terminal about the changes not saved in it, as M-x daemon-quit does; with no terminal, nothing is asked, and the changes are kept as auto-saved copies that M-x recover-file offers. Use it to free the memory of a daemon you no longer need, or to start it again after you change the init file or a package. With no terminal nothing is asked, so a script can stop it without waiting; what was not saved is kept as auto-saved copies.</td></tr>
-<tr><td><code>-Q, --no-init</code></td><td>Start without the init file and so without packages, with what Tuatara keeps between sessions (files visited lately, the session, bookmarks) kept apart in a directory that goes with the session, the real one neither read nor changed. Use it when something in the init file or a package gets in the way: a setting that slows the editor or a package that fails to load. You get the editor as it ships, so you can tell whether the fault is yours. What you do meanwhile is not remembered. It is no faster to start: with the starter init file the first screen took the same time with and without it (about 0.3 s, measured once).</td></tr>
+<tr><td><code>-Q, --no-init</code></td><td>Start without the init file and so without packages, with what Tuatara keeps between sessions (files visited lately, the session, bookmarks) kept apart in a directory that goes with the session, the real one neither read nor changed. Use it when something in the init file or a package gets in the way: a setting that slows the editor or a package that fails to load. You get the editor as it ships, so you can tell whether the fault is yours. What you do meanwhile is not remembered. It is no faster to start: with the starter init file the first screen takes the same time with and without it.</td></tr>
 <tr><td><code>--generate-config</code></td><td>Write the init file Tuatara writes when there is none, every setting in it commented out, as ~/.config/tuatara/generated-init.lisp, and exit; a file there already is left as it is. Use it for a fresh list of every setting after an update, to compare with your own init file. It never replaces a file that is there, and the list is all comments, so you copy out the few settings you want to change.</td></tr>
 <tr><td><code>--generate-autostart</code></td><td>Write the entry that has the desktop start the daemon as you log in, ~/.config/autostart/tuatara-daemon.desktop, running tuatara –daemon, and exit; with –daemon=NAME, the daemon NAME's, tuatara-daemon-NAME.desktop; a file there already is left as it is. Use it for a daemon that is ready from login, so that the first terminal or window you open starts quickly. It costs the daemon's memory from the start of every session, whether or not you edit that day. Delete the file to undo it.</td></tr>
 <tr><td><code>--help, -h</code></td><td>Show this and exit.</td></tr>
@@ -1101,7 +1119,6 @@ them are explained in chapters 15 and 18.</p>
 <tr><td><code>--</code></td><td>The arguments after it are all files, even when one starts with a dash or a plus.</td></tr>
 <tr><td><code>--install-desktop</code></td><td>(the AppImage) copy it to ~/.local/bin/tuatara and put Tuatara and Tuatara (client) in the desktop's applications, the icon too. Use it to start the AppImage from the application menu. The copy at ~/.local/bin/tuatara does not update itself: run this again from a new AppImage.</td></tr>
 <tr><td><code>--remove-desktop</code></td><td>(the AppImage) take them away again.</td></tr>
-<tr><td><code>--dark, --light</code></td><td>(the legacy AppImage) show the window's title bar in the dark or the light style; with –install-desktop, for the desktop's applications. Use it when the window's title bar clashes with the desktop. It changes only the title bar's style; the text and colours come from the theme. The legacy AppImage brings a GTK older than 4.20, which cannot learn the desktop's light or dark style; the other AppImage's window follows it.</td></tr>
 <tr><td><code>--dynamic-space-size SIZE</code></td><td>The most memory Tuatara's own data may take, such as 6GB; by default half the machine's memory, from 2GB to 16GB, or $TUATARA_HEAP_MB megabytes. Use it to set the heap for one run; $TUATARA_HEAP_MB does for every run. That variable says what raising or lowering it does.</td></tr>
 </tbody></table></div>
 <div class="node end"><span>Previous: <a href="08-commands-keys-and-help.html">Commands, keys and help</a></span><span>Next: <a href="10-directories.html">Directories</a></span><span>Up: <a href="index.html">Contents</a></span></div>

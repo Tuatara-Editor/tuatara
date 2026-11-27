@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.46</small>
+<small>for version 0.90.47</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -162,7 +162,7 @@ press <kbd>C-g</kbd>.</p>
 <p><kbd>TAB</kbd> indents the line the cursor is on. The cursor can be anywhere in the
 line. When the line is already right, <kbd>TAB</kbd> does something else: it completes
 the name before the cursor, as the section on language servers describes. The
-setting <code>*tab-always-indent*</code> says what <kbd>TAB</kbd> does. Its default,
+setting <code>*tab-key-action*</code> says what <kbd>TAB</kbd> does. Its default,
 <code>:complete</code>, indents and then completes. With <code>t</code> it only indents. With <code>nil</code>
 it indents only while the cursor is in the blanks at the start of the line, and
 anywhere else it moves on to the next tab stop.</p>
@@ -178,18 +178,19 @@ they are, because their blanks are part of the text.</p>
 columns apart. <code>*tab-width*</code> changes that. Indentation is made of spaces unless
 you say otherwise, which keeps a file looking the same in every program. Some
 projects, a Makefile or a C project with its own style, use tab characters. For
-those, <kbd>M-x indent-tabs-mode</kbd> switches the buffer between tabs and spaces, and
-<code>*indent-tabs-mode*</code> sets the starting choice. <kbd>M-x insert-tab</kbd> puts in one tab
+those, <kbd>M-x indent-with-tabs-mode</kbd> switches the buffer between tabs and spaces, and
+<code>*indent-with-tabs*</code> sets the starting choice. <kbd>M-x insert-tab</kbd> puts in one tab
 character whatever the settings say, and <kbd>C-z TAB</kbd> (<code>tab-to-tab-stop</code>) moves on
 to the next tab stop with spaces or a tab as the buffer wants.</p>
-<p>The init file has forms for one language at a time:</p>
-<pre class="ex">(set-indentation 'c 2)            ; two columns a level in C
-(set-tab-width 'c-mode 8)         ; tab stops 8 apart in C files
-(set-indent-tabs-mode 'bash t)    ; tabs in shell scripts
+<p>The init file sets them for one language at a time:</p>
+<pre class="ex">(set-indentation 'c 2)                         ; two columns a level in C
+(setf *tab-width-modes* '((c-mode . 8)))       ; tab stops 8 apart in C files
+(setf *indent-with-tabs-modes* '((bash . t)))  ; tabs in shell scripts
 </pre>
 <p><code>set-indentation</code> takes 1 to 16 columns for a language whose rules indent by
-levels. <code>set-tab-width</code> takes 1 to 64, and <code>prog-mode</code> in place of a language
-means every programming language. A file can also say its own settings in its
+levels. A tab width is 1 to 64, and <code>prog-mode</code> in place of a language means
+every programming language. The starter init file lists the languages whose
+own tools require tabs in <code>*indent-with-tabs-modes*</code>. A file can also say its own settings in its
 first line or in a block of <code>Local Variables:</code> at its end, and Tuatara reads
 them while <code>*file-local-variables*</code> is <code>t</code>.</p>
 <p>Whole files are laid out by a <em>formatter</em>, a program that sets the code out as
@@ -226,7 +227,7 @@ shfmt for shell scripts. The section on language servers covers it.</p>
    <kbd>I</kbd>, type four blanks and press <kbd>C-g</kbd>. The line sits too far in. Press <kbd>&gt;</kbd>.
    It moves back to where the language wants it. Press <kbd>u</kbd> (non-modal: <kbd>C-/</kbd>) to
    undo that.</li>
-<li>Try the tab setting. Press <kbd>M-x</kbd>, type <code>indent-tabs-mode</code> and press <kbd>RET</kbd>.
+<li>Try the tab setting. Press <kbd>M-x</kbd>, type <code>indent-with-tabs-mode</code> and press <kbd>RET</kbd>.
    Press <kbd>g g</kbd>, <kbd>j j</kbd> to reach the <code>total</code> line, <kbd>I</kbd>, type four blanks and
    press <kbd>C-g</kbd>. Press <kbd>&gt;</kbd>, then <kbd>M-m</kbd>. The mode line says <code>C1</code>: the
    indentation is one tab character. With spaces it says <code>C4</code>. Run the command
@@ -244,19 +245,21 @@ shfmt for shell scripts. The section on language servers covers it.</p>
 <tr><td>none</td><td><kbd>C-M-\</kbd></td><td><code>indent-region</code></td><td>Indent each line the selection touches as its major mode indents it; the lines inside a comment or a string begun on a line before keep their blanks, which are text.</td></tr>
 <tr><td><kbd>&gt;</kbd></td><td><kbd>C-z &gt;</kbd></td><td><code>indent-selection-or-line</code></td><td>Indent the lines the selection touches, or the current line, as the language's mode indents them.</td></tr>
 <tr><td>none</td><td><kbd>M-m</kbd></td><td><code>back-to-indentation</code></td><td>Move point to the first character of its line that is not a space or a tab.</td></tr>
-<tr><td>none</td><td><kbd>C-z TAB</kbd></td><td><code>tab-to-tab-stop</code></td><td>Go on to the next tab stop, putting spaces in up to it, or a tab character where the buffer wants tabs (<strong>indent-tabs-mode</strong>, set-indent-tabs-mode, M-x indent-tabs-mode); with a count, that many stops.</td></tr>
+<tr><td>none</td><td><kbd>C-z TAB</kbd></td><td><code>tab-to-tab-stop</code></td><td>Go on to the next tab stop, putting spaces in up to it, or a tab character where the buffer wants tabs (<strong>indent-with-tabs</strong>, <strong>indent-with-tabs-modes</strong>, M-x indent-with-tabs-mode); with a count, that many stops.</td></tr>
 <tr><td>none</td><td><kbd>M-x insert-tab</kbd></td><td><code>insert-tab</code></td><td>Insert a tab character at point, whatever the tab settings say; C-z TAB (tab-to-tab-stop) goes on to the next tab stop as they say.</td></tr>
-<tr><td>none</td><td><kbd>M-x indent-tabs-mode</kbd></td><td><code>indent-tabs-mode</code></td><td>Switch the current buffer between tab characters and spaces where TAB and indentation go on to a tab stop; with a count, tabs when it is positive, spaces when it is zero or less.</td></tr>
+<tr><td>none</td><td><kbd>M-x indent-with-tabs-mode</kbd></td><td><code>indent-with-tabs-mode</code></td><td>Switch the current buffer between tab characters and spaces where TAB and indentation go on to a tab stop; with a count, tabs when it is positive, spaces when it is zero or less.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*tab-always-indent*</code></td><td><code>:complete</code></td><td>:complete, t, nil</td><td>What M-x indent-for-tab-command does where the major mode indents lines (Lisp, Rust, C, shell scripts).</td></tr>
+<tr><td><code>*tab-key-action*</code></td><td><code>:complete</code></td><td>:complete, t, nil</td><td>What M-x indent-for-tab-command does where the major mode indents lines (Lisp, Rust, C, shell scripts).</td></tr>
 <tr><td><code>*indent-new-lines*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a line is indented as it is begun.</td></tr>
 <tr><td><code>*tab-width*</code></td><td><code>4</code></td><td>a whole number from 1 to 64</td><td>The columns from one tab stop to the next: a tab character shows its text on at the next stop, and M-x indent-for-tab-command goes on to it.</td></tr>
-<tr><td><code>*indent-tabs-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether indentation puts tab characters in where M-x indent-for-tab-command and indentation go on to a tab stop, for every buffer whose major mode says nothing of its own (set-indent-tabs-mode).</td></tr>
+<tr><td><code>*indent-with-tabs*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether indentation puts tab characters in where M-x indent-for-tab-command and indentation go on to a tab stop, for every buffer whose major mode says nothing of its own (<strong>indent-with-tabs-modes</strong>).</td></tr>
+<tr><td><code>*tab-width-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B a whole number from 1 to 64</td><td>The columns from one tab stop to the next for major modes and the modes made from them, the nearest mode counting first; other buffers have <strong>tab-width</strong>.</td></tr>
+<tr><td><code>*indent-with-tabs-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B t, nil</td><td>Whether indentation puts tab characters in, for major modes and the modes made from them, the nearest mode counting first; other buffers have <strong>indent-with-tabs</strong>.</td></tr>
 <tr><td><code>*file-local-variables*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a file's own settings are taken as it is opened.</td></tr>
 </tbody></table></div>
 <h2 id="comments"><span class="num">13.3</span> Comments</h2>
@@ -314,20 +317,20 @@ not run. Tuatara helps in three ways.</p>
 <p><em>Showing the partner.</em> When the cursor is on a bracket, or just after a closing
 one, the bracket that pairs with it is lit in the <code>:paren-match</code> colour. A
 bracket with no partner, or the wrong kind, is lit in <code>:paren-mismatch</code>. It is
-on as standard, and <kbd>M-x show-paren-mode</kbd> turns it off and on in every buffer.
-To start every session with it off, put <code>(setf *show-paren-mode* nil)</code> in your
+on as standard, and <kbd>M-x show-matching-bracket-mode</kbd> turns it off and on in every buffer.
+To start every session with it off, put <code>(setf *show-matching-bracket* nil)</code> in your
 init file.
 When you type a closing bracket whose partner is out of sight, the echo area
-tells you what it matches (<code>*blink-matching-paren*</code> controls that).</p>
-<p><em>Closing them as you type.</em> <kbd>M-x electric-pair-mode</kbd> makes an opening bracket
+tells you what it matches (<code>*say-matching-bracket*</code> controls that).</p>
+<p><em>Closing them as you type.</em> <kbd>M-x auto-close-mode</kbd> makes an opening bracket
 write its closing half too, with the cursor between. Typing the closing half
 when it is already there steps over it, and <kbd>DEL</kbd> between an empty pair takes
 both away. It is off as standard. To turn it on for every session, put
-<code>(setf *electric-pair-mode* t)</code> in your init file. It does not pair everything,
+<code>(setf *auto-close-mode* t)</code> in your init file. It does not pair everything,
 because some characters are usually plain text: the apostrophe in &quot;don't&quot;, for
-example. <code>*electric-pair-typing*</code> says which are paired. Its default,
+example. <code>*auto-close-delimiters*</code> says which are paired. Its default,
 <code>:safe</code>, pairs the delimiters of <code>*pair-delimiters*</code> except those in
-<code>*electric-pair-safe-exclusions*</code>. <code>:all</code> pairs every one.</p>
+<code>*auto-close-safe-exclusions*</code>. <code>:all</code> pairs every one.</p>
 <p><em>Putting a pair round something.</em> Select some text and press <kbd>M-(</kbd>
 (<code>insert-pair</code>) to put brackets round it. With nothing selected it writes an
 empty pair with the cursor inside. On text that has the pair already, it takes
@@ -354,7 +357,7 @@ The second line is indented one level.</p>
    if you need to move. The matching <code>)</code> at the end of the line is lit.</li>
 <li>Press <kbd>m i</kbd>. The text inside the brackets is selected, and <kbd>M-o</kbd> makes the
    selection one piece larger. <kbd>C-g</kbd> lets go.</li>
-<li>Press <kbd>M-x</kbd>, type <code>electric-pair-mode</code> and press <kbd>RET</kbd>. On a new line type
+<li>Press <kbd>M-x</kbd>, type <code>auto-close-mode</code> and press <kbd>RET</kbd>. On a new line type
    <code>[</code>. You get <code>[]</code> with the cursor between. Type <code>1</code> and then <code>]</code>. The
    closing bracket is stepped over and you have <code>[1]</code>. Press <kbd>u</kbd> (non-modal:
    <kbd>C-/</kbd>) until the line is gone, and run the command again to switch pairing
@@ -368,8 +371,8 @@ The second line is indented one level.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>M-x show-paren-mode</kbd></td><td><code>show-paren-mode</code></td><td>Switch on or off showing the bracket that pairs with the one at point, in every buffer: when on, the bracket before point when it closes, else the one after it when it opens, is shown with its partner in :paren-match, or in :paren-mismatch when the partner is of another kind or there is none.</td></tr>
-<tr><td>none</td><td><kbd>M-x electric-pair-mode</kbd></td><td><code>electric-pair-mode</code></td><td>Turn closing delimiters as they are typed on or off.</td></tr>
+<tr><td>none</td><td><kbd>M-x show-matching-bracket-mode</kbd></td><td><code>show-matching-bracket-mode</code></td><td>Switch on or off showing the bracket that pairs with the one at point, in every buffer: when on, the bracket before point when it closes, else the one after it when it opens, is shown with its partner in :paren-match, or in :paren-mismatch when the partner is of another kind or there is none.</td></tr>
+<tr><td>none</td><td><kbd>M-x auto-close-mode</kbd></td><td><code>auto-close-mode</code></td><td>Turn closing delimiters as they are typed on or off.</td></tr>
 <tr><td>none</td><td><kbd>M-(</kbd></td><td><code>insert-pair</code></td><td>Put the pair of the delimiter of the key pressed around the region (M-( for parentheses), point on the first character inside; when the pair stands just outside the region already, take it off.</td></tr>
 <tr><td>none</td><td><kbd>M-x delete-pair</kbd></td><td><code>delete-pair</code></td><td>Delete the brackets or quote marks around the balanced expression after point: the character there, after any spaces and tabs, and the one that closes the expression it begins.</td></tr>
 <tr><td><kbd>m a</kbd></td><td><kbd>C-z m a</kbd></td><td><code>select-pair</code></td><td>Select a pair of delimiters and what it holds, as select-inside-pair finds it.</td></tr>
@@ -382,11 +385,11 @@ The second line is indented one level.</p>
 <tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*show-paren-mode*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the bracket that pairs with the one at point is shown: the one before point when it closes, else the one after it when it opens.</td></tr>
-<tr><td><code>*blink-matching-paren*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether typing a closing bracket says what its partner is when it is out of sight (&quot;Matches (defun foo ()&quot;), or that it has none.</td></tr>
-<tr><td><code>*electric-pair-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether delimiters are closed as they are typed.</td></tr>
-<tr><td><code>*electric-pair-typing*</code></td><td><code>:safe</code></td><td>:safe, :all, or a list, each a character</td><td>Which delimiters close themselves as they are typed, once M-x electric-pair-mode is on.</td></tr>
-<tr><td><code>*electric-pair-safe-exclusions*</code></td><td><code>(#\&lt; #\' #\` #\</code> #\* #\~ #\| #\\ #\/ #\:…=</td><td>a list, each a character</td><td>The delimiters :safe leaves out of <strong>ELECTRIC-PAIR-TYPING</strong>: ordinary text far more often than a delimiter, such as the apostrophe in don't, a colon, less-than.</td></tr>
+<tr><td><code>*show-matching-bracket*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the bracket that pairs with the one at point is shown: the one before point when it closes, else the one after it when it opens.</td></tr>
+<tr><td><code>*say-matching-bracket*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether typing a closing bracket says what its partner is when it is out of sight (&quot;Matches (defun foo ()&quot;), or that it has none.</td></tr>
+<tr><td><code>*auto-close-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether delimiters are closed as they are typed.</td></tr>
+<tr><td><code>*auto-close-delimiters*</code></td><td><code>:safe</code></td><td>:safe, :all, or a list, each a character</td><td>Which delimiters close themselves as they are typed, once M-x auto-close-mode is on.</td></tr>
+<tr><td><code>*auto-close-safe-exclusions*</code></td><td><code>(#\&lt; #\' #\` #\</code> #\* #\~ #\| #\\ #\/ #\:…=</td><td>a list, each a character</td><td>The delimiters :safe leaves out of <strong>AUTO-CLOSE-DELIMITERS</strong>: ordinary text far more often than a delimiter, such as the apostrophe in don't, a colon, less-than.</td></tr>
 <tr><td><code>*pair-delimiters*</code></td><td><code>((#\{ . #\}) (#\[ . #\]) (#\( . #\)) (#\...</code></td><td>a list, each a pair (A . B), A a character and B a character</td><td>The pairs of delimiters.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
@@ -394,8 +397,8 @@ The second line is indented one level.</p>
 <tr><th>Face</th><th>What it paints</th></tr>
 </thead>
 <tbody>
-<tr><td><code>:paren-match</code></td><td>The bracket at point and the one it pairs with (show-paren-mode).</td></tr>
-<tr><td><code>:paren-mismatch</code></td><td>A bracket at point that pairs with one of another kind, or with none (show-paren-mode).</td></tr>
+<tr><td><code>:paren-match</code></td><td>The bracket at point and the one it pairs with (M-x show-matching-bracket-mode).</td></tr>
+<tr><td><code>:paren-mismatch</code></td><td>A bracket at point that pairs with one of another kind, or with none (M-x show-matching-bracket-mode).</td></tr>
 </tbody></table></div>
 <h2 id="moving-by-definitions-and-lists"><span class="num">13.5</span> Moving by definitions and lists</h2>
 <p>Moving a character or a word at a time is slow in code. Code has a shape, and
@@ -551,7 +554,7 @@ same keys as for a build's errors, described below.</p>
 <tr><td>none</td><td><kbd>C-c I</kbd></td><td><code>lsp-find-implementations</code></td><td>Go to the implementations of the thing at point (of a trait, an interface, an abstract method), as its language server finds them: there at once when it is one, else listed in <strong>xref</strong>.</td></tr>
 <tr><td>none</td><td><kbd>C-c c</kbd></td><td><code>lsp-incoming-calls</code></td><td>List the places that call the function at point, as its language server knows them, in <strong>xref</strong>: RET goes to one.</td></tr>
 <tr><td>none</td><td><kbd>C-c C</kbd></td><td><code>lsp-outgoing-calls</code></td><td>List the functions the function at point calls, as its language server knows them, in <strong>xref</strong>: RET goes to one.</td></tr>
-<tr><td>none</td><td><kbd>M-s g</kbd></td><td><code>search-in-files</code></td><td>Find text in the files of the project the current buffer's file is in (see <strong>PROJECT-ROOT-MARKERS</strong>), or under its directory when it is in none, or under the directory it lists (C-x d), or <strong>DEFAULT-DIRECTORY</strong> for another buffer with no file; with a prefix argument, in a directory asked for.</td></tr>
+<tr><td>none</td><td><kbd>M-s g</kbd></td><td><code>search-in-files</code></td><td>Find text in the files of the project the current buffer's file is in (see <strong>PROJECT-ROOT-MARKERS</strong>), or under its directory when it is in none, or under the directory it lists (C-x d), or <strong>NO-FILE-DIRECTORY</strong> for another buffer with no file; with a prefix argument, in a directory asked for.</td></tr>
 </tbody></table></div>
 <h2 id="language-servers"><span class="num">13.7</span> Language servers</h2>
 <p>A language server takes some time to start, and it runs in the background, so
@@ -621,7 +624,7 @@ the names that fit what you have typed, each with what it is, and the chosen
 one's documentation beside the list. Typing narrows the list. <kbd>C-n</kbd> and <kbd>C-p</kbd>
 choose, <kbd>TAB</kbd> or <kbd>RET</kbd> puts the chosen name in, and <kbd>C-g</kbd> closes the list. In
 Lisp it offers the names of Lisp, and elsewhere what the server offers. Because
-<code>*tab-always-indent*</code> is <code>:complete</code>, <kbd>TAB</kbd> also completes when the line is
+<code>*tab-key-action*</code> is <code>:complete</code>, <kbd>TAB</kbd> also completes when the line is
 already indented right.</p>
 <p>Without a server you can still complete from the words you already have. <kbd>M-/</kbd>
 (<code>expand-word</code>) replaces the start of a word with the nearest word that begins
@@ -650,7 +653,9 @@ key. <kbd>C-c i</kbd> shows <em>inlay hints</em>: the types of variables and the
 parameters a call fills in, written faint. <kbd>C-c S</kbd> colours each name by what the
 server says it is, a parameter, a field, a macro, over the usual colours. <kbd>C-c
 K</kbd> shows <em>code lenses</em>, short notes such as <code>3 references</code> or <code>Run test</code> at the
-end of a line, and <kbd>C-c k</kbd> runs the one on the current line. Their settings are
+end of a line, and <kbd>C-c k</kbd> runs the one on the current line. A server that has
+not answered such a command after five minutes is given up on, and a change it
+asks to make after that is asked about first. Their settings are
 <code>*lsp-inlay-hints*</code>, <code>*lsp-semantic-tokens*</code> and <code>*lsp-code-lenses*</code>, which say
 whether each is on as a file opens.</p>
 <p>The colours of <kbd>C-c S</kbd> come from <code>*lsp-semantic-faces*</code>, a list that pairs the
@@ -1062,20 +1067,61 @@ buffer <code>*lisp-scratch*</code> (<kbd>M-x lisp-scratch</kbd>) and your init f
   and writes its value into the buffer.</li>
 <li><kbd>M-:</kbd> (<code>eval-expression</code>) works anywhere. It asks for an expression, shows its
   value, and runs only what you typed.</li>
-<li><kbd>C-c C-m</kbd> (<code>pp-macroexpand-last-expression</code>) shows a macro call expanded once,
+<li><kbd>C-c C-m</kbd> (<code>lisp-macroexpand</code>) shows a macro call expanded once,
   laid out in a window of its own.</li>
 </ul>
 <p>A file opened safely (chapter 12) runs nothing: the keys say so and do nothing.</p>
-<p><kbd>M-x ielm</kbd> opens <code>*ielm*</code>, a prompt where you type Lisp and read the answer at
-once. The modal keys are off there, so you type without pressing <kbd>i</kbd>. <kbd>RET</kbd> runs
-the input when it is a whole expression, and otherwise starts a new line of it.
-<kbd>C-j</kbd> runs it as it is. <kbd>M-p</kbd> and <kbd>M-n</kbd> go back and forward through what you
-typed before, <kbd>C-c C-u</kbd> clears the input, and <kbd>TAB</kbd> completes a name. <kbd>C-c C-b</kbd>
-chooses the buffer that the Lisp you type sees as current, so that <code>(insert
-&quot;x&quot;)</code> puts text there.</p>
-<p>When something fails, <kbd>M-x toggle-debug-on-error</kbd> makes the next error show the
+<p><kbd>M-x lisp-repl</kbd> opens <code>*Lisp REPL*</code>, a prompt where you type Lisp and read the
+answer at once. The modal keys are off there, so you type without pressing <kbd>i</kbd>.
+<kbd>RET</kbd> runs the input when it is a whole expression, and otherwise starts a new
+line of it. <kbd>C-j</kbd> runs it as it is. <kbd>M-p</kbd> and <kbd>M-n</kbd> go back and forward through
+what you typed before, <kbd>C-c C-u</kbd> clears the input, and <kbd>TAB</kbd> completes a name.
+<kbd>C-c C-b</kbd> chooses the buffer that the Lisp you type sees as current, so that
+<code>(buffer-insert (current-buffer) 0 &quot;x&quot;)</code> puts text there.</p>
+<p>The Lisp you type, the init file's included, reaches the functions a package
+uses (chapter 19). A place in a buffer is counted in bytes from 0, as the
+editor counts it, so an <code>é</code> takes two. <code>(buffer-point (current-buffer))</code> is
+where the cursor is, <code>(setf (buffer-point b) 0)</code> moves it to the start,
+<code>(buffer-forward-line b p 1)</code> gives the start of the next line and
+<code>(with-point-kept (b) ...)</code> puts the cursor back after the forms inside.</p>
+<p>Before 0.90.47 the Lisp you type also had names of its own for these, counting
+characters from 1. They are gone; each is written so now, <code>b</code> a buffer and <code>p</code>
+a place:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Before 0.90.47</th><th>Now</th></tr>
+</thead>
+<tbody>
+<tr><td><code>point</code>, <code>goto-char</code></td><td><code>(buffer-point b)</code>, <code>(setf (buffer-point b) p)</code></td></tr>
+<tr><td><code>point-min</code>, <code>point-max</code></td><td><code>(buffer-start b)</code>, <code>(buffer-end b)</code></td></tr>
+<tr><td><code>bobp</code>, <code>eobp</code></td><td>compare <code>(buffer-point b)</code> with those two</td></tr>
+<tr><td><code>bolp</code>, <code>eolp</code></td><td>compare with <code>(buffer-line-start b p)</code>, <code>buffer-line-end</code></td></tr>
+<tr><td><code>char-after</code>, <code>char-before</code></td><td><code>(buffer-char-at b p)</code>, <code>(buffer-char-before b p)</code></td></tr>
+<tr><td><code>forward-char</code>, <code>backward-char</code></td><td><code>(buffer-forward-char b p n)</code>, with <code>n</code> below 0 back</td></tr>
+<tr><td><code>line-beginning-position</code></td><td><code>(buffer-line-start b p)</code></td></tr>
+<tr><td><code>line-end-position</code></td><td><code>(buffer-line-end b p)</code></td></tr>
+<tr><td><code>line-number-at-pos</code></td><td><code>(buffer-line-number b p)</code>, counting lines from 0</td></tr>
+<tr><td><code>count-lines</code></td><td><code>(span-line-count b (list (cons start end)))</code></td></tr>
+<tr><td><code>forward-line</code></td><td><code>(buffer-forward-line b p n)</code></td></tr>
+<tr><td><code>count-words</code></td><td><code>(buffer-count-words b start end)</code></td></tr>
+<tr><td><code>insert</code></td><td><code>(buffer-insert b p text)</code></td></tr>
+<tr><td><code>delete-region</code>, <code>erase-buffer</code></td><td><code>(delete-spans b (list (cons start end)))</code></td></tr>
+<tr><td><code>buffer-substring</code></td><td><code>(buffer-string b :start start :end end)</code></td></tr>
+<tr><td><code>buffer-string</code>, <code>buffer-size</code></td><td>the same names, given the buffer, in bytes</td></tr>
+<tr><td><code>kill-new</code></td><td><code>(kill-text text)</code></td></tr>
+<tr><td><code>narrow-to-region</code>, <code>widen</code></td><td><code>(narrow-buffer b start end)</code>, <code>(widen-buffer b)</code></td></tr>
+<tr><td><code>save-restriction</code></td><td><code>(with-narrowing-kept (b) ...)</code></td></tr>
+<tr><td><code>buffer-name</code>, <code>buffer-list</code></td><td>the same names, <code>buffer-name</code> given the buffer</td></tr>
+<tr><td><code>buffer-file-name</code></td><td><code>(native (buffer-file b))</code></td></tr>
+<tr><td><code>get-buffer</code></td><td><code>(find-buffer name)</code></td></tr>
+<tr><td><code>get-buffer-create</code></td><td><code>(find-or-make-buffer name)</code></td></tr>
+<tr><td><code>switch-to-buffer</code>, <code>find-file</code></td><td><code>(show-buffer b)</code>, <code>(visit-path path)</code></td></tr>
+<tr><td><code>set-buffer</code>, <code>with-current-buffer</code></td><td><code>(with-buffer-current (b) ...)</code></td></tr>
+<tr><td><code>save-excursion</code></td><td><code>(with-point-kept (b) ...)</code></td></tr>
+</tbody></table></div>
+<p>When something fails, <kbd>M-x toggle-backtrace-on-error</kbd> makes the next error show the
 calls that were running when it happened, innermost first, in <code>*Backtrace*</code>.
-The setting <code>*debug-on-error*</code> makes that the standard.</p>
+The setting <code>*backtrace-on-error*</code> makes that the standard.</p>
 <div class="try">
 <h3>Try it, with a Lisp function that adds numbers</h3>
 <ol>
@@ -1095,7 +1141,7 @@ The setting <code>*debug-on-error*</code> makes that the standard.</p>
    and hexadecimal.</li>
 <li>Put the cursor on <code>add-up</code> in the last line, with <kbd>C-a</kbd> (modal: <kbd>g h</kbd>) and
    <kbd>l l</kbd>, and press <kbd>M-.</kbd>. It goes to the <code>defun</code>. Press <kbd>M-,</kbd> to come back.</li>
-<li>Press <kbd>M-x</kbd>, type <code>ielm</code> and press <kbd>RET</kbd>. After the prompt type
+<li>Press <kbd>M-x</kbd>, type <code>lisp-repl</code> and press <kbd>RET</kbd>. After the prompt type
    <code>(add-up '(10 20))</code> and press <kbd>RET</kbd>. The answer is <code>30</code>. Press <kbd>M-p</kbd> and the
    same input comes back.</li>
 <li>Press <kbd>M-x</kbd>, type <code>lisp-scratch</code> and press <kbd>RET</kbd> for a buffer of your own to
@@ -1115,17 +1161,17 @@ The setting <code>*debug-on-error*</code> makes that the standard.</p>
 <tr><td>none</td><td><kbd>M-x eval-buffer</kbd></td><td><code>eval-buffer</code></td><td>Evaluate every Lisp form in the current buffer one after another, as a file's are, and show the last one's value; not a buffer of more than 32 MB.</td></tr>
 <tr><td>none</td><td><kbd>C-j</kbd></td><td><code>eval-print-last-expression</code></td><td>Evaluate the expression before point in the running editor and put what it printed and its value on the lines after it.</td></tr>
 <tr><td>none</td><td><kbd>M-:</kbd></td><td><code>eval-expression</code></td><td>Read a Lisp expression in the minibuffer and evaluate it in the running editor, in the current buffer's package; show its value, or with a prefix argument (C-u) insert it at point.</td></tr>
-<tr><td>none</td><td><kbd>C-c C-m</kbd>, <kbd>C-c RET</kbd></td><td><code>pp-macroexpand-last-expression</code></td><td>Show what the macro call at point expands to, once (MACROEXPAND-1), pretty-printed in <strong>Pp Macroexpand Output</strong>: the call beginning at point when an opening bracket is there, else the one before point.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-m</kbd>, <kbd>C-c RET</kbd></td><td><code>lisp-macroexpand</code></td><td>Show what the macro call at point expands to, once (MACROEXPAND-1), pretty-printed in <strong>Macro expansion</strong>: the call beginning at point when an opening bracket is there, else the one before point.</td></tr>
 <tr><td>none</td><td><kbd>M-x lisp-scratch</kbd></td><td><code>lisp-scratch</code></td><td>Show <strong>lisp-scratch</strong>, the Lisp buffer that is not saved, where C-x C-e evaluates in the running editor and C-j puts what the expression before point printed and its value on the lines after it; when it was killed, a new one.</td></tr>
-<tr><td>none</td><td><kbd>M-x ielm</kbd></td><td><code>ielm</code></td><td>Show <strong>ielm</strong>, where Lisp typed after the prompt is evaluated in the running editor: made with a prompt the first time, as it was after.</td></tr>
-<tr><td>none</td><td><kbd>C-j</kbd></td><td><code>ielm-send-input</code></td><td>Evaluate the input after <strong>ielm</strong>'s last prompt as it is, whole or not.</td></tr>
-<tr><td>none</td><td><kbd>RET</kbd></td><td><code>ielm-return</code></td><td>RET in <strong>ielm</strong>: after the last prompt, evaluate the input when it is whole expressions, else begin a new line of it; on an earlier input, evaluate that again.</td></tr>
-<tr><td>none</td><td><kbd>M-p</kbd></td><td><code>ielm-previous-input</code></td><td>Put the input before the one shown in <strong>ielm</strong>'s history in place of the input.</td></tr>
-<tr><td>none</td><td><kbd>M-n</kbd></td><td><code>ielm-next-input</code></td><td>Put the input after the one shown in <strong>ielm</strong>'s history in place of the input.</td></tr>
-<tr><td>none</td><td><kbd>C-c C-u</kbd></td><td><code>ielm-kill-input</code></td><td>Take away the input after <strong>ielm</strong>'s last prompt.</td></tr>
-<tr><td>none</td><td><kbd>C-c C-b</kbd></td><td><code>ielm-change-working-buffer</code></td><td>Choose the working buffer of <strong>ielm</strong>: the one the Lisp typed there sees as current, (insert &quot;x&quot;) putting text in it.</td></tr>
-<tr><td>none</td><td><kbd>TAB</kbd></td><td><code>ielm-tab</code></td><td>TAB in <strong>ielm</strong>: where only blanks come before point on its line of the input, indent the line as Lisp (never the prompt's line); else complete the name at point from a list beside it, as C-M-i does.</td></tr>
-<tr><td>none</td><td><kbd>M-x toggle-debug-on-error</kbd></td><td><code>toggle-debug-on-error</code></td><td>Switch debug-on-error on or off: while it is on, an error in a command, or in Lisp evaluated in the editor (C-x C-e, C-M-x, M-:, C-j), shows the calls under way when it was signalled in <strong>Backtrace</strong>, innermost first, besides the message.</td></tr>
+<tr><td>none</td><td><kbd>M-x lisp-repl</kbd></td><td><code>lisp-repl</code></td><td>Show <strong>Lisp REPL</strong>, where Lisp typed after the prompt is evaluated in the running editor: made with a prompt the first time, as it was after.</td></tr>
+<tr><td>none</td><td><kbd>C-j</kbd></td><td><code>lisp-repl-send-input</code></td><td>Evaluate the input after <strong>Lisp REPL</strong>'s last prompt as it is, whole or not.</td></tr>
+<tr><td>none</td><td><kbd>RET</kbd></td><td><code>lisp-repl-return</code></td><td>RET in <strong>Lisp REPL</strong>: after the last prompt, evaluate the input when it is whole expressions, else begin a new line of it; on an earlier input, evaluate that again.</td></tr>
+<tr><td>none</td><td><kbd>M-p</kbd></td><td><code>lisp-repl-previous-input</code></td><td>Put the input before the one shown in <strong>Lisp REPL</strong>'s history in place of the input.</td></tr>
+<tr><td>none</td><td><kbd>M-n</kbd></td><td><code>lisp-repl-next-input</code></td><td>Put the input after the one shown in <strong>Lisp REPL</strong>'s history in place of the input.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-u</kbd></td><td><code>lisp-repl-kill-input</code></td><td>Take away the input after <strong>Lisp REPL</strong>'s last prompt.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-b</kbd></td><td><code>lisp-repl-change-working-buffer</code></td><td>Choose the working buffer of <strong>Lisp REPL</strong>: the one the Lisp typed there sees as current, (insert &quot;x&quot;) putting text in it.</td></tr>
+<tr><td>none</td><td><kbd>TAB</kbd></td><td><code>lisp-repl-tab</code></td><td>TAB in <strong>Lisp REPL</strong>: where only blanks come before point on its line of the input, indent the line as Lisp (never the prompt's line); else complete the name at point from a list beside it, as C-M-i does.</td></tr>
+<tr><td>none</td><td><kbd>M-x toggle-backtrace-on-error</kbd></td><td><code>toggle-backtrace-on-error</code></td><td>Switch <strong>backtrace-on-error</strong> on or off: while it is on, an error in a command, or in Lisp evaluated in the editor (C-x C-e, C-M-x, M-:, C-j), shows the calls under way when it was signalled in <strong>Backtrace</strong>, innermost first, besides the message.</td></tr>
 </tbody></table></div>
 <h3 id="settings-2"><span class="num">13.11.2</span> Settings</h3>
 <div class="tablewrap"><table>
@@ -1133,7 +1179,7 @@ The setting <code>*debug-on-error*</code> makes that the standard.</p>
 <tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*debug-on-error*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether a command or an evaluation that meets an error shows the calls under way, in <strong>Backtrace</strong>.</td></tr>
+<tr><td><code>*backtrace-on-error*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether a command or an evaluation that meets an error shows the calls under way, in <strong>Backtrace</strong>.</td></tr>
 </tbody></table></div>
 <h2 id="latex"><span class="num">13.12</span> LaTeX</h2>
 <p>In a LaTeX file <kbd>C-c C-e</kbd> (<code>latex-insert-environment</code>) asks for the name of an
