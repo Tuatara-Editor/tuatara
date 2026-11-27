@@ -139,6 +139,16 @@ file.
 - any other text: the buffer of that name, which the init file makes."
   :values string)
 
+(defun filled-scratch-header (text)
+  "TEXT, a scratch buffer's first text, with the keys it names written in
+\(SUBSTITUTE-COMMAND-KEYS) and each paragraph of its comment filled to
+*FILL-COLUMN* (FILL-LINES), the blank lines between paragraphs and after it kept."
+  (let ((paragraphs (cl-ppcre:split "\\n\\n" (string-right-trim '(#\Newline) (substitute-command-keys text)))))
+    (format nil "~{~{~a~^~%~}~^~%~%~}~%~%"
+            (mapcar (lambda (paragraph)
+                      (fill-lines (cl-ppcre:split "\\n" paragraph) *fill-column* *fill-prefix-characters*))
+                    paragraphs))))
+
 (defun make-scratch-buffer (name &optional (kind name))
   "Make the scratch buffer NAME as KIND, the name of one of *SCRATCH-BUFFERS*,
 says: in its mode, holding its first text, or the text kept from the session
@@ -149,7 +159,7 @@ empty buffer when KIND is none of them. Return it."
         (tuatara.buffer:make-buffer name)
         (destructuring-bind (mode text) (rest entry)
           (let* ((kept (and (string= name kind) (kept-scratch-text name)))
-                 (b (tuatara.buffer:make-buffer name :text (or kept (substitute-command-keys text)))))
+                 (b (tuatara.buffer:make-buffer name :text (or kept (filled-scratch-header text)))))
             (set-major-mode b mode)
             (setf (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-size b))
             ;; the first text is not a change you made

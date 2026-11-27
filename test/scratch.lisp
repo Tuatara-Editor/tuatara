@@ -34,6 +34,22 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
     (declare (ignore f))
     (is string= "*org-scratch*" (current-name editor))))
 
+(define-test (scratch header-filled-to-the-fill-column)
+  ;; with its keys written in, each header's lines reach the fill column as far as
+  ;; the next word allows: none longer, none that could take the next line's first word
+  (dolist (name '("*lisp-scratch*" "*org-scratch*"))
+    (let ((b (tuatara.buffer:find-buffer name))) (when b (tuatara.buffer:kill-buffer b)))
+    (let* ((tuatara-user:*scratch-text-kept* nil)
+           (b (tuatara.defaults::make-scratch-buffer name))
+           (lines (remove "" (cl-ppcre:split "\\n" (tuatara.buffer:buffer-string b)) :test #'string=)))
+      (true (rest lines))
+      (loop for (line next) on lines
+            do (true (<= (length line) tuatara-user:*fill-column*))
+               (when next
+                 (let ((word (first (cl-ppcre:split "\\s+" (string-left-trim ";# " next)))))
+                   (true (> (+ (length line) 1 (length word)) tuatara-user:*fill-column*)))))
+      (tuatara.buffer:kill-buffer b))))
+
 (define-test (scratch auto-made)
   ;; *auto-scratch-buffers* says which are made by themselves: *org-scratch* alone
   (let ((tuatara-user:*auto-scratch-buffers* '("*org-scratch*")))
@@ -99,8 +115,9 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
       (is string= "*lisp-scratch*" (current-name editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "Made a new *lisp-scratch*"))
       (true (typep (tuatara.modes:buffer-major-mode b) 'tuatara.defaults::lisp-mode))
-      (is string= ";; Lisp to try out: C-x C-e after an expression evaluates it."
-          (subseq (tuatara.buffer:buffer-string b) 0 (position #\Newline (tuatara.buffer:buffer-string b))))
+      (is string= (tuatara.defaults::filled-scratch-header
+                   (third (assoc "*lisp-scratch*" tuatara.defaults::*scratch-buffers* :test #'string=)))
+          (tuatara.buffer:buffer-string b))
       (false (tuatara.buffer:buffer-undo-stack b))
       (false (tuatara.buffer:buffer-modified-p b))))
   (multiple-value-bind (f editor) (fresh-start "M-x o r g - s c r a t c h RET C-x k M-x o r g - s c r a t c h RET")
@@ -110,7 +127,7 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
                  'tuatara.defaults::org-mode))
     ;; the header comment, word for word, with the keys bound now: its text is not kept, and how to keep it
     (is string= (format nil "# Notes in Org that are not kept: they go when Tuatara quits, unless~%~
-                             # *scratch-text-kept* is on. C-x C-s saves them to a file;~%# C-x C-f opens one.~%~%")
+                             # *scratch-text-kept* is on. C-x C-s saves them to a file; C-x C-f opens one.~%~%")
         (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*org-scratch*"))))
   ;; there already: shown as it is, what was typed in it kept, nothing said
   (multiple-value-bind (f editor)
